@@ -291,6 +291,7 @@ model Season {
   criteria     Criterion[]
   markers      Marker[]
   siteContent  SiteContent?
+  siteImages   SiteImage[]
 
   @@map("seasons")
 }
@@ -810,6 +811,26 @@ model SiteContent {
   season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
 
   @@map("site_contents")
+}
+
+/// Фото для лендинга (люди, место, история). Файлы — в UPLOADS_DIR/site/
+/// под storageKey, варианты webp 480/960/1600 и мастер; раздаёт /media/site.
+/// Тексты сайта ссылаются на фото по id; фото без ссылок старше часа
+/// убираются при сохранении текстов (lib/site/store.ts).
+model SiteImage {
+  id          String   @id @default(cuid())
+  seasonId    String
+  storageKey  String   @unique
+  width       Int
+  height      Int
+  bytes       Int
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@index([seasonId])
+  @@map("site_images")
 }
 
 model Settings {

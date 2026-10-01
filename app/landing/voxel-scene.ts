@@ -173,6 +173,26 @@ const NARROW: ObjectSpec[] = [
   { map: crescent(12), color: "#be2aff", at: [0.0, -0.95], z: -2, tilt: 0.1 },
 ];
 
+/**
+ * Сборка логотипа (перебивка): объекты стоят по кругу вокруг стикера —
+ * там же, где на самом стикере. `at` — направление на окружности.
+ */
+const ring = (degrees: number): [number, number] => [
+  Math.cos((degrees * Math.PI) / 180),
+  Math.sin((degrees * Math.PI) / 180),
+];
+const ASSEMBLE: ObjectSpec[] = [
+  { map: ASTERISK, color: "#be2aff", at: ring(135), z: 0, tilt: 0.2 },
+  { map: STAR, color: "#2ce718", at: ring(45), z: 0, tilt: -0.15 },
+  { map: SMILE, color: "#ffcc00", at: ring(180), z: 0, tilt: 0.1 },
+  { map: CURSOR, color: "#9aa3b5", at: ring(0), z: 0, tilt: -0.2 },
+  { map: HEART, color: "#ff8511", at: ring(235), z: 0, tilt: 0.15 },
+  { map: FLAME, color: "#1c63ff", at: ring(305), z: 0, tilt: -0.1 },
+];
+
+const easeOut = (t: number) => 1 - (1 - t) ** 3;
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
 interface Live {
   group: THREE.Group;
   spec: ObjectSpec;
@@ -199,8 +219,11 @@ export function createVoxelScene(options: {
   canvas: HTMLCanvasElement;
   background: string;
   reducedMotion: boolean;
+  /** hero — первый экран; assemble — перебивка «сборка логотипа» (прогресс — через scroll). */
+  mode?: "hero" | "assemble";
 }): VoxelScene {
   const { canvas, reducedMotion } = options;
+  const mode = options.mode ?? "hero";
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -293,12 +316,20 @@ export function createVoxelScene(options: {
 
   // Размер видимой области на глубине 0 — от него места и масштаб объектов.
   let view = { width: 1, height: 1 };
+  // Радиус круга сборки в мировых единицах: стикер на странице — до 520 px
+  // и не больше 70% меньшей стороны экрана; объекты садятся на его край.
+  let ringRadius = 1;
   function layout() {
     const height = 2 * camera.position.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     view = { width: height * camera.aspect, height };
+    const unitsPerPixel = height / Math.max(1, canvas.clientHeight);
+    ringRadius = Math.min(0.35 * Math.min(canvas.clientWidth, canvas.clientHeight), 260) * unitsPerPixel * 0.78;
     for (const item of objects) {
       const rows = item.spec.map.length;
-      const size = (narrow ? 0.15 : 0.2) * Math.min(view.height, view.width * (narrow ? 1.6 : 1));
+      const size =
+        mode === "assemble"
+          ? ringRadius * 0.62
+          : (narrow ? 0.15 : 0.2) * Math.min(view.height, view.width * (narrow ? 1.6 : 1));
       item.group.userData.base = size / rows;
     }
   }
@@ -313,7 +344,9 @@ export function createVoxelScene(options: {
     camera.updateProjectionMatrix();
 
     const nextNarrow = width / height < 0.9;
-    if (nextNarrow !== narrow || objects.length === 0) {
+    if (mode === "assemble") {
+      if (objects.length === 0) build(ASSEMBLE);
+    } else if (nextNarrow !== narrow || objects.length === 0) {
       narrow = nextNarrow;
       build(narrow ? NARROW : WIDE);
     }
@@ -325,7 +358,34 @@ export function createVoxelScene(options: {
   const pointerNow = new THREE.Vector2();
   let scrollProgress = 0;
 
+  /**
+   * Сборка: по прогрессу прокрутки объекты летят из-за краёв экрана на круг
+   * вокруг стикера, перестают кувыркаться и в конце тают — на их месте
+   * остаётся стикер (его рисует страница поверх холста).
+   */
+  function renderAssemble(time: number) {
+    const travel = easeOut(Math.min(1, scrollProgress / 0.7));
+    const melt = Math.max(0, (scrollProgress - 0.72) / 0.28);
+    for (const item of objects) {
+      const [dx, dy] = item.spec.at;
+      item.group.position.set(
+        lerp(dx * view.width * 0.75, dx * ringRadius, travel),
+        lerp(dy * view.height * 0.75, dy * ringRadius, travel),
+        lerp(-6, 2, travel),
+      );
+      const sway = reducedMotion ? 0 : Math.sin(time * 0.6 + item.phase) * 0.15;
+      item.group.rotation.y = (1 - travel) * (4 + item.phase) + sway;
+      item.group.rotation.x = (1 - travel) * 1.4;
+      item.group.scale.setScalar((item.group.userData.base as number) * (0.7 + 0.3 * travel) * (1 - melt));
+    }
+    renderer.render(scene, camera);
+  }
+
   function render(time: number) {
+    if (mode === "assemble") {
+      renderAssemble(time);
+      return;
+    }
     pointerNow.lerp(pointerTarget, reducedMotion ? 1 : 0.06);
     root.rotation.y = pointerNow.x * 0.22;
     root.rotation.x = -pointerNow.y * 0.12;

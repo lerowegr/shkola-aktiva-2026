@@ -39,6 +39,7 @@ function locate(path: PropertyKey[]): string {
   const [key, field, index] = path;
   const where = [SECTION_LABELS[key as SectionKey]];
   if (field === "items" || field === "points") where.push(`пункт ${Number(index) + 1}`);
+  if (field === "photos") where.push(`фото ${Number(index) + 1}`);
   return where.join(", ");
 }
 
@@ -146,18 +147,40 @@ const card = () => ({ title: "", text: "" });
           />
         </template>
 
-        <template v-else-if="section === 'program' || section === 'roles'">
-          <UiInput v-model="form[section].title" label="Заголовок раздела" />
+        <template v-else-if="section === 'program'">
+          <UiInput v-model="form.program.title" label="Заголовок раздела" />
           <AdminItems
-            v-model="form[section].items"
+            v-model="form.program.items"
             :max="8"
-            :add-label="section === 'program' ? 'Добавить пункт программы' : 'Добавить роль'"
+            add-label="Добавить пункт программы"
             :title="(item, index) => item.title || `Пункт ${index + 1}`"
             :create="card"
           >
             <template #default="{ item }">
-              <UiInput v-model="item.title" label="Название" />
-              <UiTextarea v-model="item.text" label="Описание" :rows="2" :max="240" />
+              <UiInput v-model="item.title" label="Название — на лицевой стороне карточки" />
+              <UiTextarea v-model="item.text" label="Описание — на обороте" :rows="2" :max="240" />
+            </template>
+          </AdminItems>
+        </template>
+
+        <template v-else-if="section === 'people'">
+          <UiInput v-model="form.people.title" label="Заголовок раздела" />
+          <p class="text-ink-soft text-sm">
+            Люди идут на сайте движущейся лентой. Первое фото — обложка; без фото вместо него маскот.
+          </p>
+          <AdminItems
+            v-model="form.people.items"
+            :max="60"
+            add-label="Добавить человека"
+            :title="(item, index) => item.name || `Человек ${index + 1}`"
+            :create="() => ({ name: '', role: '', photos: [] })"
+          >
+            <template #default="{ item }">
+              <div class="grid gap-3 sm:grid-cols-2">
+                <UiInput v-model="item.name" label="Имя" />
+                <UiInput v-model="item.role" label="Роль — подпись" placeholder="Например, медиа" />
+              </div>
+              <AdminPhotoList v-model="item.photos" :max="8" />
             </template>
           </AdminItems>
         </template>
@@ -166,10 +189,10 @@ const card = () => ({ title: "", text: "" });
           <UiInput v-model="form.history.title" label="Заголовок раздела" />
           <AdminItems
             v-model="form.history.items"
-            :max="12"
-            add-label="Добавить год"
+            :max="40"
+            add-label="Добавить событие"
             :title="(item, index) => item.year || `Пункт ${index + 1}`"
-            :create="() => ({ year: '', title: '', text: '' })"
+            :create="() => ({ year: '', title: '', text: '', photo: null })"
           >
             <template #default="{ item }">
               <div class="grid gap-3 sm:grid-cols-[120px_minmax(0,1fr)]">
@@ -177,6 +200,12 @@ const card = () => ({ title: "", text: "" });
                 <UiInput v-model="item.title" label="Заголовок" />
               </div>
               <UiTextarea v-model="item.text" label="Что было" :rows="2" :max="300" />
+              <AdminPhotoList
+                :model-value="item.photo ? [item.photo] : []"
+                :max="1"
+                label="Фото события"
+                @update:model-value="item.photo = $event[0] ?? null"
+              />
             </template>
           </AdminItems>
         </template>
@@ -188,6 +217,7 @@ const card = () => ({ title: "", text: "" });
             <UiInput v-model="form.venue.dates" label="Даты" placeholder="Например, 10-14 июля" />
           </div>
           <UiTextarea v-model="form.venue.text" label="Подробности" :rows="3" :max="400" hint="Как добраться, что взять с собой." />
+          <AdminPhotoList v-model="form.venue.photos" :max="12" label="Фото места" />
         </template>
 
         <template v-else-if="section === 'faq'">

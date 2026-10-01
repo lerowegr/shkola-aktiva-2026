@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { SiteContent } from "~~/lib/site/content";
 
-/** «Где и когда»: тёмная карточка с местом и датами, рядом стеклянная плитка бренда. */
+/**
+ * «Где и когда»: тёмная карточка с местом и датами. Рядом — фото места, если
+ * их загрузили, иначе стеклянная плитка бренда с объектами.
+ */
 defineProps<{ venue: SiteContent["venue"] }>();
 </script>
 
@@ -22,7 +25,17 @@ defineProps<{ venue: SiteContent["venue"] }>();
         </dl>
         <p v-if="venue.text" class="text-paper/80 max-w-[48ch] text-lg">{{ venue.text }}</p>
       </div>
-      <div class="relative min-h-64 overflow-hidden" aria-hidden="true">
+      <div v-if="venue.photos.length" class="relative min-h-72 sm:min-h-96">
+        <div class="absolute inset-0">
+          <LandingPhotoSlider
+            :photos="venue.photos"
+            :label="`Фото: ${venue.place || venue.title}`"
+            sizes="(min-width: 768px) 45vw, 100vw"
+            dark
+          />
+        </div>
+      </div>
+      <div v-else class="relative min-h-64 overflow-hidden" aria-hidden="true">
         <img src="/brand/textures/tiles.webp" alt="" class="absolute inset-0 size-full object-cover" loading="lazy">
         <img src="/brand/objects/heart-pixel.webp" alt="" class="float absolute top-[14%] left-[16%] w-28 sm:w-36" loading="lazy">
         <img src="/brand/objects/asterisk-glass.webp" alt="" class="float absolute right-[12%] bottom-[16%] w-24 sm:w-32 [animation-delay:-2s]" loading="lazy">

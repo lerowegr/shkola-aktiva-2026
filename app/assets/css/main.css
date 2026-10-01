@@ -110,8 +110,10 @@ body {
     @apply active:translate-y-px active:scale-[0.98];
   }
 
+  /* Главная кнопка — чёрная бренда: одинаково читается на бумаге и на
+     жёлтой наклейке заявки. Синий остаётся ссылкам и кабинетам. */
   .landing-button--primary {
-    @apply bg-accent text-accent-ink shadow-[0_8px_24px_-12px_rgb(28_99_255/0.8)] hover:brightness-110;
+    @apply bg-ink text-paper hover:bg-[#3a3a3a];
   }
 
   .landing-button--ghost {

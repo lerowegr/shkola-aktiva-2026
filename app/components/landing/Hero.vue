@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { LandingCta } from "~/landing/cta";
 import { motion, prefersReducedMotion } from "~/landing/motion";
+import { webglAvailable } from "~/landing/support";
 import type { VoxelScene } from "~/landing/voxel-scene";
 
 /**
@@ -11,7 +12,7 @@ import type { VoxelScene } from "~/landing/voxel-scene";
  * three.js грузится только здесь и только в браузере. Нет WebGL — те же
  * объекты картинками. «Уменьшить движение» — один неподвижный кадр.
  */
-defineProps<{ cta: LandingCta; tagline: string }>();
+defineProps<{ cta: LandingCta; tagline: string; closesAt: string | null }>();
 
 const hero = ref<HTMLElement | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
@@ -21,16 +22,8 @@ const fallback = ref(false);
 let scene: VoxelScene | null = null;
 const cleanups: (() => void)[] = [];
 
-function webgl(): boolean {
-  try {
-    return Boolean(document.createElement("canvas").getContext("webgl2"));
-  } catch {
-    return false;
-  }
-}
-
 onMounted(async () => {
-  if (!webgl()) {
+  if (!webglAvailable()) {
     fallback.value = true;
     return;
   }
@@ -107,10 +100,15 @@ const FALLBACK = [
 </script>
 
 <template>
-  <section ref="hero" class="relative isolate overflow-hidden" @pointerdown="poke">
+  <!--
+    Выделение текста на первом экране выключено: по нему тыкают в 3D-объекты,
+    и двойной клик или долгое касание иначе заливали бы страницу выделением.
+    Подзаголовок и плашку заявки по-прежнему можно выделить и скопировать.
+  -->
+  <section ref="hero" class="hero relative isolate overflow-hidden select-none" @pointerdown="poke">
     <canvas
       ref="canvas"
-      class="absolute inset-0 -z-10 size-full transition-opacity duration-700"
+      class="absolute inset-0 -z-10 size-full transition-opacity duration-700 [-webkit-tap-highlight-color:transparent]"
       :class="ready ? 'opacity-100' : 'opacity-0'"
       aria-hidden="true"
     />
@@ -127,11 +125,6 @@ const FALLBACK = [
     </div>
 
     <div class="mx-auto flex min-h-[100svh] max-w-6xl flex-col items-center justify-center gap-6 px-4 pt-24 pb-16 text-center">
-      <p class="bg-card/80 border-ink/10 inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm backdrop-blur">
-        <span v-if="cta.live" class="bg-ok size-2 rounded-full" aria-hidden="true" />
-        {{ cta.status }}
-      </p>
-
       <h1 class="wordmark pointer-events-none flex flex-col items-center select-none" aria-label="Школа Актива 2026">
         <span aria-hidden="true" class="font-display mt-[0.12em] text-[clamp(64px,17vw,200px)] leading-[0.9]">
           <span v-for="(letter, index) in LETTERS" :key="index" class="letter" :style="{ '--i': index }">{{ letter }}</span>
@@ -142,17 +135,22 @@ const FALLBACK = [
         <span aria-hidden="true" class="year font-script -mt-[0.55em] text-[clamp(30px,5.5vw,64px)] leading-none">2026</span>
       </h1>
 
-      <p class="text-ink-soft max-w-[34ch] text-lg text-pretty sm:text-xl">{{ tagline }}</p>
+      <p class="text-ink-soft max-w-[34ch] text-lg text-pretty select-text sm:text-xl">{{ tagline }}</p>
 
-      <div class="flex flex-wrap items-center justify-center gap-3">
-        <NuxtLink :to="cta.to" class="landing-button landing-button--primary">{{ cta.label }}</NuxtLink>
-        <a href="#otbor" class="landing-button landing-button--ghost">Как проходит отбор</a>
-      </div>
+      <LandingCtaPanel :cta="cta" :closes-at="closesAt" class="mt-2" />
+      <a href="#otbor" class="text-ink-soft hover:text-ink text-sm font-medium underline-offset-4 hover:underline">
+        Как проходит отбор
+      </a>
     </div>
   </section>
 </template>
 
 <style scoped>
+/* Долгое касание на iPhone не открывает меню «Скопировать». */
+.hero {
+  -webkit-touch-callout: none;
+}
+
 .wordmark .letter {
   display: inline-block;
 }

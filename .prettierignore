@@ -3,3 +3,4 @@ lib/generated
 .nuxt
 .output
 docs
+.specify

@@ -36,6 +36,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   "form.move": "Порядок в анкете",
   "broadcast.send": "Рассылка",
   "content.update": "Тексты сайта",
+  "content.image_upload": "Фото для сайта",
 };
 
 export function auditLabel(action: string): string {

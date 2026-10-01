@@ -36,9 +36,13 @@ export default defineEventHandler(async (event) => {
   }
   lines.push("");
 
-  for (const key of ["program", "roles"] as const) {
-    if (!hasContent(content, key)) continue;
-    lines.push(`## ${content[key].title}`, "", ...content[key].items.map((item) => `- ${item.title}: ${item.text}`), "");
+  if (hasContent(content, "program")) {
+    const { program } = content;
+    lines.push(`## ${program.title}`, "", ...program.items.map((item) => `- ${item.title}${item.text ? `: ${item.text}` : ""}`), "");
+  }
+  if (hasContent(content, "people")) {
+    const { people } = content;
+    lines.push(`## ${people.title}`, "", ...people.items.map((item) => `- ${item.name}${item.role ? ` — ${item.role}` : ""}`), "");
   }
   if (hasContent(content, "venue")) {
     const { venue } = content;

@@ -42,8 +42,8 @@ export default defineNuxtConfig({
   },
 
   nitro: {
-    // Prisma — нативный модуль, в бандл его не запихнуть.
-    externals: { external: ["@prisma/client"] },
+    // Prisma и sharp — нативные модули, в бандл их не запихнуть.
+    externals: { external: ["@prisma/client", "sharp"] },
   },
 
   /*

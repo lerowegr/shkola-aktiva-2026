@@ -37,6 +37,16 @@ const list = <T extends z.ZodType>(item: T, max: number) =>
 
 const card = z.object({ title: text(60).min(1, { error: "У пункта нужен заголовок." }), text: text(240) });
 
+/**
+ * Ссылка на фото сайта (таблица site_images). Подпись — что на фото, для
+ * незрячих; живёт рядом с местом использования, а не в самом фото.
+ */
+const photo = z.object({
+  id: z.string().regex(/^[a-z0-9]{20,40}$/, { error: "Фото не найдено — загрузите его заново." }),
+  alt: text(160),
+});
+export type PhotoRef = z.infer<typeof photo>;
+
 export const SECTIONS = {
   hero: z.object({ tagline: text(160) }),
   about: z.object({ title: text(80), text: text(900), points: list(text(140), 4) }),
@@ -51,15 +61,36 @@ export const SECTIONS = {
     }),
   }),
   program: z.object({ title: text(80), items: list(card, 8) }),
-  roles: z.object({ title: text(80), items: list(card, 8) }),
+  people: z.object({
+    title: text(80),
+    items: list(
+      z.object({
+        name: text(60).min(1, { error: "Укажите имя." }),
+        role: text(60),
+        photos: list(photo, 8),
+      }),
+      60,
+    ),
+  }),
   history: z.object({
     title: text(80),
     items: list(
-      z.object({ year: text(16).min(1, { error: "Укажите год." }), title: text(80), text: text(300) }),
-      12,
+      z.object({
+        year: text(16).min(1, { error: "Укажите год." }),
+        title: text(80),
+        text: text(300),
+        photo: photo.nullable().default(null),
+      }),
+      40,
     ),
   }),
-  venue: z.object({ title: text(80), place: text(120), dates: text(80), text: text(400) }),
+  venue: z.object({
+    title: text(80),
+    place: text(120),
+    dates: text(80),
+    text: text(400),
+    photos: list(photo, 12).default([]),
+  }),
   faq: z.object({
     title: text(80),
     items: list(
@@ -82,7 +113,7 @@ export const SECTION_LABELS: Record<SectionKey, string> = {
   about: "О Школе",
   selection: "Отбор",
   program: "Программа",
-  roles: "Роли",
+  people: "Люди",
   history: "История",
   venue: "Место и даты",
   faq: "Вопросы",
@@ -109,9 +140,9 @@ export const DEFAULT_CONTENT: SiteContent = {
     },
   },
   program: { title: "Программа", items: [] },
-  roles: { title: "Кем можно быть", items: [] },
+  people: { title: "Люди Школы", items: [] },
   history: { title: "История", items: [] },
-  venue: { title: "Где и когда", place: "", dates: "", text: "" },
+  venue: { title: "Где и когда", place: "", dates: "", text: "", photos: [] },
   faq: {
     title: "Частые вопросы",
     items: [
@@ -164,15 +195,25 @@ export function hasContent(content: SiteContent, key: SectionKey): boolean {
     case "about":
       return Boolean(content.about.text || content.about.points.length);
     case "program":
-    case "roles":
+    case "people":
     case "history":
     case "faq":
       return content[key].items.length > 0;
     case "venue":
-      return Boolean(content.venue.place || content.venue.dates || content.venue.text);
+      return Boolean(content.venue.place || content.venue.dates || content.venue.text || content.venue.photos.length);
     case "contacts":
       return Boolean(content.contacts.telegram || content.contacts.vk || content.contacts.email);
     default:
       return true;
   }
+}
+
+/** Все фото, на которые ссылаются тексты, — для проверки и уборки. */
+export function photoIds(content: SiteContent): string[] {
+  const ids = [
+    ...content.people.items.flatMap((person) => person.photos.map((item) => item.id)),
+    ...content.venue.photos.map((item) => item.id),
+    ...content.history.items.flatMap((item) => (item.photo ? [item.photo.id] : [])),
+  ];
+  return [...new Set(ids)];
 }
