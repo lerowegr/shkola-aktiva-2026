@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-import { normalizeEmail } from "~~/lib/auth/email-code";
 import { verifyPassword } from "~~/lib/auth/password";
+import { loginToEmail } from "~~/lib/auth/preview-login";
 import { checkThrottle, clearMisses, forgetOldAttempts, recordMiss } from "~~/lib/auth/throttle";
 import { db } from "~~/lib/db";
 import { startSession } from "~~/server/utils/session";
@@ -18,7 +18,7 @@ const ABSENT =
   "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 const schema = z.object({
-  email: z.string().trim().min(1, "Введите адрес почты."),
+  email: z.string().trim().min(1, "Введите почту или логин."),
   password: z.string().min(1, "Введите пароль."),
 });
 
@@ -33,7 +33,8 @@ const schema = z.object({
 const MISS = "Почта или пароль не подходят. Если вы ещё не задавали пароль — откройте ссылку-приглашение.";
 
 export default defineAction(schema, async ({ body, event }) => {
-  const email = normalizeEmail(body.email);
+  // На превью вместо почты можно ввести короткий логин (см. preview-login).
+  const email = loginToEmail(body.email, useRuntimeConfig(event).public.previewLogins === true);
   const ip =
     getRequestHeader(event, "x-forwarded-for")?.split(",")[0]?.trim() ?? getRequestIP(event) ?? null;
 

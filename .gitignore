@@ -17,6 +17,7 @@
 # настройки с паролями и токенами
 .env*
 !.env.example
+/.preview-accounts.txt
 
 # загруженные пользователями файлы
 /uploads

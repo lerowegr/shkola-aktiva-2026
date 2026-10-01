@@ -26,6 +26,9 @@ export default defineNuxtConfig({
       telegramBotUsername: "",
       // Открытая половина ключа пушей — браузер подписывается ею.
       vapidPublicKey: "",
+      // Тестовый вход по логину и паролю для показа сайта, пока нет бота и
+      // почты. NUXT_PUBLIC_PREVIEW_LOGINS=true; на боевом сайте не включать.
+      previewLogins: false,
     },
   },
 

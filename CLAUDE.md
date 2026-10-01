@@ -29,6 +29,8 @@ grammY · zod 4 · Tailwind 4 · Vitest. Без Auth.js: сессии свои, 
 | `npm run db:migrate -- --name имя` | Миграция, генерация клиента и накат на тестовую базу `sha_test` |
 | `npm run db:seed` | Роли, сезон, этапы, анкета, критерии, маркеры, владелец из `OWNER_EMAIL` (повторять можно) |
 | `npm run db:demo` | Демо-кандидаты с отправленными анкетами и второй мастер (`@demo.local`), только не на проде |
+| `npm run share` | Сайт по временной ссылке Cloudflare с этого компьютера: сборка, туннель, сервер с тестовым входом. Ctrl+C — остановить |
+| `npm run db:preview-accounts` | Тестовые входы `admin` и `kandidat` с новыми паролями в `.preview-accounts.txt`; блок на /login виден при `NUXT_PUBLIC_PREVIEW_LOGINS=true` |
 | `npm run bot` | Бот (нужен `TELEGRAM_BOT_TOKEN`) |
 
 Без `SMTP_URL` письма с кодами печатаются в консоль `npm run dev`.

@@ -21,6 +21,8 @@
     "db:seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "db:reset": "prisma migrate reset",
     "db:demo": "tsx --env-file-if-exists=.env scripts/demo-applications.ts",
+    "db:preview-accounts": "tsx --env-file-if-exists=.env scripts/preview-accounts.ts",
+    "share": "bash scripts/share.sh",
     "bot": "tsx --env-file-if-exists=.env bot/main.ts"
   },
   "dependencies": {
