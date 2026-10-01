@@ -108,6 +108,8 @@ export default defineNuxtConfig({
       // каждый, кто ставит приложение ради кабинета.
       maximumFileSizeToCacheInBytes: 300 * 1024,
     },
+    // Файл больше предела — не ошибка сборки, а «не класть в кеш» (three.js).
+    showMaximumFileSizeToCacheInBytesWarning: true,
     client: {
       // Раз в час проверяем обновление у тех, кто неделями не закрывает вкладку.
       periodicSyncForUpdates: 3600,
