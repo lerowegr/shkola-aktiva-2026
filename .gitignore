@@ -1,0 +1,28 @@
+# зависимости
+/node_modules
+
+# nuxt: всё это генерируется на каждом запуске
+/.nuxt/
+/.output/
+/dist/
+
+# тесты
+/coverage
+/test-results
+/playwright-report
+
+# сгенерированный клиент Prisma — собирается из схемы, в репозитории не нужен
+/lib/generated
+
+# настройки с паролями и токенами
+.env*
+!.env.example
+
+# загруженные пользователями файлы
+/uploads
+
+# мусор
+.DS_Store
+*.pem
+*.tsbuildinfo
+npm-debug.log*

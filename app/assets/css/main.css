@@ -1,0 +1,120 @@
+@import "tailwindcss";
+
+/*
+ * Шрифты брендбука, которых нет в Google Fonts. Лежат в public/fonts,
+ * переведены в woff2 из исходников. font-display: swap — текст виден сразу
+ * запасным шрифтом, а не пустым местом, пока файл грузится.
+ */
+@font-face {
+  font-family: "Konkovo";
+  src: url("/fonts/konkovo.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* В Retrogression нет цифр: числа им не набирать, выпадут в запасной шрифт. */
+@font-face {
+  font-family: "Retrogression";
+  src: url("/fonts/retrogression.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Bickham Script One";
+  src: url("/fonts/bickham-script-one.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
+ * Токены бренда. Всё, что зависит от бренда, берётся отсюда — не из разметки.
+ *
+ * Палитра снята с образца брендбука: семь цветов, у каждого светлый оттенок.
+ * Смысловые токены (accent, danger, ok…) собраны из неё с оглядкой на
+ * контраст: мелкий текст должен читаться с запасом не меньше 4.5:1.
+ *
+ * «static» — чтобы все переменные попадали в CSS всегда. Без него Tailwind
+ * выводит только те, что встретились в классах, и var(--color-brand-red) из
+ * кода 3D-сцены или стиля компонента молча оказывается пустым.
+ */
+@theme static {
+  /* Шрифты. SF Pro по лицензии Apple на сайт не выкладывается: на
+     устройствах Apple он приходит системным через -apple-system, остальным
+     достаётся Inter — самый близкий к нему открытый шрифт. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  --font-display: "Konkovo", "Inter", system-ui, sans-serif;
+  --font-serif: "Cormorant", Georgia, serif;
+  --font-script: "Bickham Script One", "Cormorant", Georgia, serif;
+  --font-retro: "Retrogression", "Konkovo", system-ui, sans-serif;
+
+  /* Палитра брендбука как есть. */
+  --color-brand-green: #2ce718;
+  --color-brand-green-soft: #c6ffa8;
+  --color-brand-purple: #be2aff;
+  --color-brand-purple-soft: #e9b6ff;
+  --color-brand-orange: #ff8511;
+  --color-brand-orange-soft: #ffdbac;
+  --color-brand-blue: #1c63ff;
+  --color-brand-blue-soft: #a7bfff;
+  --color-brand-yellow: #ffcc00;
+  --color-brand-yellow-soft: #fff2bb;
+  --color-brand-black: #252525;
+  --color-brand-white: #fdfdfb;
+  --color-brand-red: #f60301;
+  --color-brand-red-soft: #ffa9a8;
+
+  /* Смысловые токены интерфейса. */
+  --color-ink: #252525; /* брендовый чёрный: 15:1 на бумаге */
+  --color-ink-soft: #5c5c5c; /* второстепенный текст: 6.6:1 */
+  --color-paper: #fdfdfb; /* брендовый белый */
+  --color-card: #ffffff;
+  --color-line: #e6e6e1;
+  --color-accent: #1c63ff; /* синий — единственный из ярких, на котором белый текст читается (4.9:1) */
+  --color-accent-ink: #ffffff;
+  --color-lime: #c6ffa8; /* зелёный светлый — плашки и знак ША */
+  --color-danger: #d40000; /* брендовый красный, затемнённый до 5.4:1 для текста ошибок */
+  --color-ok: #0f7a08; /* зелёный бренда для текста слишком светлый (1.6:1) — тёмный вариант */
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-paper font-sans text-ink antialiased;
+}
+
+/*
+ * У Konkovo одно начертание. Если браузеру разрешить дорисовать «жирный»,
+ * он размажет пиксели, поэтому для пиксельных и рукописных шрифтов —
+ * только настоящие начертания.
+ */
+.font-display,
+.font-script,
+.font-retro {
+  font-synthesis: none;
+}
+
+/*
+ * Кнопки лендинга. Скругления на главной: кнопки и плашки — круглые,
+ * карточки — 24px. В кабинетах свои кнопки (UiButton).
+ */
+@layer components {
+  .landing-button {
+    @apply inline-flex min-h-13 items-center justify-center gap-2 rounded-full px-6 text-base font-semibold whitespace-nowrap transition;
+    @apply focus-visible:outline-accent focus-visible:outline-2 focus-visible:outline-offset-2;
+    @apply active:translate-y-px active:scale-[0.98];
+  }
+
+  .landing-button--primary {
+    @apply bg-accent text-accent-ink shadow-[0_8px_24px_-12px_rgb(28_99_255/0.8)] hover:brightness-110;
+  }
+
+  .landing-button--ghost {
+    @apply border-ink/15 bg-card/70 text-ink hover:border-ink/40 border backdrop-blur;
+  }
+}

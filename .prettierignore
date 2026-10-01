@@ -1,0 +1,5 @@
+.claude
+lib/generated
+.nuxt
+.output
+docs

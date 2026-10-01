@@ -1,0 +1,8 @@
+{
+  // Бот, скрипты и сид живут вне Nuxt, и `nuxt typecheck` их не видит.
+  // Проверяем их отдельно — с теми же путями (~~), что и сервер.
+  "extends": "./.nuxt/tsconfig.server.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["bot/**/*.ts", "scripts/**/*.ts", "prisma/seed.ts", "lib/**/*.ts"],
+  "exclude": ["lib/**/*.test.ts", "lib/generated/**"]
+}

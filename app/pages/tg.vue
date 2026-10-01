@@ -1,0 +1,70 @@
+<script setup lang="ts">
+import { stashInitData, telegramInitData } from "~/utils/telegram";
+
+/**
+ * Вход в Mini App.
+ *
+ * Бот открывает эту страницу; Telegram приписывает к адресу подпись,
+ * по которой сервер узнаёт человека без пароля. Страница только входит и
+ * уводит в кабинет — показывать тут нечего.
+ */
+useHead({ title: "Школа Актива" });
+
+interface TelegramWebAppExtra {
+  initDataUnsafe?: { user?: { allows_write_to_pm?: boolean } };
+  requestWriteAccess?: (callback: (allowed: boolean) => void) => void;
+}
+
+const route = useRoute();
+
+const message = ref<string | null>(null);
+const outside = ref(false);
+
+onMounted(async () => {
+  const initData = telegramInitData();
+
+  if (!initData) {
+    outside.value = true;
+    return;
+  }
+
+  stashInitData(initData);
+
+  const result = await $fetch<{ ok: boolean; message?: string }>("/api/auth/telegram-miniapp", {
+    method: "POST",
+    body: { initData },
+    ignoreResponseError: true,
+  }).catch(() => ({ ok: false, message: "Нет связи с сайтом. Проверьте интернет." }));
+
+  if (!result.ok) {
+    message.value = result.message ?? "Не получилось войти.";
+    return;
+  }
+
+  const user = await refreshSession();
+
+  // Бот может написать первым, только если человек разрешил. Без этого
+  // ответы организаторов и новости отбора до него не дойдут.
+  const webApp = (window as unknown as { Telegram?: { WebApp?: TelegramWebAppExtra } }).Telegram?.WebApp;
+  if (webApp?.initDataUnsafe?.user?.allows_write_to_pm === false && webApp.requestWriteAccess) {
+    await new Promise<void>((resolve) => webApp.requestWriteAccess!(() => resolve()));
+  }
+
+  // Кнопка «Открыть» в сообщении бота ведёт сразу на нужный экран: /tg?to=/cabinet/messages.
+  const to = typeof route.query.to === "string" && route.query.to.startsWith("/") && !route.query.to.startsWith("//") ? route.query.to : null;
+  await navigateTo(to ?? homeFor(user), { replace: true });
+});
+</script>
+
+<template>
+  <main class="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
+    <span class="bg-lime grid size-14 place-items-center rounded-2xl font-display text-lg">ША</span>
+
+    <template v-if="outside">
+      <p>Эта страница открывается из Telegram-бота.</p>
+      <UiButton href="/login" variant="ghost">Войти на сайте</UiButton>
+    </template>
+    <UiNotice v-else-if="message" :message="message" />
+    <p v-else class="text-ink-soft" aria-live="polite">Входим…</p>
+  </main>
+</template>

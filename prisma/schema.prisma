@@ -1,0 +1,821 @@
+// Схема базы платформы «Школа Актива».
+// Строка подключения задаётся в prisma.config.ts через переменную DATABASE_URL.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Перечисления
+// ---------------------------------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED // доступ закрыт: сессии не работают, войти нельзя
+}
+
+/// Этапы отбора. Один этап каждого вида на сезон.
+enum StageKind {
+  APPLICATION // анкета
+  HOMEWORK // домашнее задание
+  INTERVIEW // собеседование
+  RESULTS // объявление итогов
+}
+
+/// Вид вопроса анкеты.
+enum QuestionType {
+  SHORT_TEXT // строка
+  LONG_TEXT // развёрнутый ответ
+  SINGLE_CHOICE // один вариант из списка
+  MULTI_CHOICE // несколько вариантов
+  URL // ссылка
+}
+
+enum ApplicationStatus {
+  DRAFT // заполняется, кандидат может править
+  SUBMITTED // отправлена — дальше только чтение
+}
+
+enum NotificationChannel {
+  INAPP // колокольчик на сайте
+  TELEGRAM // сообщение бота — оно же путь в Mini App
+  PUSH // пуш PWA
+}
+
+/// Категории уведомлений. Тумблеры в настройках — по категориям, а не по
+/// отдельным событиям: иначе настройки превращаются в простыню.
+enum NotificationCategory {
+  SELECTION // этапы, дедлайны, результаты
+  MESSAGES // ответы организаторов и сообщения кандидатов
+  REVIEW // организаторам: назначенные анкеты
+  SYSTEM // важное от организаторов
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED // прочитано на сайте раньше, канал выключен или недоступен
+}
+
+enum MessageAuthor {
+  CANDIDATE
+  STAFF
+  BOT
+}
+
+enum MessageVia {
+  SITE
+  TELEGRAM
+}
+
+enum DecisionOutcome {
+  PASSED // проходит на следующий этап
+  REJECTED // не проходит
+}
+
+/// Кто решает, открыт ли этап.
+enum StageMode {
+  AUTO // по датам opensAt / closesAt
+  OPEN // открыт вручную, даты не важны
+  CLOSED // закрыт вручную, даты не важны
+}
+
+// ---------------------------------------------------------------------------
+// Люди и доступ
+// ---------------------------------------------------------------------------
+
+/// Один человек — одна запись, кем бы он ни был. Кандидат и организатор
+/// различаются не таблицей, а ролями: у кандидата их нет.
+model User {
+  id String @id @default(cuid())
+
+  /// У кандидата, пришедшего из Telegram, почты может не быть.
+  email           String?   @unique
+  emailVerifiedAt DateTime?
+
+  telegramId       String? @unique
+  /// Короткое имя в Telegram без собачки: её добавляет интерфейс.
+  telegramUsername String?
+
+  firstName String?
+  lastName  String?
+
+  status UserStatus @default(ACTIVE)
+
+  /// Владелец системы. Обходит проверки прав и не снимается через админку —
+  /// страховка от того, что неудачная правка ролей запрёт всех снаружи.
+  isOwner Boolean @default(false)
+
+  /// Хеш пароля вместе с солью и настройками scrypt в одной строке.
+  /// Пароль бывает только у организаторов: его задают по приглашению.
+  passwordHash  String?
+  passwordSetAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions     Session[]
+  roles        UserRole[]
+  applications Application[]
+  reviews      Review[]      @relation("ReviewReviewer")
+
+  notifications     Notification[]
+  notificationPrefs NotificationPreference[]
+  deliveries        NotificationDelivery[]
+  pushSubscriptions PushSubscription[]
+  threads           MessageThread[]
+  messages          Message[]
+  telegramLinkCodes TelegramLinkCode[]
+  uploads           Upload[]
+  decisionsMade     StageDecision[]          @relation("DecisionAuthor")
+  auditLogs         AuditLog[]
+  invites           StaffInvite[]            @relation("InviteFor")
+  invitesCreated    StaffInvite[]            @relation("InviteAuthor")
+  slotInterviewers  SlotInterviewer[]
+  gameResults       GameResult[]
+
+  @@index([status])
+  @@map("users")
+}
+
+/// Роль — название плюс набор прав. Собирается в админке из фиксированного
+/// списка в lib/permissions.ts, поэтому в коде названий ролей нет.
+model Role {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  slug        String  @unique
+  description String?
+  color       String?
+
+  /// Ключи прав. Хранятся массивом строк: новое право — новая строка,
+  /// миграция не нужна.
+  permissions String[]
+
+  /// Системные роли нельзя удалить — только переименовать.
+  isSystem Boolean @default(false)
+
+  /// Чем выше, тем старше роль: для сортировки и «главной роли» в профиле.
+  priority Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users UserRole[]
+
+  @@map("roles")
+}
+
+/// Назначение роли. Отбор — единый поток, поэтому без границ направлений.
+model UserRole {
+  id     String @id @default(cuid())
+  userId String
+  roleId String
+
+  assignedById String?
+  assignedAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+/// Сессии лежат в базе, а не в подписанной куке: заблокировать человека
+/// нужно здесь и сейчас, а не когда у него истечёт токен.
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+/// Неудачные попытки входа по паролю. В базе, а не в памяти процесса:
+/// перезапуск сервера не должен обнулять счётчик подбора.
+model LoginAttempt {
+  id    String  @id @default(cuid())
+  email String
+  ip    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@map("login_attempts")
+}
+
+/// Одноразовый код входа через Telegram.
+///
+/// Сайт показывает ссылку t.me/бот?start=login_<код>, человек жмёт Start,
+/// бот узнаёт его по telegramId и записывает userId сюда. Сайт опрашивает
+/// статус и, увидев userId, заводит сессию.
+model TelegramLoginCode {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  telegramId String?
+  userId     String?
+  consumedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+
+  @@index([expiresAt])
+  @@map("telegram_login_codes")
+}
+
+/// Одноразовый код входа по почте. Сам код в базе не хранится — только
+/// хеш: утечка таблицы не должна пускать в чужие кабинеты.
+model EmailLoginCode {
+  id         String    @id @default(cuid())
+  email      String
+  codeHash   String
+  attempts   Int       @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email, createdAt])
+  @@map("email_login_codes")
+}
+
+/// Приглашение организатора: ссылка, по которой он сам задаёт пароль.
+/// Хранится хеш токена, а не сам токен.
+model StaffInvite {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  userId      String
+  createdById String?
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  user      User  @relation("InviteFor", fields: [userId], references: [id], onDelete: Cascade)
+  createdBy User? @relation("InviteAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("staff_invites")
+}
+
+// ---------------------------------------------------------------------------
+// Сезон и этапы
+// ---------------------------------------------------------------------------
+
+/// Одна Школа Актива — один сезон. На следующий год заводится новый сезон,
+/// а не переписывается код.
+model Season {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  title     String
+  year      Int
+  /// Ровно один сезон текущий: его показывают сайт и кабинеты.
+  isCurrent Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stages       Stage[]
+  threads      MessageThread[]
+  slots        InterviewSlot[]
+  questions    FormQuestion[]
+  applications Application[]
+  criteria     Criterion[]
+  markers      Marker[]
+  siteContent  SiteContent?
+
+  @@map("seasons")
+}
+
+/// Этап отбора. Его состояние (скоро / открыт / закрыт) вычисляется в
+/// lib/stages.ts и решает, какие вкладки кабинетов под замком.
+model Stage {
+  id       String    @id @default(cuid())
+  seasonId String
+  kind     StageKind
+  title    String
+  order    Int
+
+  opensAt  DateTime?
+  closesAt DateTime?
+  mode     StageMode @default(AUTO)
+
+  /// Текст задания (для домашнего задания) или пояснение к этапу —
+  /// показывается кандидату.
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, kind])
+  @@index([seasonId, order])
+  @@map("stages")
+}
+
+// ---------------------------------------------------------------------------
+// Анкета
+// ---------------------------------------------------------------------------
+
+/// Вопрос анкеты. Привязан к сезону и этапу: на следующий год — свои
+/// вопросы, а домашнее задание на этапе HOMEWORK — тоже вопросы.
+model FormQuestion {
+  id        String       @id @default(cuid())
+  seasonId  String
+  stageKind StageKind
+  order     Int
+  /// Раздел, под которым вопрос показывается: «О себе», «Опыт».
+  section   String
+  type      QuestionType
+  label     String
+  help      String?
+  required  Boolean      @default(true)
+  /// Варианты для выбора. Для остальных типов пусто.
+  options   String[]
+  maxLength Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  season  Season   @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  answers Answer[]
+
+  @@index([seasonId, stageKind, order])
+  @@map("form_questions")
+}
+
+/// Анкета кандидата. Одна на человека в сезоне.
+///
+/// ФИО и студбилет — отдельными полями, а не ответами: по ним ищут,
+/// сортируют и подписывают анкету во всех списках.
+model Application {
+  id       String            @id @default(cuid())
+  seasonId String
+  userId   String
+  status   ApplicationStatus @default(DRAFT)
+
+  lastName   String?
+  firstName  String?
+  middleName String?
+  studentId  String?
+
+  submittedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  season      Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers     Answer[]
+  reviews     Review[]
+  decisions   StageDecision[]
+  submissions Submission[]
+  bookings    InterviewBooking[]
+
+  @@unique([seasonId, userId])
+  @@index([seasonId, status])
+  @@map("applications")
+}
+
+/// Ответ на вопрос. Строка или массив строк (мультивыбор).
+model Answer {
+  id            String   @id @default(cuid())
+  applicationId String
+  questionId    String
+  value         Json
+  updatedAt     DateTime @updatedAt
+
+  application Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  question    FormQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, questionId])
+  @@map("answers")
+}
+
+// ---------------------------------------------------------------------------
+// Оценка
+// ---------------------------------------------------------------------------
+
+/// Критерий оценки: баллы от 0 до maxScore и что значит каждый балл.
+model Criterion {
+  id        String    @id @default(cuid())
+  seasonId  String
+  stageKind StageKind
+  order     Int
+  title     String
+  /// Пометка рядом с названием: «Сквозная».
+  badge     String?
+  maxScore  Int
+  /// Расшифровки баллов: [{ score, text }]. Не у каждого балла она есть.
+  levels    Json
+
+  season Season        @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  scores ReviewScore[]
+
+  @@index([seasonId, stageKind, order])
+  @@map("criteria")
+}
+
+/// Маркер — то, на что мастер обращает внимание своими словами.
+model Marker {
+  id        String    @id @default(cuid())
+  seasonId  String
+  stageKind StageKind
+  order     Int
+  title     String
+  /// Пример, что сюда писать.
+  example   String?
+
+  season Season         @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  notes  ReviewMarker[]
+
+  @@index([seasonId, stageKind, order])
+  @@map("markers")
+}
+
+/// Оценка анкеты одним мастером на одном этапе. Появляется при назначении:
+/// «назначена мне» и «моя оценка» — одна и та же запись.
+model Review {
+  id            String    @id @default(cuid())
+  applicationId String
+  stageKind     StageKind
+  reviewerId    String
+  comment       String?
+
+  assignedById String?
+  assignedAt   DateTime @default(now())
+  /// Кто и когда последним что-то поменял — строка «Оценка сохранена».
+  updatedById  String?
+  updatedAt    DateTime @updatedAt
+
+  application Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  reviewer    User           @relation("ReviewReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
+  scores      ReviewScore[]
+  markers     ReviewMarker[]
+
+  @@unique([applicationId, stageKind, reviewerId])
+  @@index([reviewerId, stageKind])
+  @@map("reviews")
+}
+
+model ReviewScore {
+  id          String @id @default(cuid())
+  reviewId    String
+  criterionId String
+  score       Int
+
+  review    Review    @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  criterion Criterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, criterionId])
+  @@map("review_scores")
+}
+
+model ReviewMarker {
+  id       String @id @default(cuid())
+  reviewId String
+  markerId String
+  note     String
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  marker Marker @relation(fields: [markerId], references: [id], onDelete: Cascade)
+
+  @@unique([reviewId, markerId])
+  @@map("review_markers")
+}
+
+/// Решение по кандидату на этапе: проходит дальше или нет. Кандидат видит
+/// его только после публикации — публикуется весь этап разом.
+model StageDecision {
+  id            String          @id @default(cuid())
+  applicationId String
+  stageKind     StageKind
+  outcome       DecisionOutcome
+  decidedById   String?
+  decidedAt     DateTime        @default(now())
+  publishedAt   DateTime?
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  decidedBy   User?       @relation("DecisionAuthor", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  @@unique([applicationId, stageKind])
+  @@index([stageKind, publishedAt])
+  @@map("stage_decisions")
+}
+
+/// Загруженный файл. Лежит в UPLOADS_DIR под случайным ключом и отдаётся
+/// только через обработчик с проверкой прав — это личные работы.
+model Upload {
+  id         String   @id @default(cuid())
+  userId     String
+  filename   String
+  mime       String
+  size       Int
+  storageKey String   @unique
+  createdAt  DateTime @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  submissions Submission[]
+
+  @@index([userId])
+  @@map("uploads")
+}
+
+/// Сдача работы на этапе (домашнее задание). Пересдача создаёт новую
+/// запись, а старой ставит replacedAt — история версий остаётся.
+model Submission {
+  id            String     @id @default(cuid())
+  applicationId String
+  stageKind     StageKind
+  uploadId      String?
+  text          String?
+  via           MessageVia @default(SITE)
+  submittedAt   DateTime   @default(now())
+  replacedAt    DateTime?
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  upload      Upload?     @relation(fields: [uploadId], references: [id], onDelete: SetNull)
+
+  @@index([applicationId, stageKind, replacedAt])
+  @@map("submissions")
+}
+
+// ---------------------------------------------------------------------------
+// Собеседования
+// ---------------------------------------------------------------------------
+
+/// Слот собеседования: время, место и кто собеседует.
+model InterviewSlot {
+  id          String   @id @default(cuid())
+  seasonId    String
+  startsAt    DateTime
+  endsAt      DateTime
+  /// Аудитория или ссылка на звонок.
+  location    String
+  /// Сколько кандидатов одновременно. Обычно один.
+  capacity    Int      @default(1)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  season       Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  interviewers SlotInterviewer[]
+  bookings     InterviewBooking[]
+
+  @@index([seasonId, startsAt])
+  @@map("interview_slots")
+}
+
+model SlotInterviewer {
+  id     String @id @default(cuid())
+  slotId String
+  userId String
+
+  slot InterviewSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([slotId, userId])
+  @@index([userId])
+  @@map("slot_interviewers")
+}
+
+/// Запись кандидата на слот. Отмена не удаляет запись, а ставит cancelledAt:
+/// видно, кто и когда переносил. Активная запись у анкеты одна.
+model InterviewBooking {
+  id            String    @id @default(cuid())
+  slotId        String
+  applicationId String
+  createdAt     DateTime  @default(now())
+  cancelledAt   DateTime?
+
+  slot        InterviewSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  application Application   @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([slotId, cancelledAt])
+  @@index([applicationId, cancelledAt])
+  @@map("interview_bookings")
+}
+
+// ---------------------------------------------------------------------------
+// Уведомления
+// ---------------------------------------------------------------------------
+
+/// Уведомление в колокольчике. Telegram и пуш — доставки этого же
+/// уведомления: прочитал на сайте — туда уже не уйдёт.
+model Notification {
+  id       String               @id @default(cuid())
+  userId   String
+  category NotificationCategory
+  title    String
+  body     String?
+  url      String?
+
+  /// Ключ события: «application:<id>:submitted». Второе уведомление с тем же
+  /// ключом тому же человеку не создаётся.
+  key String?
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries NotificationDelivery[]
+
+  @@unique([userId, key])
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+/// Выключенный канал для категории. Нет записи — значит, включено.
+model NotificationPreference {
+  id       String               @id @default(cuid())
+  userId   String
+  channel  NotificationChannel
+  category NotificationCategory
+  enabled  Boolean              @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channel, category])
+  @@map("notification_preferences")
+}
+
+/// Очередь доставки во внешние каналы. Разносчик забирает созревшие
+/// (scheduledAt в прошлом) и повторяет при сбоях.
+model NotificationDelivery {
+  id             String              @id @default(cuid())
+  notificationId String
+  userId         String
+  channel        NotificationChannel
+  status         DeliveryStatus      @default(PENDING)
+  attempts       Int                 @default(0)
+  scheduledAt    DateTime
+  sentAt         DateTime?
+  error          String?
+  createdAt      DateTime            @default(now())
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, channel])
+  @@index([status, scheduledAt])
+  @@map("notification_deliveries")
+}
+
+/// Подписка браузера на пуши. Одна на устройство.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+/// Код привязки Telegram к аккаунту, вошедшему по почте:
+/// t.me/бот?start=link_<код>.
+model TelegramLinkCode {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  userId     String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("telegram_link_codes")
+}
+
+// ---------------------------------------------------------------------------
+// Переписка
+// ---------------------------------------------------------------------------
+
+/// Переписка кандидата с организаторами. Одна на кандидата в сезоне —
+/// общий ящик: отвечает любой, у кого есть право.
+model MessageThread {
+  id              String    @id @default(cuid())
+  seasonId        String
+  candidateId     String
+  lastMessageAt   DateTime  @default(now())
+  /// Организаторы прочитали ветку до этого момента (общая отметка ящика).
+  staffReadAt     DateTime?
+  candidateReadAt DateTime?
+  createdAt       DateTime  @default(now())
+
+  season    Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  candidate User      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  messages  Message[]
+
+  @@unique([seasonId, candidateId])
+  @@index([seasonId, lastMessageAt])
+  @@map("message_threads")
+}
+
+model Message {
+  id        String        @id @default(cuid())
+  threadId  String
+  author    MessageAuthor
+  /// Кто написал: кандидат или организатор. У ответов бота пусто.
+  authorId  String?
+  text      String
+  via       MessageVia    @default(SITE)
+  createdAt DateTime      @default(now())
+
+  thread    MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorRef User?         @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([threadId, createdAt])
+  @@map("messages")
+}
+
+// ---------------------------------------------------------------------------
+// Журнал и настройки
+// ---------------------------------------------------------------------------
+
+/// Журнал действий. Организаторы решают судьбу кандидатов: любой спор
+/// «кто поставил балл» должен решаться записью, а не словом против слова.
+model AuditLog {
+  id      String  @id @default(cuid())
+  actorId String?
+
+  action     String // "auth.email_login", "invite.create", "stage.update"
+  entityType String?
+  entityId   String?
+
+  meta Json?
+
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+/// Настройки платформы одной строкой.
+/// Мини-игры в кабинете кандидата. На отбор не влияют.
+enum GameKind {
+  MEMORY // «Пары»
+  SLIDE // «Пятнашки»
+  CATCH // «Лови»
+}
+
+/// Одна сыгранная партия. Лучший результат и место считаются из всех
+/// партий; что лучше — меньше или больше — знает lib/games/rules.ts.
+model GameResult {
+  id         String   @id @default(cuid())
+  userId     String
+  game       GameKind
+  /// Главный показатель: ходы в «Парах», миллисекунды в «Пятнашках»,
+  /// очки в «Лови».
+  score      Int
+  moves      Int?
+  durationMs Int
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([game, userId])
+  @@map("game_results")
+}
+
+/// Тексты лендинга на сезон — один документ. Схема и значения по умолчанию
+/// в lib/site/content.ts: что не заполнено, берётся оттуда, пустые разделы
+/// на сайте не показываются. Кто правил — в журнале (content.update).
+model SiteContent {
+  id          String   @id @default(cuid())
+  seasonId    String   @unique
+  data        Json
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@map("site_contents")
+}
+
+model Settings {
+  id        String   @id @default("default")
+  data      Json
+  updatedAt DateTime @updatedAt
+
+  @@map("settings")
+}
