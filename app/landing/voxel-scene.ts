@@ -2,144 +2,20 @@ import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 
+import { glassObject } from "./glass-objects";
+import { ASTERISK, BOLT, crescent, CURSOR, FLAME, HEART, type PixelMap, SMILE, STAR } from "./pixel-maps";
+
 /**
  * Стеклянные пиксельные объекты брендбука в 3D.
  *
- * Объект — пиксельная картинка, выдавленная кубиками: контур толще и
- * насыщеннее, середина тоньше и прозрачнее — как у объектов в брендбуке.
- * Кубики рисуются InstancedMesh: два меша на объект вместо сотен.
+ * Объект — пиксельная картинка, выдавленная стеклянными кубиками
+ * (glass-objects.ts).
  *
  * Сцена не знает про Vue: страница создаёт её, передаёт указатель,
  * прокрутку и нажатия и вызывает dispose при уходе. Кадры рисуются, только
  * пока сцену видно (start/stop), а при «уменьшить движение» — один
  * неподвижный кадр.
  */
-
-type PixelMap = readonly string[];
-
-const HEART: PixelMap = [
-  "..###...###..",
-  ".#####.#####.",
-  "#############",
-  "#############",
-  "#############",
-  "#############",
-  ".###########.",
-  "..#########..",
-  "...#######...",
-  "....#####....",
-  ".....###.....",
-  "......#......",
-];
-
-const STAR: PixelMap = [
-  "......#......",
-  ".....###.....",
-  ".....###.....",
-  "....#####....",
-  "#############",
-  ".###########.",
-  "..#########..",
-  "...#######...",
-  "...#######...",
-  "..####.####..",
-  "..###...###..",
-  ".##.......##.",
-];
-
-const ASTERISK: PixelMap = [
-  ".....###.....",
-  ".....###.....",
-  "##...###...##",
-  "###..###..###",
-  ".###.###.###.",
-  "..#########..",
-  "....#####....",
-  "..#########..",
-  ".###.###.###.",
-  "###..###..###",
-  "##...###...##",
-  ".....###.....",
-  ".....###.....",
-];
-
-const SMILE: PixelMap = [
-  "....####....",
-  "..########..",
-  ".##########.",
-  ".###.##.###.",
-  "####.##.####",
-  "############",
-  "############",
-  "###.####.###",
-  ".###....###.",
-  ".##########.",
-  "..########..",
-  "....####....",
-];
-
-const FLAME: PixelMap = [
-  "....#.....",
-  "....##....",
-  "...###....",
-  "...####...",
-  "..#####.#.",
-  "..#######.",
-  ".########.",
-  ".#########",
-  "##########",
-  "#####.####",
-  "####...###",
-  ".###...##.",
-  "..######..",
-];
-
-const BOLT: PixelMap = [
-  "...######",
-  "...#####.",
-  "..#####..",
-  "..####...",
-  ".#######.",
-  ".######..",
-  "....###..",
-  "...###...",
-  "...##....",
-  "..##.....",
-  "..#......",
-];
-
-const CURSOR: PixelMap = [
-  "#........",
-  "##.......",
-  "###......",
-  "####.....",
-  "#####....",
-  "######...",
-  "#######..",
-  "########.",
-  "#########",
-  "#####....",
-  "##.###...",
-  "#..###...",
-  "....###..",
-  "....###..",
-];
-
-/** Полумесяц: круг минус сдвинутый круг. */
-function crescent(size: number): PixelMap {
-  const rows: string[] = [];
-  const c = (size - 1) / 2;
-  for (let y = 0; y < size; y++) {
-    let row = "";
-    for (let x = 0; x < size; x++) {
-      const outer = (x - c) ** 2 + (y - c) ** 2 <= (size / 2) ** 2;
-      const inner = (x - c - size * 0.3) ** 2 + (y - c + size * 0.18) ** 2 <= (size * 0.4) ** 2;
-      row += outer && !inner ? "#" : ".";
-    }
-    rows.push(row);
-  }
-  return rows;
-}
 
 interface ObjectSpec {
   map: PixelMap;
@@ -173,26 +49,6 @@ const NARROW: ObjectSpec[] = [
   { map: crescent(12), color: "#be2aff", at: [0.0, -0.95], z: -2, tilt: 0.1 },
 ];
 
-/**
- * Сборка логотипа (перебивка): объекты стоят по кругу вокруг стикера —
- * там же, где на самом стикере. `at` — направление на окружности.
- */
-const ring = (degrees: number): [number, number] => [
-  Math.cos((degrees * Math.PI) / 180),
-  Math.sin((degrees * Math.PI) / 180),
-];
-const ASSEMBLE: ObjectSpec[] = [
-  { map: ASTERISK, color: "#be2aff", at: ring(135), z: 0, tilt: 0.2 },
-  { map: STAR, color: "#2ce718", at: ring(45), z: 0, tilt: -0.15 },
-  { map: SMILE, color: "#ffcc00", at: ring(180), z: 0, tilt: 0.1 },
-  { map: CURSOR, color: "#9aa3b5", at: ring(0), z: 0, tilt: -0.2 },
-  { map: HEART, color: "#ff8511", at: ring(235), z: 0, tilt: 0.15 },
-  { map: FLAME, color: "#1c63ff", at: ring(305), z: 0, tilt: -0.1 },
-];
-
-const easeOut = (t: number) => 1 - (1 - t) ** 3;
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-
 interface Live {
   group: THREE.Group;
   spec: ObjectSpec;
@@ -219,11 +75,8 @@ export function createVoxelScene(options: {
   canvas: HTMLCanvasElement;
   background: string;
   reducedMotion: boolean;
-  /** hero — первый экран; assemble — перебивка «сборка логотипа» (прогресс — через scroll). */
-  mode?: "hero" | "assemble";
 }): VoxelScene {
   const { canvas, reducedMotion } = options;
-  const mode = options.mode ?? "hero";
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -251,62 +104,14 @@ export function createVoxelScene(options: {
   let objects: Live[] = [];
   let narrow = false;
 
-  // Контур — плотное цветное стекло, середина — почти прозрачная, как
-  // «желе» в брендбуке. Цвет проходящего света — цвет объекта.
-  function glass(color: string, rim: boolean): THREE.MeshPhysicalMaterial {
-    const material = new THREE.MeshPhysicalMaterial({
-      color: rim ? color : new THREE.Color(color).lerp(new THREE.Color("#ffffff"), 0.35),
-      roughness: 0.04,
-      metalness: 0,
-      transmission: 1,
-      thickness: rim ? 1.4 : 0.5,
-      ior: 1.5,
-      clearcoat: 1,
-      clearcoatRoughness: 0.04,
-      specularIntensity: 1,
-      attenuationColor: new THREE.Color(color),
-      attenuationDistance: rim ? 0.45 : 2.2,
-      envMapIntensity: 1.6,
-    });
-    materials.push(material);
-    return material;
-  }
-
   function build(specs: ObjectSpec[]) {
     for (const item of objects) root.remove(item.group);
     for (const material of materials.splice(0)) material.dispose();
 
     objects = specs.map((spec, index) => {
-      const rows = spec.map.length;
-      const cols = Math.max(...spec.map.map((row) => row.length));
-      const filled = (x: number, y: number) => spec.map[y]?.[x] === "#";
-      const rim: [number, number][] = [];
-      const face: [number, number][] = [];
-      for (let y = 0; y < rows; y++) {
-        for (let x = 0; x < cols; x++) {
-          if (!filled(x, y)) continue;
-          const edge = !filled(x - 1, y) || !filled(x + 1, y) || !filled(x, y - 1) || !filled(x, y + 1);
-          (edge ? rim : face).push([x, y]);
-        }
-      }
-
-      const group = new THREE.Group();
-      const matrix = new THREE.Matrix4();
-      const place = (cells: [number, number][], depth: number, material: THREE.Material) => {
-        const mesh = new THREE.InstancedMesh(geometry, material, cells.length);
-        cells.forEach(([x, y], i) => {
-          matrix.compose(
-            new THREE.Vector3(x - (cols - 1) / 2, (rows - 1) / 2 - y, 0),
-            new THREE.Quaternion(),
-            new THREE.Vector3(1, 1, depth),
-          );
-          mesh.setMatrixAt(i, matrix);
-        });
-        mesh.userData.object = index;
-        group.add(mesh);
-      };
-      place(rim, 1.6, glass(spec.color, true));
-      place(face, 0.8, glass(spec.color, false));
+      const { group, materials: own } = glassObject(spec.map, spec.color, geometry);
+      materials.push(...own);
+      for (const mesh of group.children) mesh.userData.object = index;
       group.rotation.z = spec.tilt;
       root.add(group);
 
@@ -316,20 +121,12 @@ export function createVoxelScene(options: {
 
   // Размер видимой области на глубине 0 — от него места и масштаб объектов.
   let view = { width: 1, height: 1 };
-  // Радиус круга сборки в мировых единицах: стикер на странице — до 520 px
-  // и не больше 70% меньшей стороны экрана; объекты садятся на его край.
-  let ringRadius = 1;
   function layout() {
     const height = 2 * camera.position.z * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     view = { width: height * camera.aspect, height };
-    const unitsPerPixel = height / Math.max(1, canvas.clientHeight);
-    ringRadius = Math.min(0.35 * Math.min(canvas.clientWidth, canvas.clientHeight), 260) * unitsPerPixel * 0.78;
     for (const item of objects) {
       const rows = item.spec.map.length;
-      const size =
-        mode === "assemble"
-          ? ringRadius * 0.62
-          : (narrow ? 0.15 : 0.2) * Math.min(view.height, view.width * (narrow ? 1.6 : 1));
+      const size = (narrow ? 0.15 : 0.2) * Math.min(view.height, view.width * (narrow ? 1.6 : 1));
       item.group.userData.base = size / rows;
     }
   }
@@ -344,9 +141,7 @@ export function createVoxelScene(options: {
     camera.updateProjectionMatrix();
 
     const nextNarrow = width / height < 0.9;
-    if (mode === "assemble") {
-      if (objects.length === 0) build(ASSEMBLE);
-    } else if (nextNarrow !== narrow || objects.length === 0) {
+    if (nextNarrow !== narrow || objects.length === 0) {
       narrow = nextNarrow;
       build(narrow ? NARROW : WIDE);
     }
@@ -358,34 +153,7 @@ export function createVoxelScene(options: {
   const pointerNow = new THREE.Vector2();
   let scrollProgress = 0;
 
-  /**
-   * Сборка: по прогрессу прокрутки объекты летят из-за краёв экрана на круг
-   * вокруг стикера, перестают кувыркаться и в конце тают — на их месте
-   * остаётся стикер (его рисует страница поверх холста).
-   */
-  function renderAssemble(time: number) {
-    const travel = easeOut(Math.min(1, scrollProgress / 0.7));
-    const melt = Math.max(0, (scrollProgress - 0.72) / 0.28);
-    for (const item of objects) {
-      const [dx, dy] = item.spec.at;
-      item.group.position.set(
-        lerp(dx * view.width * 0.75, dx * ringRadius, travel),
-        lerp(dy * view.height * 0.75, dy * ringRadius, travel),
-        lerp(-6, 2, travel),
-      );
-      const sway = reducedMotion ? 0 : Math.sin(time * 0.6 + item.phase) * 0.15;
-      item.group.rotation.y = (1 - travel) * (4 + item.phase) + sway;
-      item.group.rotation.x = (1 - travel) * 1.4;
-      item.group.scale.setScalar((item.group.userData.base as number) * (0.7 + 0.3 * travel) * (1 - melt));
-    }
-    renderer.render(scene, camera);
-  }
-
   function render(time: number) {
-    if (mode === "assemble") {
-      renderAssemble(time);
-      return;
-    }
     pointerNow.lerp(pointerTarget, reducedMotion ? 1 : 0.06);
     root.rotation.y = pointerNow.x * 0.22;
     root.rotation.x = -pointerNow.y * 0.12;

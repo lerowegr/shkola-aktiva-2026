@@ -76,7 +76,7 @@ onBeforeUnmount(() => cleanup());
             <span class="rounded-full px-3 py-1 text-sm font-semibold" :class="STATE[stage.state].class">
               {{ STATE[stage.state].label }}
             </span>
-            <h3 class="font-display mt-5 text-4xl leading-none sm:text-6xl">{{ stage.title }}</h3>
+            <h3 class="font-display mt-5 text-[clamp(1.75rem,7.5vw,2.25rem)] leading-none sm:text-6xl">{{ stage.title }}</h3>
             <p class="mt-3 text-lg font-semibold">{{ dates(stage) }}</p>
             <p v-if="selection.steps[stage.kind]" class="text-ink/80 mt-4 max-w-[46ch] text-lg">
               {{ selection.steps[stage.kind] }}

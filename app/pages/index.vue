@@ -47,6 +47,8 @@ useSeoMeta({
 
 // Разметка для поиска и ответов нейросетей: кто мы и частые вопросы.
 useHead({
+  // Системная полоса прокрутки на главной скрыта: вместо неё LandingScrollbar.
+  htmlAttrs: { class: "landing" },
   link: [{ rel: "canonical", href: `${url}/` }],
   script: [
     {
@@ -98,5 +100,6 @@ useHead({
       <LandingFinale :cta="cta" :stages="stages" :telegram="content.contacts.telegram" :closes-at="closesAt" />
     </main>
     <LandingFooter :contacts="content.contacts" :year="year" />
+    <LandingScrollbar />
   </div>
 </template>

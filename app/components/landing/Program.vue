@@ -8,8 +8,10 @@ import type { SiteContent } from "~~/lib/site/content";
  * «Программа» бенто-сеткой: ровно столько клеток, сколько пунктов, ряды
  * разной ширины, фоны — фактуры брендбука. На телефоне — столбиком.
  *
- * Карточки парят; нажатие переворачивает карточку, на обороте — описание.
- * Без описания карточка не кнопка и не переворачивается.
+ * Карточки парят вразнобой — каждая со своим ритмом, наклоном и сдвигом —
+ * и при прокрутке слегка расходятся с разной скоростью (на телефоне, где
+ * они столбиком, — нет). Нажатие переворачивает карточку, на обороте —
+ * описание. Без описания карточка не кнопка и не переворачивается.
  */
 const props = defineProps<{ program: SiteContent["program"] }>();
 
@@ -51,6 +53,16 @@ const LOOKS: Look[] = [
 ];
 const look = (index: number) => LOOKS[index % LOOKS.length]!;
 
+// Парение: у каждой карточки своя длительность, фаза, наклон и сдвиг вбок.
+const float = (index: number) => ({
+  "--duration": `${5 + ((index * 1.7) % 2.5)}s`,
+  "--delay": `${-((index * 1.3) % 5)}s`,
+  "--tilt": `${index % 2 ? -0.8 : 0.8}deg`,
+  "--dx": `${index % 3 === 1 ? -4 : 4}px`,
+});
+// Расхождение при прокрутке: соседи едут в разные стороны с разной скоростью.
+const DRIFT = [1, -0.7, -1, 0.8, 0.6, -0.9, -0.6, 1];
+
 const section = ref<HTMLElement | null>(null);
 let cleanup = () => {};
 onMounted(async () => {
@@ -62,6 +74,17 @@ onMounted(async () => {
       stagger: 0.08,
       ease: "power3.out",
       scrollTrigger: { trigger: ".cells", start: "top 82%" },
+    });
+    // У середины экрана карточки на своих местах, к краям — расходятся.
+    gsap.matchMedia().add("(min-width: 768px)", () => {
+      for (const drift of gsap.utils.toArray<HTMLElement>(".drift")) {
+        const speed = Number(drift.dataset.speed);
+        gsap.fromTo(
+          drift,
+          { y: 16 * speed },
+          { y: -16 * speed, ease: "none", scrollTrigger: { trigger: drift, start: "top bottom", end: "bottom top", scrub: 0.6 } },
+        );
+      }
     });
   });
 });
@@ -75,57 +98,59 @@ const toggle = (index: number) => (flipped.value = { ...flipped.value, [index]: 
   <section id="programma" ref="section" class="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:py-32">
     <h2 class="font-display text-4xl sm:text-5xl">{{ program.title }}</h2>
     <p v-if="program.items.some((item) => item.text)" class="text-ink-soft mt-3">Нажми на карточку — расскажем подробнее.</p>
-    <div class="cells mt-10 grid gap-4 md:grid-cols-6">
-      <div v-for="(item, index) in program.items" :key="index" class="cell [perspective:1400px]" :class="spans[index]">
-        <component
-          :is="item.text ? 'button' : 'div'"
-          :type="item.text ? 'button' : undefined"
-          class="card focus-visible:ring-accent/40 block h-full w-full rounded-3xl text-left outline-none focus-visible:ring-4"
-          :class="{ flipped: flipped[index] }"
-          :aria-pressed="item.text ? Boolean(flipped[index]) : undefined"
-          @click="item.text && toggle(index)"
-        >
-          <span class="float block h-full" :style="{ '--delay': `${-(index * 1.3) % 5}s` }">
-            <span class="inner relative block h-full min-h-60 sm:min-h-72">
-              <!-- Лицо: фактура, объект, заголовок. -->
-              <span
-                class="face border-ink/10 absolute inset-0 isolate flex flex-col justify-end overflow-hidden rounded-3xl border p-5 sm:p-7"
-                :class="look(index).surface"
-              >
-                <img
-                  v-if="look(index).texture"
-                  :src="`/brand/textures/${look(index).texture}.webp`"
-                  alt=""
-                  class="absolute inset-0 -z-10 size-full object-cover"
-                  loading="lazy"
-                >
-                <img
-                  v-if="look(index).object"
-                  :src="`/brand/objects/${look(index).object}.webp`"
-                  alt=""
-                  class="absolute -top-6 -right-6 -z-10 w-28 sm:w-32"
-                  :class="{ 'mix-blend-multiply': !look(index).dark }"
-                  loading="lazy"
-                >
+    <div class="cells mt-10 grid gap-5 md:grid-cols-6 md:gap-6">
+      <div v-for="(item, index) in program.items" :key="index" class="cell" :class="spans[index]">
+        <div class="drift h-full [perspective:1400px]" :data-speed="DRIFT[index % DRIFT.length]">
+          <component
+            :is="item.text ? 'button' : 'div'"
+            :type="item.text ? 'button' : undefined"
+            class="card focus-visible:ring-accent/40 block h-full w-full rounded-3xl text-left outline-none focus-visible:ring-4"
+            :class="{ flipped: flipped[index] }"
+            :aria-pressed="item.text ? Boolean(flipped[index]) : undefined"
+            @click="item.text && toggle(index)"
+          >
+            <span class="float block h-full" :style="float(index)">
+              <span class="inner relative block h-full min-h-60 sm:min-h-72">
+                <!-- Лицо: фактура, объект, заголовок. -->
                 <span
-                  class="flex items-end justify-between gap-3"
-                  :class="look(index).texture && !look(index).dark ? 'bg-card/80 rounded-2xl p-4 backdrop-blur-sm' : ''"
+                  class="face border-ink/10 absolute inset-0 isolate flex flex-col justify-end overflow-hidden rounded-3xl border p-5 sm:p-7"
+                  :class="look(index).surface"
                 >
-                  <span class="font-display text-2xl leading-tight hyphens-auto">{{ item.title }}</span>
-                  <RotateCw v-if="item.text" class="mb-1 size-5 shrink-0 opacity-60" aria-hidden="true" />
+                  <img
+                    v-if="look(index).texture"
+                    :src="`/brand/textures/${look(index).texture}.webp`"
+                    alt=""
+                    class="absolute inset-0 -z-10 size-full object-cover"
+                    loading="lazy"
+                  >
+                  <img
+                    v-if="look(index).object"
+                    :src="`/brand/objects/${look(index).object}.webp`"
+                    alt=""
+                    class="absolute -top-6 -right-6 -z-10 w-28 sm:w-32"
+                    :class="{ 'mix-blend-multiply': !look(index).dark }"
+                    loading="lazy"
+                  >
+                  <span
+                    class="flex items-end justify-between gap-3"
+                    :class="look(index).texture && !look(index).dark ? 'bg-card/80 rounded-2xl p-4 backdrop-blur-sm' : ''"
+                  >
+                    <span class="font-display text-2xl leading-tight hyphens-auto">{{ item.title }}</span>
+                    <RotateCw v-if="item.text" class="mb-1 size-5 shrink-0 opacity-60" aria-hidden="true" />
+                  </span>
+                </span>
+                <!-- Оборот: описание. -->
+                <span
+                  v-if="item.text"
+                  class="face back bg-ink text-paper border-ink absolute inset-0 flex flex-col justify-between gap-4 overflow-hidden rounded-3xl border p-5 sm:p-7"
+                >
+                  <span class="font-display text-paper/60 text-lg leading-tight">{{ item.title }}</span>
+                  <span class="text-lg leading-snug sm:text-xl">{{ item.text }}</span>
                 </span>
               </span>
-              <!-- Оборот: описание. -->
-              <span
-                v-if="item.text"
-                class="face back bg-ink text-paper border-ink absolute inset-0 flex flex-col justify-between gap-4 overflow-hidden rounded-3xl border p-5 sm:p-7"
-              >
-                <span class="font-display text-paper/60 text-lg leading-tight">{{ item.title }}</span>
-                <span class="text-lg leading-snug sm:text-xl">{{ item.text }}</span>
-              </span>
             </span>
-          </span>
-        </component>
+          </component>
+        </div>
       </div>
     </div>
   </section>
@@ -149,20 +174,31 @@ const toggle = (index: number) => (flipped.value = { ...flipped.value, [index]: 
   .inner {
     transition: transform 0.7s cubic-bezier(0.3, 0.7, 0.3, 1);
   }
-  /* Парят вразнобой: у каждой карточки своя фаза. */
+  /* Парят вразнобой: у каждой карточки свой ритм. Наведённая, в фокусе и
+     перевёрнутая стоит — читать оборот не мешает. */
   .float {
-    animation: float 5s ease-in-out infinite;
+    --lift: -10px;
+    animation: float var(--duration) ease-in-out infinite;
     animation-delay: var(--delay);
   }
+  @media (min-width: 768px) {
+    .float {
+      --lift: -14px;
+    }
+  }
   .card:hover .float,
-  .card:focus-visible .float {
+  .card:focus-visible .float,
+  .card.flipped .float {
     animation-play-state: paused;
   }
 }
 
 @keyframes float {
-  50% {
-    transform: translateY(-8px);
+  33% {
+    transform: translate3d(var(--dx), var(--lift), 0) rotate(var(--tilt));
+  }
+  66% {
+    transform: translate3d(calc(var(--dx) * -0.6), calc(var(--lift) * 0.4), 0) rotate(calc(var(--tilt) * -0.7));
   }
 }
 </style>

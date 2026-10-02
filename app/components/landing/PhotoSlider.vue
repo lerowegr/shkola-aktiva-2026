@@ -8,7 +8,8 @@ import type { PhotoRef } from "~~/lib/site/content";
  * вариант под экран (480/960/1600), фото грузятся, только когда до них
  * дошли. Одно фото — без управления.
  *
- * Событие `interact` — для ленты людей: пока листают фото, лента стоит.
+ * Событие `interact` — для ленты людей: пока листают фото, лента стоит, и
+ * свайп по фото ленту не тянет.
  */
 const props = defineProps<{
   photos: PhotoRef[];
@@ -33,6 +34,8 @@ const src = (id: string, width: number) => `/media/site/${id}/${width}.webp`;
 let start: { x: number; y: number } | null = null;
 function down(event: PointerEvent) {
   emit("interact");
+  // Свайп по фото листает фото, а не ленту людей вокруг.
+  if (many.value) event.stopPropagation();
   start = { x: event.clientX, y: event.clientY };
 }
 function up(event: PointerEvent) {
