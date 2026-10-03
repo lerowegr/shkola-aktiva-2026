@@ -1,0 +1,141 @@
+# Проверка и автодеплой: пуш в main → проверки → образы → сервер.
+#
+# 1. check  — npm run check (типы, линт, тесты на своей базе PostgreSQL).
+#             Красная проверка — дальше ничего не едет.
+# 2. build  — два образа в GitHub Container Registry: сайт (runtime) и
+#             инструменты (tools: миграции, сид, бот). Собираем здесь, а не
+#             на сервере: там два десятка чужих проектов и мало памяти, а
+#             nuxt build на пике берёт около полутора гигабайт.
+# 3. deploy — по ssh на сервер. Ключ деплоя на сервере привязан к одной
+#             команде (deploy/bootstrap.sh): она скачивает образы этой
+#             версии, накатывает миграции и перезапускает сайт; не поднялся —
+#             возвращает прошлую версию. Токен реестра — временный, этой сборки.
+#
+# Секреты репозитория: DEPLOY_SSH_KEY, DEPLOY_HOST, DEPLOY_KNOWN_HOSTS.
+# Пока их нет, деплой пропускается, образы всё равно собираются.
+# Подробности и ручные команды — docs/deploy.md.
+
+name: Проверка и деплой
+
+on:
+  push:
+    branches: [main]
+    # Заметки и спецификации сайт не меняют — пересобирать незачем.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "specs/**"
+      - ".specify/**"
+  workflow_dispatch:
+
+# Деплои по очереди: два пуша подряд не должны обновлять сервер одновременно.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  check:
+    name: Проверки
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sha
+          POSTGRES_PASSWORD: sha
+          POSTGRES_DB: sha_dev
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sha" --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://sha:sha@localhost:5432/sha_dev?schema=public
+      AUTH_SECRET: ci-only-secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      # Тестовая база с русской сортировкой, как на ноутбуке (.env.example).
+      - name: Тестовая база
+        run: >-
+          docker exec ${{ job.services.postgres.id }}
+          createdb -U sha --locale-provider=icu --icu-locale=ru-RU --template=template0 sha_test
+
+      # postinstall делает nuxt prepare и prisma generate.
+      - run: npm ci
+      - run: npm run db:test-sync
+      - run: npm run check
+
+  build:
+    name: Образы
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - target: runtime
+            suffix: ""
+          - target: tools
+            suffix: "-tools"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Собрать и опубликовать ${{ matrix.target }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: ${{ matrix.target }}
+          push: true
+          tags: |
+            ${{ env.IMAGE }}${{ matrix.suffix }}:${{ github.sha }}
+            ${{ env.IMAGE }}${{ matrix.suffix }}:latest
+          # Кеш между запусками: без него каждая сборка заново ставит
+          # зависимости и качает шрифты.
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,scope=${{ matrix.target }},mode=max
+
+  deploy:
+    name: Сервер
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Обновить сайт
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$HOST" ] || [ -z "$KNOWN_HOSTS" ]; then
+            echo "::notice::Секретов деплоя нет — образы собраны, сервер не тронут."
+            exit 0
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          # На входе у сервера: коммит, логин, токен — по строке, дальше архив
+          # с compose.yml и скриптами деплоя этой версии.
+          {
+            printf '%s\n%s\n%s\n' "$GITHUB_SHA" "$GITHUB_ACTOR" "$REGISTRY_TOKEN"
+            tar -czf - compose.yml deploy/apply.sh deploy/dc.sh deploy/quick-tunnel.sh docker/backup.sh
+          } | ssh -i ~/.ssh/deploy -o BatchMode=yes -o StrictHostKeyChecking=yes "root@$HOST"

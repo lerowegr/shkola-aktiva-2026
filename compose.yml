@@ -1,0 +1,140 @@
+# Сайт и отбор Школы Актива на боевом сервере (/root/sha-site).
+#
+# Службы: база, миграции, сайт, временный туннель Cloudflare, бот и ночные
+# копии. Наружу напрямую не смотрит ни одна: сайт слушает только loopback
+# сервера и общую сеть edge-nginx (arkadium_shared) — через неё потом
+# подключим домен. Соседям не мешает: свои тома с префиксом sha-site, образы
+# готовые с GitHub, память сайта ограничена.
+#
+# Образы собирает GitHub Actions (.github/workflows/deploy.yml), версия —
+# коммит из .deployed (IMAGE_TAG). Обновляет всё deploy/apply.sh, руками —
+# только через обёртку, она подставит файлы настроек:
+#
+#   ./deploy/dc.sh ps
+#   ./deploy/dc.sh logs -f app
+#   ./deploy/dc.sh exec db psql -U sha sha
+#
+# Обязательные значения помечены «?»: без .env.production compose откажется
+# запускаться, а не поднимет сайт с пустым паролем базы.
+
+name: sha-site
+
+x-tools-image: &tools ghcr.io/lerowegr/shkola-aktiva-2026-tools:${IMAGE_TAG:-latest}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sha
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте пароль базы в .env.production}
+      POSTGRES_DB: sha
+      # Русская сортировка через ICU: «Ёлкин» стоит после «Елены», а не в
+      # начале списка. Читается ТОЛЬКО при создании тома, потом не менять.
+      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=ru-RU --encoding=UTF8 --locale=C.UTF-8"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sha -d sha"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Портов нет: до базы дотягиваются только соседние службы.
+
+  # Миграции отдельной службой: не накатилась схема — сайт не поднимется,
+  # вместо того чтобы падать на каждом запросе с «Unknown field».
+  migrate:
+    image: *tools
+    command: npx prisma migrate deploy
+    restart: "no"
+    env_file: .env.production
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    image: ghcr.io/lerowegr/shkola-aktiva-2026:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env.production
+    environment:
+      UPLOADS_DIR: /data/uploads
+    volumes:
+      - uploads:/data/uploads
+    # Только loopback: заглянуть с ноутбука — ssh -L 3110:127.0.0.1:3110.
+    ports:
+      - "127.0.0.1:${APP_PORT:-3110}:3000"
+    networks:
+      default:
+      edge:
+        aliases: [sha-site-app]
+    # На сервере свободно меньше двух гигабайт: сайт не должен отнять память
+    # у соседей, даже если что-то пойдёт не так.
+    mem_limit: 768m
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Временный публичный адрес *.trycloudflare.com, пока нет домена.
+  # Адрес случайный и меняется при каждом пересоздании туннеля: поднимает и
+  # прописывает его deploy/quick-tunnel.sh. Обновление сайта туннель не
+  # трогает — ссылка живёт между деплоями.
+  #
+  # http2 вместо QUIC: исходящий UDP на хостингах режут чаще, чем TCP 443.
+  tunnel:
+    profiles: ["quick"]
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --protocol http2 --url http://app:3000
+
+  # Бот входа и сообщений. Без токена спит, а не падает в петлю перезапусков:
+  # сайт работает и без него.
+  bot:
+    image: *tools
+    restart: unless-stopped
+    command:
+      - /bin/sh
+      - -c
+      - |
+        if [ -z "$${TELEGRAM_BOT_TOKEN:-}" ]; then
+          echo "Нет TELEGRAM_BOT_TOKEN в .env.production — бот не запущен. Сайт работает."
+          exec sleep infinity
+        fi
+        exec npx tsx bot/main.ts
+    env_file: .env.production
+    mem_limit: 256m
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  # Ночные копии базы и загруженных файлов. Без них любая ошибка — навсегда.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: sha
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: sha
+      KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - ./docker/backup.sh:/backup.sh:ro
+      - backups:/backups
+      - uploads:/uploads:ro
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  uploads:
+  backups:
+
+networks:
+  edge:
+    name: arkadium_shared
+    external: true

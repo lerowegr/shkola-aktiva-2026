@@ -38,6 +38,7 @@ grammY · zod 4 · Tailwind 4 · Vitest. Без Auth.js: сессии свои, 
 | `npm run share` | Сайт по временной ссылке Cloudflare с этого компьютера: сборка, туннель, сервер с тестовым входом. Ctrl+C — остановить |
 | `npm run db:preview-accounts` | Тестовые входы `admin` и `kandidat` с новыми паролями в `.preview-accounts.txt`; блок на /login виден при `NUXT_PUBLIC_PREVIEW_LOGINS=true` |
 | `npm run bot` | Бот (нужен `TELEGRAM_BOT_TOKEN`) |
+| пуш в `main` | Автодеплой: проверки → образы на GitHub → сервер (`docs/deploy.md`) |
 
 Без `SMTP_URL` письма с кодами печатаются в консоль `npm run dev`.
 Без `TELEGRAM_BOT_TOKEN` и VAPID-ключей доставки в Telegram и пуши
@@ -208,6 +209,15 @@ prisma/             схема, миграции, сид
 - `nuxt typecheck` печатает предупреждение про `vue-router/volar` — это не
   ошибка, код выхода 0. Бот, скрипты и сид Nuxt не проверяет —
   `npm run typecheck` дополнительно гоняет `tsc -p tsconfig.scripts.json`.
+
+## Сервер
+
+Общий сервер с двумя десятками чужих проектов: свои там только
+`/root/sha-site`, контейнеры и тома `sha-site*`, порт `127.0.0.1:3110`.
+Собирать на сервере нельзя (мало памяти) — образы собирает GitHub Actions.
+Порты 80/443 держит общий edge-nginx (`/root/infra`), чужие сервисы
+(в том числе туннель `cloudflared-sha` квиза) не трогать. Всё про деплой,
+откат и домен — `docs/deploy.md`.
 
 ## Проверка работы
 

@@ -1,0 +1,38 @@
+# Всё, что не нужно внутри образа. Контекст целиком уезжает сборщику перед
+# первой командой — каждая строчка ещё и скорость.
+
+.git
+.github
+node_modules
+.nuxt
+.output
+dist
+coverage
+lib/generated
+
+# Настройки с ноутбука. Боевые приходят через env_file на сервере, а
+# случайно уехавший локальный .env — это пароль в образе.
+.env
+.env.*
+!.env.example
+.preview-accounts*
+
+# Загруженные файлы живут в томе, а не в образе.
+uploads
+
+# Исходники бренда (сайт берёт ассеты из public/ и app/assets/)
+assets
+test-results
+
+# Инструменты и заметки разработки
+.claude
+.agents
+.specify
+specs
+docs
+deploy/server-info.txt
+*.md
+!README.md
+
+.DS_Store
+*.log
