@@ -135,6 +135,13 @@ volumes:
   backups:
 
 networks:
+  # Подсеть задана руками: на сервере три десятка сетей, и у Docker кончились
+  # свои адреса («all predefined address pools have been fully subnetted»).
+  # 10.203.0.0/24 свободна (соседи заняли 10.94.0.0/24 и 10.231.7.0/24).
+  default:
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET:-10.203.0.0/24}
   edge:
     name: arkadium_shared
     external: true
