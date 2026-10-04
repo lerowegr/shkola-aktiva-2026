@@ -151,8 +151,13 @@ const FALLBACK = [
   -webkit-touch-callout: none;
 }
 
+/* У Konkovo буквы на 0.15em выше строки, а при leading 0.9 — ещё выше.
+   Пока буква падает, Safari рисует её слоем по рамке и срезает верх:
+   запас сверху и тот же отступ назад — раскладка не меняется. */
 .wordmark .letter {
   display: inline-block;
+  padding-top: 0.25em;
+  margin-top: -0.25em;
 }
 
 @media (prefers-reduced-motion: no-preference) {
