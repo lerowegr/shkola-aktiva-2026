@@ -17,8 +17,10 @@ WITH numbered AS (
 )
 UPDATE "users" SET "seq" = numbered.n FROM numbered WHERE "users".id = numbered.id;
 
--- Новым — из последовательности, начиная с максимума.
+-- Новым — из последовательности. Третий аргумент setval: на пустой таблице
+-- следующий номер — 1, иначе — после максимума (setval(..., 0) на пустой
+-- базе падает: последовательность начинается с 1).
 CREATE SEQUENCE users_seq_seq;
-SELECT setval('users_seq_seq', (SELECT COALESCE(MAX("seq"), 0) FROM "users"));
+SELECT setval('users_seq_seq', COALESCE((SELECT MAX("seq") FROM "users"), 1), (SELECT COUNT(*) FROM "users") <> 0);
 ALTER TABLE "users" ALTER COLUMN "seq" SET DEFAULT nextval('users_seq_seq');
 ALTER TABLE "users" ALTER COLUMN "seq" SET NOT NULL;
