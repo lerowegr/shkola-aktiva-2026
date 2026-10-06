@@ -13,6 +13,11 @@ const LOOK = {
   MEMORY: { tone: "bg-brand-green-soft", image: "/brand/mascots/green.webp" },
   SLIDE: { tone: "bg-brand-yellow-soft", image: "/brand/logo-sticker.webp" },
   CATCH: { tone: "bg-brand-purple-soft", image: "/brand/objects/heart-pixel.webp" },
+  TETRIS: { tone: "bg-brand-blue-soft", image: "/brand/objects/star-pixel.webp" },
+  PIXEL: { tone: "bg-brand-orange-soft", image: "/brand/mascots/orange.webp" },
+  SNAKE: { tone: "bg-[#c9f3fa]", image: "/brand/objects/star-pixel.webp" },
+  QUIZ: { tone: "bg-brand-red-soft", image: "/brand/logo-sticker-short.webp" },
+  MERGE: { tone: "bg-line", image: "/brand/mascots/purple.webp" },
 } as const;
 </script>
 
@@ -26,7 +31,8 @@ const LOOK = {
       <div class="flex flex-col gap-2">
         <h1 class="font-display text-3xl">Мини-игры</h1>
         <p class="text-ink-soft">
-          Пока идёт отбор — три короткие игры с героями Школы. На отбор они не влияют: мастера ваши результаты не видят.
+          Пока идёт отбор — короткие игры с героями Школы. На отбор они не влияют: мастера ваши результаты не видят.
+          <NuxtLink to="/cabinet/rating" class="underline">Общий рейтинг</NuxtLink>.
         </p>
       </div>
 

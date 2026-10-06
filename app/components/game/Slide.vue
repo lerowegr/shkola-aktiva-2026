@@ -9,10 +9,11 @@ import { clock } from "~~/lib/games/rules";
  * подсказка: края стикера почти одинаковые.
  */
 const emit = defineEmits<{ finished: [result: { score: number; moves: number; durationMs: number }] }>();
+const props = withDefaults(defineProps<{ seed?: number }>(), { seed: () => Date.now() });
 
 const N = 3;
 const IMAGE = "/brand/logo-sticker.webp";
-const board = ref<number[]>(shuffleBoard(N, seeded(Date.now())));
+const board = ref<number[]>(shuffleBoard(N, seeded(props.seed)));
 const moves = ref(0);
 const done = ref(false);
 const stopwatch = useStopwatch();

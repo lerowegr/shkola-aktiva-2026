@@ -6,8 +6,10 @@ import { clock } from "~~/lib/games/rules";
 /**
  * «Пары»: 16 карточек, 8 маскотов. Ход — открыть вторую карточку.
  * Несовпавшая пара закрывается сама через секунду или от следующего нажатия.
+ * seed — расклад (задание дня фиксирует его датой).
  */
 const emit = defineEmits<{ finished: [result: { score: number; moves: number; durationMs: number }] }>();
+const props = withDefaults(defineProps<{ seed?: number }>(), { seed: () => Date.now() });
 
 const FACES = [
   { face: "green", tone: "bg-brand-green-soft", name: "зелёный маскот" },
@@ -21,7 +23,7 @@ const FACES = [
 ];
 const look = Object.fromEntries(FACES.map((item) => [item.face, item]));
 
-const state = ref<MemoryState>(createMemory(FACES.map((item) => item.face), seeded(Date.now())));
+const state = ref<MemoryState>(createMemory(FACES.map((item) => item.face), seeded(props.seed)));
 const stopwatch = useStopwatch();
 let settleTimer: ReturnType<typeof setTimeout> | null = null;
 

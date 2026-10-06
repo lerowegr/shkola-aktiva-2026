@@ -19,6 +19,7 @@ import {
   type DefaultMarker,
 } from "../lib/applications/defaults";
 import { PERMISSION_GROUPS, PERMISSION_KEYS } from "../lib/permissions";
+import { QUIZ_QUESTIONS } from "../app/games/quiz";
 
 const selection = PERMISSION_GROUPS.find((group) => group.key === "selection")!.permissions.map(
   (permission) => permission.key,
@@ -145,6 +146,21 @@ async function main() {
   await seedEvaluation(season.id, "APPLICATION", DEFAULT_APPLICATION_CRITERIA, DEFAULT_APPLICATION_MARKERS);
   await seedEvaluation(season.id, "HOMEWORK", DEFAULT_HOMEWORK_CRITERIA, DEFAULT_HOMEWORK_MARKERS);
   await seedEvaluation(season.id, "INTERVIEW", DEFAULT_INTERVIEW_CRITERIA, DEFAULT_INTERVIEW_MARKERS);
+
+  // Вопросы викторины — только если их ещё нет: правки из админки сид
+  // не перезаписывает.
+  if ((await db.quizQuestion.count({ where: { seasonId: season.id } })) === 0) {
+    await db.quizQuestion.createMany({
+      data: QUIZ_QUESTIONS.map((question, index) => ({
+        seasonId: season.id,
+        order: index + 1,
+        text: question.text,
+        options: [question.answer, ...question.wrong],
+        correct: 0,
+        isActive: true,
+      })),
+    });
+  }
 
   const ownerEmail = process.env.OWNER_EMAIL?.trim();
   if (ownerEmail) {

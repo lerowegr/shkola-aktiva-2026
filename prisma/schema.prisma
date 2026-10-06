@@ -106,6 +106,16 @@ model User {
   firstName String?
   lastName  String?
 
+  /// Публичный ник для рейтинга. Показывает displayName() из lib/profile.
+  nickname          String?
+  /// Ник строчными для уникальности без учёта регистра.
+  nicknameNorm      String?  @unique
+  nicknameChangedAt DateTime?
+  /// Ключ аватарки в UPLOADS_DIR/avatars. Нет ключа — инициалы.
+  avatarKey String?
+  /// Порядковый номер регистрации: зерно обезличенного кода, наружу не показывается.
+  seq Int @unique @default(autoincrement())
+
   status UserStatus @default(ACTIVE)
 
   /// Владелец системы. Обходит проверки прав и не снимается через админку —
@@ -139,6 +149,7 @@ model User {
   invitesCreated    StaffInvite[]            @relation("InviteAuthor")
   slotInterviewers  SlotInterviewer[]
   gameResults       GameResult[]
+  dailySolutions    DailySolution[]
 
   @@index([status])
   @@map("users")
@@ -290,6 +301,7 @@ model Season {
   applications Application[]
   criteria     Criterion[]
   markers      Marker[]
+  quizQuestions QuizQuestion[]
   siteContent  SiteContent?
   siteImages   SiteImage[]
 
@@ -777,6 +789,11 @@ enum GameKind {
   MEMORY // «Пары»
   SLIDE // «Пятнашки»
   CATCH // «Лови»
+  TETRIS // «Тетрис»
+  PIXEL // «Угадай по пикселям»
+  SNAKE // «Змейка»
+  QUIZ // «Викторина»
+  MERGE // «2048»
 }
 
 /// Одна сыгранная партия. Лучший результат и место считаются из всех
@@ -796,6 +813,45 @@ model GameResult {
 
   @@index([game, userId])
   @@map("game_results")
+}
+
+/// Вопрос викторины. Пишут организаторы в админке, меняются каждый сезон.
+/// Варианты лежат массивом, верный — индексом: тасовка на клиенте его сдвигает.
+model QuizQuestion {
+  id        String   @id @default(cuid())
+  seasonId  String
+  order     Int
+  text      String
+  options   String[]
+  correct   Int
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@index([seasonId, order])
+  @@map("quiz_questions")
+}
+
+/// Решённое ежедневное задание. Попытка одна в день: уникальность пары
+/// человек+день. Вид задания выводится из даты (lib/games/daily.ts),
+/// поэтому самой таблицы заданий нет.
+model DailySolution {
+  id        String   @id @default(cuid())
+  userId    String
+  /// День YYYY-MM-DD по Москве.
+  date      String
+  kind      String
+  score     Int
+  timeMs    Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([date])
+  @@map("daily_solutions")
 }
 
 /// Тексты лендинга на сезон — один документ. Схема и значения по умолчанию

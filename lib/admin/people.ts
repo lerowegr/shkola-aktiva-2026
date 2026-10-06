@@ -15,6 +15,7 @@ import type { AdminResult } from "./roles";
 export interface PersonRow {
   id: string;
   name: string;
+  nickname: string | null;
   email: string | null;
   telegramUsername: string | null;
   blocked: boolean;
@@ -55,6 +56,7 @@ export async function searchPeople(params: {
       id: true,
       firstName: true,
       lastName: true,
+      nickname: true,
       email: true,
       telegramUsername: true,
       telegramId: true,
@@ -69,6 +71,7 @@ export async function searchPeople(params: {
   return people.map((person) => ({
     id: person.id,
     name: displayName(person),
+    nickname: person.nickname,
     email: person.email,
     telegramUsername: person.telegramUsername,
     blocked: person.status === "BLOCKED",

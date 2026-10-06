@@ -60,7 +60,8 @@ TUNNEL_PID=$!
 
 URL=""
 for _ in $(seq 1 40); do
-  URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" | head -1 || true)"
+  # api.trycloudflare.com — служебный адрес из журнала cloudflared, не ссылка на сайт.
+  URL="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" | grep -v '^https://api\.' | head -1 || true)"
   [ -n "$URL" ] && break
   sleep 1
 done

@@ -43,6 +43,7 @@ function grantRole(person: PersonRow, event: Event) {
 const revokeRole = (person: PersonRow, roleId: string) => call("/api/admin/people/revoke", { userId: person.id, roleId }, person.id);
 const block = (person: PersonRow) => call("/api/admin/people/block", { userId: person.id, blocked: !person.blocked }, person.id);
 const invite = (person: PersonRow) => call("/api/admin/people/invite", { userId: person.id }, person.id);
+const resetNick = (person: PersonRow) => call("/api/admin/people/reset-nick", { id: person.id }, person.id);
 
 async function copy(text: string) {
   await navigator.clipboard.writeText(text);
@@ -112,6 +113,7 @@ function initialsOf(name: string) {
                 <span class="block truncate text-sm font-semibold" :class="person.blocked && 'line-through opacity-60'">{{ person.name }}</span>
                 <span class="text-ink-soft block truncate text-xs">
                   {{ person.email ?? "без почты" }}<template v-if="person.telegramUsername"> · @{{ person.telegramUsername }}</template>
+                  <template v-if="person.nickname"> · ник {{ person.nickname }}</template>
                   <template v-if="!person.roles.length && !person.isOwner"> · {{ APP[person.application] }}</template>
                 </span>
               </span>
@@ -172,6 +174,14 @@ function initialsOf(name: string) {
                   @click="block(person)"
                 >
                   <Ban class="size-4" aria-hidden="true" /> {{ person.blocked ? "Вернуть доступ" : "Заблокировать" }}
+                </button>
+                <button
+                  v-if="person.nickname"
+                  type="button"
+                  class="border-line bg-card hover:border-ink-soft flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm"
+                  @click="resetNick(person)"
+                >
+                  Сбросить ник
                 </button>
               </div>
 

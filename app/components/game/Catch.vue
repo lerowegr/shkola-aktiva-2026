@@ -9,6 +9,7 @@ import { CATCH_SECONDS } from "~~/lib/games/rules";
  * Вкладку спрятали — пауза: время партии игровое и на паузе не идёт.
  */
 const emit = defineEmits<{ finished: [result: { score: number; durationMs: number }] }>();
+const props = withDefaults(defineProps<{ seed?: number }>(), { seed: () => Date.now() });
 
 const SPRITES: Record<ItemKind | "player", string> = {
   heart: "/brand/objects/heart-pixel.webp",
@@ -28,7 +29,7 @@ const left = ref(CATCH_SECONDS);
 const shaking = ref(false);
 
 let state = createCatch();
-const rng = seeded(Date.now());
+const rng = seeded(props.seed);
 let target = 0.5;
 const held = { left: false, right: false };
 const images: Partial<Record<keyof typeof SPRITES, HTMLImageElement>> = {};
