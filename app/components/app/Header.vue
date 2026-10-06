@@ -9,7 +9,7 @@ const user = await useSession();
   <header class="bg-ink text-paper">
     <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
       <NuxtLink to="/" class="flex items-center gap-2 font-display text-sm">
-        <span class="bg-lime text-ink grid size-8 place-items-center rounded-lg">ША</span>
+        <span class="bg-lime text-ink grid size-8 place-items-center rounded-lg leading-none">ША</span>
         <span class="hidden sm:inline">Школа Актива</span>
       </NuxtLink>
 
