@@ -168,7 +168,9 @@ onBeforeUnmount(() => {
     <div v-if="phase === 'playing' || phase === 'paused'" class="flex flex-col gap-3">
       <div class="flex items-center justify-between text-sm">
         <span class="text-ink-soft">Чёткость: <strong class="tabular-nums">{{ stage + 1 }} из {{ STAGE_BLOCKS.length }}</strong></span>
-        <UiButton variant="ghost" class="w-auto px-4" @click="sharper">Чётче</UiButton>
+        <div class="shrink-0">
+          <UiButton variant="ghost" @click="sharper">Чётче</UiButton>
+        </div>
       </div>
       <div class="grid grid-cols-1 gap-2">
         <button

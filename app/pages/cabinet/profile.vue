@@ -86,9 +86,11 @@ async function remove() {
       <section class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5">
         <h2 class="font-semibold">Никнейм</h2>
         <p class="text-ink-soft text-sm">От 3 до 20 символов: буквы, цифры и подчёркивание. Менять можно раз в 7 дней.</p>
-        <div class="flex gap-2">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
           <UiInput v-model="nickname" label="Никнейм" class="flex-1" />
-          <UiButton class="mt-6 w-auto shrink-0 px-5" :pending="rename.pending.value" @click="saveNickname">Ок</UiButton>
+          <div class="shrink-0">
+            <UiButton :pending="rename.pending.value" @click="saveNickname">Ок</UiButton>
+          </div>
         </div>
         <p v-if="saved" class="text-ok text-sm">Сохранено.</p>
         <UiNotice :message="problem" />
@@ -102,7 +104,9 @@ async function remove() {
             {{ uploading ? "Грузим…" : "Выбрать фото" }}
             <input type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" :disabled="uploading" @change="upload">
           </label>
-          <UiButton v-if="profile?.avatar" variant="ghost" class="w-auto px-5" @click="remove">Убрать</UiButton>
+          <div v-if="profile?.avatar" class="shrink-0">
+            <UiButton variant="ghost" @click="remove">Убрать</UiButton>
+          </div>
         </div>
       </section>
     </main>

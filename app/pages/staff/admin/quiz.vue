@@ -63,7 +63,9 @@ const remove = (id: string) => post("/api/admin/quiz/delete", { id });
   <main class="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
     <div class="flex items-center justify-between">
       <h1 class="font-display text-2xl">Викторина</h1>
-      <UiButton class="w-auto px-4" @click="edit(null)"><Plus class="size-4" aria-hidden="true" /> Вопрос</UiButton>
+      <div class="shrink-0">
+        <UiButton @click="edit(null)"><Plus class="size-4" aria-hidden="true" /> Вопрос</UiButton>
+      </div>
     </div>
     <p class="text-ink-soft text-sm">Десять случайных активных вопросов попадают в партию. Верный вариант игроки не видят.</p>
     <UiNotice v-if="problem" :message="problem" />
