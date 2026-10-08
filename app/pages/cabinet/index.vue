@@ -3,16 +3,18 @@ import { BellRing, ChevronRight, MessageCircle, Smile, Trophy } from "lucide-vue
 
 import type { CandidateApplication } from "~~/lib/applications/candidate";
 import type { HomeworkView } from "~~/lib/applications/homework";
+import type { CandidateAssessment } from "~~/lib/assessment/candidate";
 import type { DailyStatus } from "~~/lib/games/daily";
 import type { CandidateInterview } from "~~/lib/interviews/booking";
 
 useHead({ title: "Кабинет" });
 
 const user = await useSession();
-const [{ data }, { data: application }, { data: homework }, { data: interview }, { data: daily }] = await Promise.all([
+const [{ data }, { data: application }, { data: homework }, { data: assessment }, { data: interview }, { data: daily }] = await Promise.all([
   useFetch("/api/season"),
   useFetch("/api/cabinet/application"),
   useFetch<{ homework: HomeworkView | null }>("/api/cabinet/homework"),
+  useFetch<{ assessment: CandidateAssessment | null }>("/api/cabinet/assessment"),
   useFetch<{ interview: CandidateInterview | null }>("/api/cabinet/interview"),
   useFetch<DailyStatus>("/api/cabinet/daily"),
 ]);
@@ -28,12 +30,16 @@ const app = computed(() => application.value?.data as CandidateApplication | nul
           {{ user?.firstName ? `Здравствуйте, ${user.firstName}!` : "Здравствуйте!" }}
         </h1>
         <p class="text-ink-soft">
-          Вы зарегистрированы на отбор. Анкета, домашнее задание и запись на собеседование открываются
+          Вы зарегистрированы на отбор. Анкета, домашнее задание, центр оценки и собеседование открываются
           здесь по очереди — каждый шаг в свой срок.
         </p>
       </div>
 
       <AppInterviewCard v-if="interview?.interview && (interview.interview.admission || interview.interview.final)" :iv="interview.interview" />
+      <AppAssessmentCard
+        v-if="assessment?.assessment && (assessment.assessment.place || assessment.assessment.state === 'open')"
+        :co="assessment.assessment"
+      />
       <AppHomeworkCard v-if="homework?.homework && homework.homework.admission" :hw="homework.homework" />
       <AppApplicationCard v-if="app" :app="app" :admission="homework?.homework?.admission ?? null" />
 

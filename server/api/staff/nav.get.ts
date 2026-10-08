@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
   const season = await currentSeason();
 
   // Сколько назначенного мне ещё не проверено полностью на этапе.
-  async function todoFor(stageKind: "APPLICATION" | "HOMEWORK") {
+  async function todoFor(stageKind: "APPLICATION" | "HOMEWORK" | "ASSESSMENT") {
     if (!season || !can(user, "applications.review")) return 0;
     const [mine, criteria] = await Promise.all([
       db.review.findMany({
@@ -26,6 +26,8 @@ export default defineEventHandler(async (event) => {
             seasonId: season!.id,
             status: "SUBMITTED",
             ...(stageKind === "HOMEWORK" ? { submissions: { some: { stageKind, replacedAt: null } } } : {}),
+            // На ЦО — только кандидаты групп, где я эксперт: перенесённых не считаем.
+            ...(stageKind === "ASSESSMENT" ? { assessment: { group: { experts: { some: { userId: user.id } } } } } : {}),
           },
         },
         select: { _count: { select: { scores: true } } },
@@ -35,7 +37,11 @@ export default defineEventHandler(async (event) => {
     return mine.filter((review) => review._count.scores < criteria).length;
   }
 
-  const [todo, homeworkTodo] = await Promise.all([todoFor("APPLICATION"), todoFor("HOMEWORK")]);
+  const [todo, homeworkTodo, assessmentTodo] = await Promise.all([
+    todoFor("APPLICATION"),
+    todoFor("HOMEWORK"),
+    todoFor("ASSESSMENT"),
+  ]);
 
   const messages =
     season && can(user, "messages.reply") ? (await listThreads(season.id)).unread : 0;
@@ -45,15 +51,18 @@ export default defineEventHandler(async (event) => {
   return {
     todo,
     homeworkTodo,
+    assessmentTodo,
     messages,
     stages: {
       APPLICATION: state("APPLICATION"),
       HOMEWORK: state("HOMEWORK"),
+      ASSESSMENT: state("ASSESSMENT"),
       INTERVIEW: state("INTERVIEW"),
     },
     can: {
       review: can(user, "applications.review"),
       viewAll: can(user, "applications.view_all"),
+      assign: can(user, "applications.assign"),
       stages: can(user, "stages.manage"),
       messages: can(user, "messages.reply"),
       decide: can(user, "applications.decide"),

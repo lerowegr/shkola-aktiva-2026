@@ -11,6 +11,8 @@ import {
   DEFAULT_APPLICATION_CRITERIA,
   DEFAULT_APPLICATION_MARKERS,
   DEFAULT_APPLICATION_QUESTIONS,
+  DEFAULT_ASSESSMENT_CRITERIA,
+  DEFAULT_ASSESSMENT_MARKERS,
   DEFAULT_HOMEWORK_CRITERIA,
   DEFAULT_HOMEWORK_MARKERS,
   DEFAULT_INTERVIEW_CRITERIA,
@@ -63,14 +65,15 @@ const ROLES = [
 const STAGES = [
   { kind: "APPLICATION", title: "Анкета", order: 1 },
   { kind: "HOMEWORK", title: "Домашнее задание", order: 2 },
-  { kind: "INTERVIEW", title: "Собеседование", order: 3 },
-  { kind: "RESULTS", title: "Итоги", order: 4 },
+  { kind: "ASSESSMENT", title: "Центр оценки", order: 3 },
+  { kind: "INTERVIEW", title: "Собеседование", order: 4 },
+  { kind: "RESULTS", title: "Итоги", order: 5 },
 ] as const;
 
 /** Критерии и маркеры этапа — только если у этапа их ещё нет. */
 async function seedEvaluation(
   seasonId: string,
-  stageKind: "APPLICATION" | "HOMEWORK" | "INTERVIEW",
+  stageKind: "APPLICATION" | "HOMEWORK" | "ASSESSMENT" | "INTERVIEW",
   criteria: DefaultCriterion[],
   markers: DefaultMarker[],
 ) {
@@ -82,6 +85,7 @@ async function seedEvaluation(
         order: index + 1,
         title: criterion.title,
         badge: criterion.badge ?? null,
+        description: criterion.description ?? null,
         maxScore: criterion.maxScore,
         levels: criterion.levels,
       })),
@@ -154,6 +158,7 @@ async function main() {
 
   await seedEvaluation(season.id, "APPLICATION", DEFAULT_APPLICATION_CRITERIA, DEFAULT_APPLICATION_MARKERS);
   await seedEvaluation(season.id, "HOMEWORK", DEFAULT_HOMEWORK_CRITERIA, DEFAULT_HOMEWORK_MARKERS);
+  await seedEvaluation(season.id, "ASSESSMENT", DEFAULT_ASSESSMENT_CRITERIA, DEFAULT_ASSESSMENT_MARKERS);
   await seedEvaluation(season.id, "INTERVIEW", DEFAULT_INTERVIEW_CRITERIA, DEFAULT_INTERVIEW_MARKERS);
 
   // Вопросы викторины — только если их ещё нет: правки из админки сид

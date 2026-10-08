@@ -9,7 +9,7 @@ import type { StageState } from "~~/lib/stages";
  */
 export interface LandingStage {
   id: string;
-  kind: "APPLICATION" | "HOMEWORK" | "INTERVIEW" | "RESULTS";
+  kind: "APPLICATION" | "HOMEWORK" | "ASSESSMENT" | "INTERVIEW" | "RESULTS";
   title: string;
   opensAt: string | null;
   closesAt: string | null;

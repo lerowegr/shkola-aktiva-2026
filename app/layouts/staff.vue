@@ -7,6 +7,7 @@ import {
   Lock,
   MessageSquare,
   Mic,
+  UsersRound,
   Settings2,
   UserCheck,
 } from "lucide-vue-next";
@@ -26,7 +27,16 @@ const tabs = computed(() => {
     { to: "/staff", label: "Мои анкеты", icon: UserCheck, show: value.can.review, locked: value.stages.APPLICATION === "upcoming", badge: value.todo },
     { to: "/staff/all", label: "Все анкеты", icon: FileText, show: value.can.viewAll, locked: value.stages.APPLICATION === "upcoming", badge: 0 },
     { to: "/staff/messages", label: "Сообщения", icon: MessageSquare, show: value.can.messages, locked: false, badge: value.messages },
-    { to: "/staff/homework", label: "Центр оценки", icon: ClipboardCheck, show: value.can.review || value.can.viewAll, locked: value.stages.HOMEWORK === "upcoming", badge: value.homeworkTodo },
+    { to: "/staff/homework", label: "Оценка ДЗ", icon: ClipboardCheck, show: value.can.review || value.can.viewAll, locked: value.stages.HOMEWORK === "upcoming", badge: value.homeworkTodo },
+    // Распределяющим вкладка открыта заранее — собрать группы до старта этапа.
+    {
+      to: "/staff/assessment",
+      label: "Центр оценки",
+      icon: UsersRound,
+      show: value.can.review || value.can.assign,
+      locked: value.stages.ASSESSMENT === "upcoming" && !value.can.assign,
+      badge: value.assessmentTodo,
+    },
     // Ведущим собеседования вкладка открыта заранее — нарезать слоты до старта этапа.
     { to: "/staff/interviews", label: "Собеседования", icon: Mic, show: true, locked: value.stages.INTERVIEW === "upcoming" && !value.can.interviews, badge: 0 },
     { to: "/staff/decisions", label: "Решения", icon: Gavel, show: value.can.decide, locked: false, badge: 0 },

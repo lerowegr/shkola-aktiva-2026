@@ -45,11 +45,11 @@ export function initials(person: { lastName: string | null; firstName: string | 
   return ((person.lastName?.[0] ?? "") + (person.firstName?.[0] ?? "")).toUpperCase() || "?";
 }
 
-async function criteriaFor(seasonId: string, stage: EvaluatedStage) {
+export async function criteriaFor(seasonId: string, stage: StageKind) {
   return db.criterion.findMany({
     where: { seasonId, stageKind: stage },
     orderBy: { order: "asc" },
-    select: { id: true, title: true, badge: true, maxScore: true, levels: true },
+    select: { id: true, title: true, badge: true, description: true, maxScore: true, levels: true },
   });
 }
 
@@ -212,6 +212,15 @@ export interface StaffInterview {
   interviewers: string[];
 }
 
+export interface StaffCriterion {
+  id: string;
+  title: string;
+  badge: string | null;
+  description: string | null;
+  maxScore: number;
+  levels: { score: number; text: string }[];
+}
+
 export interface StaffApplication {
   stage: EvaluatedStage;
   /** Запись на собеседование — для этапа собеседования. */
@@ -227,7 +236,7 @@ export interface StaffApplication {
   submittedAt: Date | null;
   profile: { lastName: string | null; firstName: string | null; middleName: string | null; studentId: string | null };
   questions: { id: string; section: string; label: string; answer: AnswerValue | null }[];
-  criteria: { id: string; title: string; badge: string | null; maxScore: number; levels: { score: number; text: string }[] }[];
+  criteria: StaffCriterion[];
   markers: { id: string; title: string; example: string | null }[];
   reviews: StaffReview[];
 }

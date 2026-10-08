@@ -9,7 +9,7 @@ import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-vue-next";
 definePageMeta({ layout: "staff" });
 useHead({ title: "Анкета и оценка" });
 
-type Stage = "APPLICATION" | "HOMEWORK" | "INTERVIEW";
+type Stage = "APPLICATION" | "HOMEWORK" | "ASSESSMENT" | "INTERVIEW";
 type Format = "DIGITS" | "GROUP" | "PHONE" | "VK" | "TELEGRAM";
 interface Editor {
   sections: { id: string; title: string; description: string | null }[];
@@ -26,7 +26,7 @@ interface Editor {
     format: Format | null;
     answers: number;
   }[];
-  criteria: { id: string; stageKind: Stage; title: string; badge: string | null; maxScore: number; levels: { score: number; text: string }[]; scores: number }[];
+  criteria: { id: string; stageKind: Stage; title: string; badge: string | null; description: string | null; maxScore: number; levels: { score: number; text: string }[]; scores: number }[];
   markers: { id: string; stageKind: Stage; title: string; example: string | null; notes: number }[];
 }
 
@@ -36,6 +36,7 @@ const TABS = [
   { key: "form", label: "Анкета" },
   { key: "APPLICATION", label: "Оценка анкеты" },
   { key: "HOMEWORK", label: "Оценка ДЗ" },
+  { key: "ASSESSMENT", label: "Оценка ЦО" },
   { key: "INTERVIEW", label: "Оценка собеседования" },
 ] as const;
 const tab = ref<(typeof TABS)[number]["key"]>("form");

@@ -35,6 +35,11 @@ const email = z
 const list = <T extends z.ZodType>(item: T, max: number) =>
   z.array(item).max(max, { error: `Не больше ${max} пунктов.` });
 
+// Шаг ЦО появился позже остальных: у сохранённых текстов его нет, и без
+// значения по умолчанию весь раздел «Отбор» откатился бы к умолчаниям.
+const ASSESSMENT_STEP =
+  "Очный групповой этап: задания в команде вместе с другими кандидатами. Корпус, аудиторию и время пришлём уведомлением.";
+
 const card = z.object({ title: text(60).min(1, { error: "У пункта нужен заголовок." }), text: text(240) });
 
 /**
@@ -56,6 +61,7 @@ export const SECTIONS = {
     steps: z.object({
       APPLICATION: text(300),
       HOMEWORK: text(300),
+      ASSESSMENT: text(300).default(ASSESSMENT_STEP),
       INTERVIEW: text(300),
       RESULTS: text(300),
     }),
@@ -135,6 +141,7 @@ export const DEFAULT_CONTENT: SiteContent = {
     steps: {
       APPLICATION: "Расскажи о себе. Анкета сохраняется сама: можно заполнять в несколько заходов и отправить, когда всё готово.",
       HOMEWORK: "Прошедшим анкету откроется задание. Ответ сдаётся файлом PDF на сайте или боту в Telegram.",
+      ASSESSMENT: ASSESSMENT_STEP,
       INTERVIEW: "Выбери удобное время в кабинете и приходи знакомиться. Перенести запись можно за 12 часов.",
       RESULTS: "Итоги появятся в кабинете, а уведомление придёт на сайт и в Telegram.",
     },

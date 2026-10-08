@@ -18,7 +18,7 @@ import type { AdminResult } from "./roles";
  * сквозной порядок (order) всегда идёт по разделам: всё, что сортирует
  * вопросы по order (карточка мастера, списки), показывает их по шагам.
  */
-type Evaluated = Extract<StageKind, "APPLICATION" | "HOMEWORK" | "INTERVIEW">;
+type Evaluated = Extract<StageKind, "APPLICATION" | "HOMEWORK" | "ASSESSMENT" | "INTERVIEW">;
 
 export interface QuestionInput {
   id?: string;
@@ -67,6 +67,7 @@ export async function loadEditor(seasonId: string) {
         stageKind: true,
         title: true,
         badge: true,
+        description: true,
         maxScore: true,
         levels: true,
         _count: { select: { scores: true } },
@@ -313,6 +314,7 @@ export interface CriterionInput {
   stage: Evaluated;
   title: string;
   badge: string | null;
+  description?: string | null;
   maxScore: number;
   levels: { score: number; text: string }[];
 }
@@ -329,7 +331,9 @@ export async function saveCriterion(seasonId: string, input: CriterionInput): Pr
     .filter((level) => level.text && Number.isInteger(level.score) && level.score >= 0 && level.score <= input.maxScore)
     .sort((a, b) => a.score - b.score);
 
-  const data = { title, badge: input.badge?.trim() || null, maxScore: input.maxScore, levels };
+  const description = input.description?.trim() || null;
+  if (description && description.length > 1000) return { ok: false, message: "Описание — до 1000 знаков." };
+  const data = { title, badge: input.badge?.trim() || null, description, maxScore: input.maxScore, levels };
 
   if (input.id) {
     const top = await db.reviewScore.aggregate({ where: { criterionId: input.id }, _max: { score: true } });

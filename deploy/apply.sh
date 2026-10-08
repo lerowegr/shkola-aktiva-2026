@@ -42,11 +42,11 @@ docker logout ghcr.io >/dev/null 2>&1 || true
 say "База и миграции"
 dc up -d db
 dc run --rm migrate
-if [ ! -f .seeded ]; then
-  say "Первый запуск: роли, сезон, этапы, анкета, владелец"
-  dc run --rm migrate npx tsx prisma/seed.ts
-  touch .seeded
-fi
+# Сид на каждом выкате: он только досоздаёт недостающее (новый этап, его
+# стартовые критерии) и не трогает правки из админки.
+say "Сид: роли, этапы, стартовые критерии"
+dc run --rm migrate npx tsx prisma/seed.ts
+touch .seeded
 
 say "Запускаю сайт, бота и копии"
 dc up -d --remove-orphans app bot backup

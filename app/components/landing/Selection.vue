@@ -13,6 +13,7 @@ const props = defineProps<{ selection: SiteContent["selection"]; stages: Landing
 const LOOK: Record<LandingStage["kind"], { tone: string; object: string }> = {
   APPLICATION: { tone: "bg-brand-green-soft", object: "cursor-pixel" },
   HOMEWORK: { tone: "bg-brand-yellow-soft", object: "star-pixel" },
+  ASSESSMENT: { tone: "bg-brand-orange-soft", object: "flame-pixel" },
   INTERVIEW: { tone: "bg-brand-purple-soft", object: "smile-pixel" },
   RESULTS: { tone: "bg-brand-blue-soft", object: "heart-pixel" },
 };

@@ -23,6 +23,7 @@ enum UserStatus {
 enum StageKind {
   APPLICATION // анкета
   HOMEWORK // домашнее задание
+  ASSESSMENT // центр оценки — очный групповой этап
   INTERVIEW // собеседование
   RESULTS // объявление итогов
 }
@@ -118,12 +119,12 @@ model User {
   /// Публичный ник для рейтинга. Показывает displayName() из lib/profile.
   nickname          String?
   /// Ник строчными для уникальности без учёта регистра.
-  nicknameNorm      String?  @unique
+  nicknameNorm      String?   @unique
   nicknameChangedAt DateTime?
   /// Ключ аватарки в UPLOADS_DIR/avatars. Нет ключа — инициалы.
-  avatarKey String?
+  avatarKey         String?
   /// Порядковый номер регистрации: зерно обезличенного кода, наружу не показывается.
-  seq Int @unique @default(autoincrement())
+  seq               Int       @unique @default(autoincrement())
 
   status UserStatus @default(ACTIVE)
 
@@ -152,6 +153,7 @@ model User {
   messages          Message[]
   telegramLinkCodes TelegramLinkCode[]
   uploads           Upload[]
+  assessmentGroups  AssessmentExpert[]
   decisionsMade     StageDecision[]          @relation("DecisionAuthor")
   auditLogs         AuditLog[]
   invites           StaffInvite[]            @relation("InviteFor")
@@ -303,17 +305,18 @@ model Season {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stages       Stage[]
-  threads      MessageThread[]
-  slots        InterviewSlot[]
-  questions    FormQuestion[]
-  sections     FormSection[]
-  applications Application[]
-  criteria     Criterion[]
-  markers      Marker[]
-  quizQuestions QuizQuestion[]
-  siteContent  SiteContent?
-  siteImages   SiteImage[]
+  stages           Stage[]
+  threads          MessageThread[]
+  slots            InterviewSlot[]
+  questions        FormQuestion[]
+  sections         FormSection[]
+  applications     Application[]
+  criteria         Criterion[]
+  markers          Marker[]
+  quizQuestions    QuizQuestion[]
+  assessmentGroups AssessmentGroup[]
+  siteContent      SiteContent?
+  siteImages       SiteImage[]
 
   @@map("seasons")
 }
@@ -352,7 +355,7 @@ model Stage {
 /// Вопрос анкеты. Привязан к сезону и этапу: на следующий год — свои
 /// вопросы, а домашнее задание на этапе HOMEWORK — тоже вопросы.
 model FormQuestion {
-  id        String       @id @default(cuid())
+  id        String          @id @default(cuid())
   seasonId  String
   stageKind StageKind
   order     Int
@@ -361,7 +364,7 @@ model FormQuestion {
   type      QuestionType
   label     String
   help      String?
-  required  Boolean      @default(true)
+  required  Boolean         @default(true)
   /// Варианты для выбора. Для остальных типов пусто.
   options   String[]
   maxLength Int?
@@ -427,6 +430,7 @@ model Application {
   decisions   StageDecision[]
   submissions Submission[]
   bookings    InterviewBooking[]
+  assessment  AssessmentMember?
 
   @@unique([seasonId, userId])
   @@index([seasonId, status])
@@ -454,16 +458,18 @@ model Answer {
 
 /// Критерий оценки: баллы от 0 до maxScore и что значит каждый балл.
 model Criterion {
-  id        String    @id @default(cuid())
-  seasonId  String
-  stageKind StageKind
-  order     Int
-  title     String
+  id          String    @id @default(cuid())
+  seasonId    String
+  stageKind   StageKind
+  order       Int
+  title       String
   /// Пометка рядом с названием: «Сквозная».
-  badge     String?
-  maxScore  Int
+  badge       String?
+  /// Что это за характеристика — эксперт видит при оценке.
+  description String?
+  maxScore    Int
   /// Расшифровки баллов: [{ score, text }]. Не у каждого балла она есть.
-  levels    Json
+  levels      Json
 
   season Season        @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   scores ReviewScore[]
@@ -930,4 +936,59 @@ model Settings {
   updatedAt DateTime @updatedAt
 
   @@map("settings")
+}
+
+// ---------------------------------------------------------------------------
+// Центр оценки
+// ---------------------------------------------------------------------------
+
+/// Группа центра оценки: где и когда, кто оценивает, кто приходит.
+model AssessmentGroup {
+  id         String    @id @default(cuid())
+  seasonId   String
+  title      String
+  building   String?
+  room       String?
+  startsAt   DateTime?
+  note       String?
+  /// Снимок места из последней рассылки — его и видит кандидат:
+  /// правка без рассылки не должна молча менять ему аудиторию.
+  notified   Json?
+  notifiedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  season  Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  members AssessmentMember[]
+  experts AssessmentExpert[]
+
+  @@index([seasonId])
+  @@map("assessment_groups")
+}
+
+/// Кандидат в группе. Одна группа на кандидата.
+model AssessmentMember {
+  id            String   @id @default(cuid())
+  groupId       String
+  applicationId String   @unique
+  addedAt       DateTime @default(now())
+
+  group       AssessmentGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  application Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+  @@map("assessment_members")
+}
+
+/// Эксперт группы: оценивает всех её кандидатов.
+model AssessmentExpert {
+  groupId String
+  userId  String
+
+  group AssessmentGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@map("assessment_experts")
 }

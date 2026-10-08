@@ -3,14 +3,19 @@ import { CircleCheck, CloudOff, Eye, LoaderCircle, UserCheck } from "lucide-vue-
 
 import type { ActionResult } from "~/composables/useAction";
 import { reviewSummary } from "~~/lib/applications/review";
-import type { StaffApplication, StaffReview } from "~~/lib/applications/staff";
+import type { StaffCriterion, StaffReview } from "~~/lib/applications/staff";
 
 /**
  * Панель оценки. Своя оценка — кнопки баллов, маркеры и комментарий,
  * всё сохраняется само. Чужая — то же самое только для чтения.
  */
 const props = defineProps<{
-  card: StaffApplication;
+  /** Что оцениваем: критерии и маркеры этапа. Анкета, ДЗ, собеседование, ЦО. */
+  card: {
+    stage: "APPLICATION" | "HOMEWORK" | "ASSESSMENT" | "INTERVIEW";
+    criteria: StaffCriterion[];
+    markers: { id: string; title: string; example: string | null }[];
+  };
   review: StaffReview;
   canEdit: boolean;
 }>();
@@ -79,6 +84,13 @@ function setText(field: string, value: string) {
   );
 }
 
+const MINE = {
+  APPLICATION: "Анкета назначена вам",
+  HOMEWORK: "Работа назначена вам",
+  ASSESSMENT: "Ваша оценка",
+  INTERVIEW: "Собеседование ваше",
+} as const;
+
 function when(date: Date) {
   return mskFormat(date, "d MMM, HH:mm");
 }
@@ -91,7 +103,7 @@ function when(date: Date) {
         <h2 class="font-display text-xl">Оценка</h2>
         <p v-if="review.isMine" class="text-ok flex items-center gap-1.5 text-sm">
           <UserCheck class="size-4" aria-hidden="true" />
-          {{ card.stage === "HOMEWORK" ? "Работа назначена вам" : card.stage === "INTERVIEW" ? "Собеседование ваше" : "Анкета назначена вам" }}
+          {{ MINE[card.stage] }}
         </p>
         <p v-else class="text-ink-soft flex items-center gap-1.5 text-sm">
           <Eye class="size-4" aria-hidden="true" /> Проверяет {{ review.reviewer.name }} — только просмотр
@@ -112,6 +124,7 @@ function when(date: Date) {
             {{ criterion.badge }}
           </span>
         </div>
+        <p v-if="criterion.description" class="text-ink-soft -mt-1 text-xs leading-relaxed">{{ criterion.description }}</p>
 
         <div
           role="radiogroup"
@@ -146,7 +159,7 @@ function when(date: Date) {
             :class="scores[criterion.id] === level.score ? 'bg-accent/10 text-ink' : 'text-ink-soft'"
           >
             <b class="text-accent w-3 shrink-0">{{ level.score }}</b>
-            <span>{{ level.text }}</span>
+            <span class="whitespace-pre-line">{{ level.text }}</span>
           </li>
         </ul>
       </div>
@@ -155,17 +168,17 @@ function when(date: Date) {
       <div v-if="card.markers.length" class="border-line flex flex-col gap-4 border-t pt-5">
         <p class="text-ink-soft text-xs font-semibold tracking-wide uppercase">Маркеры</p>
         <div v-for="marker in card.markers" :key="marker.id" class="flex flex-col gap-1.5">
-          <label :for="`m-${marker.id}`" class="text-sm font-semibold">{{ marker.title }}</label>
+          <label :for="`m-${review.id}-${marker.id}`" class="text-sm font-semibold">{{ marker.title }}</label>
           <p v-if="marker.example" class="text-ink-soft text-xs">{{ marker.example }}</p>
           <p v-if="!canEdit" class="text-sm" :class="markers[marker.id] ? '' : 'text-ink-soft'">
             {{ markers[marker.id] || "—" }}
           </p>
           <input
             v-else
-            :id="`m-${marker.id}`"
+            :id="`m-${review.id}-${marker.id}`"
             :value="markers[marker.id] ?? ''"
             maxlength="2000"
-            placeholder="Что заметили в ответах"
+            :placeholder="card.stage === 'ASSESSMENT' ? 'Что заметили на заданиях' : 'Что заметили в ответах'"
             class="border-line bg-paper focus:border-accent focus:ring-accent/20 min-h-11 rounded-xl border px-3 text-sm outline-none focus:ring-4"
             @input="setText(marker.id, ($event.target as HTMLInputElement).value)"
           >
@@ -177,17 +190,21 @@ function when(date: Date) {
 
       <!-- Комментарий -->
       <div class="border-line flex flex-col gap-1.5 border-t pt-5">
-        <label for="review-comment" class="font-semibold">Комментарий</label>
+        <label :for="`c-${review.id}`" class="font-semibold">Комментарий</label>
         <p v-if="!canEdit" class="text-sm whitespace-pre-line" :class="comment ? '' : 'text-ink-soft'">
           {{ comment || "—" }}
         </p>
         <textarea
           v-else
-          id="review-comment"
+          :id="`c-${review.id}`"
           :value="comment"
           rows="4"
           maxlength="2000"
-          placeholder="Что понравилось, что насторожило, на что посмотреть на собеседовании"
+          :placeholder="
+            card.stage === 'ASSESSMENT'
+              ? 'Как проявил себя в группе: роль, сильные стороны, что насторожило'
+              : 'Что понравилось, что насторожило, на что посмотреть на собеседовании'
+          "
           class="border-line bg-paper focus:border-accent focus:ring-accent/20 rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-4"
           @input="setText('comment', ($event.target as HTMLTextAreaElement).value)"
         />

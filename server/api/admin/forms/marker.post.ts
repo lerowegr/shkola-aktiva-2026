@@ -6,7 +6,7 @@ import { requirePermission } from "~~/server/utils/session";
 
 const schema = z.object({
   id: z.string().min(1).optional(),
-  stage: z.enum(["APPLICATION", "HOMEWORK", "INTERVIEW"]),
+  stage: z.enum(["APPLICATION", "HOMEWORK", "ASSESSMENT", "INTERVIEW"]),
   title: z.string().max(100),
   example: z.string().max(500).nullable(),
 });

@@ -6,11 +6,12 @@ import { requirePermission } from "~~/server/utils/session";
 
 const schema = z.object({
   id: z.string().min(1).optional(),
-  stage: z.enum(["APPLICATION", "HOMEWORK", "INTERVIEW"]),
+  stage: z.enum(["APPLICATION", "HOMEWORK", "ASSESSMENT", "INTERVIEW"]),
   title: z.string().max(100),
   badge: z.string().max(40).nullable(),
+  description: z.string().max(1000).nullable().default(null),
   maxScore: z.number().int(),
-  levels: z.array(z.object({ score: z.number().int(), text: z.string().max(500) })).max(11),
+  levels: z.array(z.object({ score: z.number().int(), text: z.string().max(1500) })).max(11),
 });
 
 export default defineAction(schema, async ({ body, event }) => {

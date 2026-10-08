@@ -24,6 +24,7 @@ export async function notifySubmitted(applicationId: string, userId: string) {
 const ASSIGNED_TITLE = {
   APPLICATION: "Вам назначена анкета",
   HOMEWORK: "Вам назначено домашнее задание",
+  ASSESSMENT: "Вам назначена группа центра оценки",
   INTERVIEW: "Вам назначено собеседование",
   RESULTS: "Вам назначена работа",
 } as const;

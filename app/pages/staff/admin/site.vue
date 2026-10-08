@@ -29,6 +29,7 @@ const section = ref<SectionKey>("hero");
 const STEP_LABELS = {
   APPLICATION: "Анкета",
   HOMEWORK: "Домашнее задание",
+  ASSESSMENT: "Центр оценки",
   INTERVIEW: "Собеседование",
   RESULTS: "Итоги",
 } as const;

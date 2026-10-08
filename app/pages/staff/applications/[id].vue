@@ -33,7 +33,7 @@ const review = computed(() => {
 });
 
 const back = computed(() => {
-  if (stage.value === "HOMEWORK") return { to: "/staff/homework", label: "Центр оценки" };
+  if (stage.value === "HOMEWORK") return { to: "/staff/homework", label: "Оценка ДЗ" };
   if (stage.value === "INTERVIEW") return { to: "/staff/interviews", label: "Собеседования" };
   return data.value?.scope === "all" ? { to: "/staff/all", label: "Все анкеты" } : { to: "/staff", label: "Мои анкеты" };
 });

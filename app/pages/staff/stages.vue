@@ -140,11 +140,21 @@ const MODES = [
           v-model="forms[stage.id]!.description"
           rows="4"
           maxlength="5000"
-          :placeholder="stage.kind === 'HOMEWORK' ? 'Что сделать, в каком виде сдать, на что обратить внимание' : 'Необязательно'"
+          :placeholder="
+            stage.kind === 'HOMEWORK'
+              ? 'Что сделать, в каком виде сдать, на что обратить внимание'
+              : stage.kind === 'ASSESSMENT'
+                ? 'Что за этап: очный, групповой, сколько длится, что взять с собой'
+                : 'Необязательно'
+          "
           class="border-line bg-paper rounded-2xl border px-4 py-3 text-base font-normal"
         />
         <span v-if="stage.kind === 'HOMEWORK'" class="text-ink-soft text-xs font-normal">
           Кандидаты видят задание только после того, как прошли этап анкеты.
+        </span>
+        <span v-else-if="stage.kind === 'ASSESSMENT'" class="text-ink-soft text-xs font-normal">
+          Кандидаты видят это в кабинете. Корпус, аудитория и время у каждой группы свои — их задают и рассылают в
+          «Центре оценки».
         </span>
       </label>
 
