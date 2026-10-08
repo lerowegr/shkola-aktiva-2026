@@ -36,6 +36,15 @@ enum QuestionType {
   URL // ссылка
 }
 
+/// Формат строки: проверка и приведение ответа к единому виду.
+enum QuestionFormat {
+  DIGITS // только цифры
+  GROUP // номер группы: ТЦБМ23-2
+  PHONE // +7 (XXX) XXX-XX-XX
+  VK // https://vk.ru/…
+  TELEGRAM // @ник
+}
+
 enum ApplicationStatus {
   DRAFT // заполняется, кандидат может править
   SUBMITTED // отправлена — дальше только чтение
@@ -298,6 +307,7 @@ model Season {
   threads      MessageThread[]
   slots        InterviewSlot[]
   questions    FormQuestion[]
+  sections     FormSection[]
   applications Application[]
   criteria     Criterion[]
   markers      Marker[]
@@ -355,6 +365,10 @@ model FormQuestion {
   /// Варианты для выбора. Для остальных типов пусто.
   options   String[]
   maxLength Int?
+  /// Не короче — для развёрнутых ответов («подробно, от 200 знаков»).
+  minLength Int?
+  /// Формат строки: цифры, группа, телефон, ВК, Telegram.
+  format    QuestionFormat?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -364,6 +378,27 @@ model FormQuestion {
 
   @@index([seasonId, stageKind, order])
   @@map("form_questions")
+}
+
+/// Раздел анкеты — шаг, как в Google Forms: название, описание, порядок.
+/// Вопросы ссылаются на раздел по названию (FormQuestion.section);
+/// переименование меняет его у вопросов в той же транзакции.
+model FormSection {
+  id          String    @id @default(cuid())
+  seasonId    String
+  stageKind   StageKind
+  order       Int
+  title       String
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, stageKind, title])
+  @@index([seasonId, stageKind, order])
+  @@map("form_sections")
 }
 
 /// Анкета кандидата. Одна на человека в сезоне.

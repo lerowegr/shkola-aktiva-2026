@@ -31,3 +31,6 @@ npm-debug.log*
 # снимок сервера перед деплоем (адреса, порты)
 /deploy/server-info.txt
 /.preview-accounts.server.txt
+
+# рабочие таблицы организаторов
+*.xlsx

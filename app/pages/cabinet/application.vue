@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { CheckCircle2, CloudCheck, CloudOff, LoaderCircle, Send } from "lucide-vue-next";
+import { CheckCircle2 } from "lucide-vue-next";
 
 import type { ActionResult } from "~/composables/useAction";
 import type { CandidateApplication } from "~~/lib/applications/candidate";
-import { isEmptyAnswer, type AnswerValue } from "~~/lib/applications/form";
+import type { AnswerValue } from "~~/lib/applications/form";
 
 useHead({ title: "Анкета" });
 
@@ -26,16 +26,9 @@ watch(
 
 const editable = computed(() => app.value?.editable ?? false);
 const autosave = useAutosave();
-const errors = ref<Record<string, string>>({});
-
-function clearError(field: string) {
-  if (!(field in errors.value)) return;
-  errors.value = Object.fromEntries(Object.entries(errors.value).filter(([key]) => key !== field));
-}
 
 function saveAnswer(questionId: string, value: AnswerValue | undefined) {
   answers.value[questionId] = value ?? "";
-  clearError(questionId);
   autosave.schedule(`q:${questionId}`, () =>
     $fetch<ActionResult>("/api/cabinet/application/answer", {
       method: "POST",
@@ -48,7 +41,6 @@ function saveAnswer(questionId: string, value: AnswerValue | undefined) {
 type ProfileField = keyof typeof profile;
 function saveProfile(field: ProfileField, value: string) {
   profile[field] = value;
-  clearError(field);
   autosave.schedule(`p:${field}`, () =>
     $fetch<ActionResult>("/api/cabinet/application/profile", {
       method: "POST",
@@ -58,53 +50,28 @@ function saveProfile(field: ProfileField, value: string) {
   );
 }
 
-// Разделы в порядке вопросов, сквозная нумерация.
+// Только для чтения (отправлена или приём закрыт): все разделы подряд,
+// сквозная нумерация.
 const sections = computed(() => {
-  const list: { title: string; items: { number: number; question: CandidateApplication["questions"][number] }[] }[] = [];
-  (app.value?.questions ?? []).forEach((question, index) => {
-    let section = list.at(-1);
-    if (!section || section.title !== question.section) {
-      section = { title: question.section, items: [] };
-      list.push(section);
-    }
-    section.items.push({ number: index + 1, question });
-  });
-  return list;
+  let number = 0;
+  return (app.value?.sections ?? []).map((section) => ({
+    ...section,
+    items: (app.value?.questions ?? [])
+      .filter((question) => question.section === section.title)
+      .map((question) => ({ number: ++number, question })),
+  }));
 });
 
-const required = computed(() => (app.value?.questions ?? []).filter((question) => question.required));
-const filled = computed(
-  () =>
-    required.value.filter((question) => !isEmptyAnswer(answers.value[question.id])).length +
-    (profile.lastName.trim() ? 1 : 0) +
-    (profile.firstName.trim() ? 1 : 0),
-);
-const total = computed(() => required.value.length + 2);
-
 // --- Отправка ---------------------------------------------------------------
-const confirming = ref(false);
 const submit = useAction("/api/cabinet/application/submit");
 
 async function send() {
-  await autosave.flush();
   const result = await submit.submit({});
-
   if (result.ok) {
-    confirming.value = false;
     await refresh();
     window.scrollTo({ top: 0, behavior: "smooth" });
-    return;
   }
-
-  confirming.value = false;
-  const problems = (result.problems as { field: string; message: string }[] | undefined) ?? [];
-  errors.value = Object.fromEntries(problems.map((problem) => [problem.field, problem.message]));
-
-  const first = problems[0];
-  if (first) {
-    const target = document.getElementById(first.field in profile ? `p-${first.field}` : `q-${first.field}`);
-    target?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
+  return result as { ok: boolean; message?: string; problems?: { field: string; message: string }[] };
 }
 
 function day(value: string | Date | null) {
@@ -113,7 +80,7 @@ function day(value: string | Date | null) {
 </script>
 
 <template>
-  <div class="pb-32">
+  <div class="pb-16">
     <AppHeader />
 
     <main class="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
@@ -154,104 +121,46 @@ function day(value: string | Date | null) {
           Отправить нужно до {{ day(app.stage.closesAt) }}. Ответы сохраняются сами — можно вернуться позже.
         </p>
 
-        <!-- ФИО и студбилет -->
-        <section class="flex flex-col gap-3">
-          <h2 class="font-display text-lg">Кто ты</h2>
-          <div class="bg-card border-line grid gap-4 rounded-3xl border p-4 sm:grid-cols-2 sm:p-5">
-            <div
-              v-for="field in [
-                { key: 'lastName', label: 'Фамилия', auto: 'family-name' },
-                { key: 'firstName', label: 'Имя', auto: 'given-name' },
-                { key: 'middleName', label: 'Отчество — необязательно', auto: 'additional-name' },
-                { key: 'studentId', label: 'Номер студенческого — необязательно', auto: 'off' },
-              ] as const"
-              :id="`p-${field.key}`"
-              :key="field.key"
-            >
-              <p v-if="!editable" class="flex flex-col">
-                <span class="text-ink-soft text-sm">{{ field.label.replace(' — необязательно', '') }}</span>
-                <span>{{ profile[field.key] || "—" }}</span>
-              </p>
-              <UiInput
-                v-else
-                :model-value="profile[field.key]"
-                :label="field.label"
-                :autocomplete="field.auto"
-                :hint="errors[field.key]"
-                :invalid="!!errors[field.key]"
-                @update:model-value="saveProfile(field.key, $event)"
-              />
-            </div>
-          </div>
-        </section>
+        <FormWizard
+          v-if="editable"
+          :questions="app.questions"
+          :sections="app.sections"
+          :answers="answers"
+          :profile="profile"
+          :save-state="autosave.state.value"
+          :save-error="autosave.error.value"
+          :sending="submit.pending.value"
+          :flush="autosave.flush"
+          :send="send"
+          @answer="saveAnswer"
+          @profile="saveProfile"
+        />
 
-        <section v-for="section in sections" :key="section.title" class="flex flex-col gap-3">
-          <h2 class="font-display text-lg">{{ section.title }}</h2>
-          <FormQuestion
-            v-for="item in section.items"
-            :key="item.question.id"
-            :number="item.number"
-            :question="item.question"
-            :readonly="!editable"
-            :error="errors[item.question.id]"
-            :model-value="answers[item.question.id]"
-            @update:model-value="saveAnswer(item.question.id, $event)"
-          />
-        </section>
+        <template v-else>
+          <section class="bg-card border-line grid gap-3 rounded-3xl border p-4 sm:grid-cols-2 sm:p-5">
+            <p class="flex flex-col">
+              <span class="text-ink-soft text-sm">ФИО</span>
+              <span>{{ [profile.lastName, profile.firstName, profile.middleName].filter(Boolean).join(" ") || "—" }}</span>
+            </p>
+            <p class="flex flex-col">
+              <span class="text-ink-soft text-sm">Студенческий билет</span>
+              <span>{{ profile.studentId || "—" }}</span>
+            </p>
+          </section>
+          <section v-for="section in sections" :key="section.title" class="flex flex-col gap-3">
+            <h2 class="font-display text-lg">{{ section.title }}</h2>
+            <FormQuestion
+              v-for="item in section.items"
+              :key="item.question.id"
+              :number="item.number"
+              :question="item.question"
+              readonly
+              :model-value="answers[item.question.id]"
+            />
+          </section>
+        </template>
       </template>
     </main>
 
-    <!-- Нижняя панель: прогресс, автосохранение, отправка -->
-    <div
-      v-if="app && editable"
-      class="border-line bg-card/95 fixed inset-x-0 bottom-0 border-t px-4 py-3 backdrop-blur"
-      style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))"
-    >
-      <div class="mx-auto flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-center">
-        <div class="flex flex-1 flex-col gap-1.5">
-          <div class="flex items-center justify-between gap-3 text-sm">
-            <span>Заполнено {{ filled }} из {{ total }}</span>
-            <span class="text-ink-soft flex items-center gap-1.5" aria-live="polite">
-              <template v-if="autosave.state.value === 'saving'">
-                <LoaderCircle class="size-4 animate-spin" aria-hidden="true" /> Сохраняем…
-              </template>
-              <template v-else-if="autosave.state.value === 'error'">
-                <CloudOff class="text-danger size-4" aria-hidden="true" />
-                <span class="text-danger">{{ autosave.error.value }}</span>
-              </template>
-              <template v-else-if="autosave.state.value === 'saved'">
-                <CloudCheck class="text-ok size-4" aria-hidden="true" /> Сохранено
-              </template>
-            </span>
-          </div>
-          <div class="bg-paper h-2 overflow-hidden rounded-full">
-            <div
-              class="bg-accent h-full rounded-full transition-all duration-500"
-              :style="{ width: `${Math.round((filled / total) * 100)}%` }"
-            />
-          </div>
-        </div>
-
-        <div class="flex gap-2 sm:w-72">
-          <template v-if="confirming">
-            <UiButton variant="ghost" @click="confirming = false">Ещё проверю</UiButton>
-            <UiButton :pending="submit.pending.value" @click="send">Отправить</UiButton>
-          </template>
-          <UiButton v-else @click="confirming = true">
-            <Send class="size-5" aria-hidden="true" />
-            Отправить анкету
-          </UiButton>
-        </div>
-      </div>
-      <p v-if="confirming" class="text-ink-soft mx-auto mt-2 max-w-3xl text-sm">
-        После отправки ответы изменить нельзя.
-      </p>
-      <p
-        v-else-if="submit.result.value && !submit.result.value.ok"
-        class="text-danger mx-auto mt-2 max-w-3xl text-sm"
-      >
-        {{ submit.result.value.message }}
-      </p>
-    </div>
   </div>
 </template>

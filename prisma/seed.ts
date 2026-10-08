@@ -139,7 +139,16 @@ async function main() {
         required: question.required ?? true,
         options: question.options ?? [],
         maxLength: question.maxLength ?? null,
+        minLength: question.type === "LONG_TEXT" && (question.required ?? true) ? 200 : null,
       })),
+    });
+  }
+  // Разделы-шаги анкеты — из названий у вопросов, в порядке первого вопроса.
+  if ((await db.formSection.count({ where: { seasonId: season.id, stageKind: "APPLICATION" } })) === 0) {
+    const titles = [...new Set(DEFAULT_APPLICATION_QUESTIONS.map((question) => question.section))];
+    await db.formSection.createMany({
+      data: titles.map((title, index) => ({ seasonId: season.id, stageKind: "APPLICATION" as const, order: index + 1, title })),
+      skipDuplicates: true,
     });
   }
 

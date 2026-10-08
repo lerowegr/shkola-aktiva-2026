@@ -10,7 +10,9 @@ definePageMeta({ layout: "staff" });
 useHead({ title: "Анкета и оценка" });
 
 type Stage = "APPLICATION" | "HOMEWORK" | "INTERVIEW";
+type Format = "DIGITS" | "GROUP" | "PHONE" | "VK" | "TELEGRAM";
 interface Editor {
+  sections: { id: string; title: string; description: string | null }[];
   questions: {
     id: string;
     section: string;
@@ -20,6 +22,8 @@ interface Editor {
     required: boolean;
     options: string[];
     maxLength: number | null;
+    minLength: number | null;
+    format: Format | null;
     answers: number;
   }[];
   criteria: { id: string; stageKind: Stage; title: string; badge: string | null; maxScore: number; levels: { score: number; text: string }[]; scores: number }[];
@@ -38,7 +42,26 @@ const tab = ref<(typeof TABS)[number]["key"]>("form");
 const editing = ref<string | null>(null);
 const problem = ref<string | null>(null);
 
-const sections = computed(() => [...new Set((data.value?.questions ?? []).map((question) => question.section))]);
+const sections = computed(() => (data.value?.sections ?? []).map((section) => section.title));
+
+// Вопросы по разделам, сквозная нумерация — как у кандидата.
+const groups = computed(() => {
+  const questions = data.value?.questions ?? [];
+  let number = 0;
+  const list = (data.value?.sections ?? []).map((section) => ({
+    section,
+    items: questions.filter((question) => question.section === section.title).map((question) => ({ question, number: ++number })),
+  }));
+  const orphans = questions.filter((question) => !sections.value.includes(question.section));
+  if (orphans.length) {
+    list.push({
+      section: { id: "", title: "Без раздела", description: null },
+      items: orphans.map((question) => ({ question, number: ++number })),
+    });
+  }
+  return list;
+});
+const FORMAT = { DIGITS: "цифры", GROUP: "группа", PHONE: "телефон", VK: "ВК", TELEGRAM: "Telegram" } as const;
 const criteria = computed(() => (data.value?.criteria ?? []).filter((item) => item.stageKind === tab.value));
 const markers = computed(() => (data.value?.markers ?? []).filter((item) => item.stageKind === tab.value));
 
@@ -104,32 +127,66 @@ watch(tab, () => {
 
     <UiNotice :message="problem" />
 
-    <!-- Анкета -->
-    <section v-if="tab === 'form'" class="flex flex-col gap-3">
-      <ol class="bg-card border-line overflow-hidden rounded-3xl border">
-        <li v-for="(question, index) in data?.questions ?? []" :key="question.id" class="border-line border-t first:border-t-0">
-          <div class="flex items-start gap-3 px-4 py-3">
-            <span class="bg-paper text-ink-soft grid size-7 shrink-0 place-items-center rounded-lg text-xs font-semibold">{{ index + 1 }}</span>
+    <!-- Анкета: разделы-шаги и их вопросы -->
+    <section v-if="tab === 'form'" class="flex flex-col gap-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <p class="text-ink-soft text-sm">Каждый раздел — отдельный шаг анкеты: кандидат заполняет его и жмёт «Далее».</p>
+        <NuxtLink to="/staff/admin/forms-preview" class="text-accent text-sm font-medium hover:underline">
+          Посмотреть как кандидат →
+        </NuxtLink>
+      </div>
+
+      <article v-for="(group, groupIndex) in groups" :key="group.section.id || 'orphans'" class="bg-card border-line overflow-hidden rounded-3xl border">
+        <header class="bg-paper/60 border-line border-b px-4 py-3">
+          <AdminSectionForm v-if="editing === `s:${group.section.id}`" :section="group.section" @saved="saved" @cancel="editing = null" />
+          <div v-else class="flex items-start gap-3">
             <div class="min-w-0 flex-1">
-              <p class="text-sm font-medium">{{ question.label }}</p>
-              <p class="text-ink-soft text-xs">
-                {{ question.section }} · {{ TYPE[question.type] }}{{ question.required ? "" : " · необязательный" }} · ответов: {{ question.answers }}
-              </p>
+              <p class="text-ink-soft text-xs font-medium">Шаг {{ groupIndex + 1 }}</p>
+              <h2 class="font-display text-lg">{{ group.section.title }}</h2>
+              <p v-if="group.section.description" class="text-ink-soft mt-1 line-clamp-2 text-sm whitespace-pre-line">{{ group.section.description }}</p>
+              <p v-else-if="group.section.id" class="text-ink-soft mt-1 text-sm">Без описания</p>
             </div>
-            <div class="flex shrink-0 gap-0.5">
-              <button type="button" class="hover:bg-paper grid size-8 place-items-center rounded-lg disabled:opacity-30" :disabled="index === 0" :aria-label="`Выше: ${question.label}`" @click="move('question', question.id, -1)"><ArrowUp class="size-4" /></button>
-              <button type="button" class="hover:bg-paper grid size-8 place-items-center rounded-lg disabled:opacity-30" :disabled="index === (data?.questions.length ?? 0) - 1" :aria-label="`Ниже: ${question.label}`" @click="move('question', question.id, 1)"><ArrowDown class="size-4" /></button>
-              <button type="button" class="hover:bg-paper grid size-8 place-items-center rounded-lg" :aria-label="`Изменить: ${question.label}`" @click="editing = `q:${question.id}`"><Pencil class="size-4" /></button>
-              <button type="button" class="hover:text-danger grid size-8 place-items-center rounded-lg disabled:opacity-30" :disabled="question.answers > 0" :aria-label="`Удалить: ${question.label}`" @click="remove('question', question.id)"><Trash2 class="size-4" /></button>
+            <div v-if="group.section.id" class="flex shrink-0 gap-0.5">
+              <button type="button" class="hover:bg-card grid size-8 place-items-center rounded-lg disabled:opacity-30" :disabled="groupIndex === 0" :aria-label="`Раздел выше: ${group.section.title}`" @click="move('section', group.section.id, -1)"><ArrowUp class="size-4" /></button>
+              <button type="button" class="hover:bg-card grid size-8 place-items-center rounded-lg disabled:opacity-30" :disabled="groupIndex === (data?.sections.length ?? 0) - 1" :aria-label="`Раздел ниже: ${group.section.title}`" @click="move('section', group.section.id, 1)"><ArrowDown class="size-4" /></button>
+              <button type="button" class="hover:bg-card grid size-8 place-items-center rounded-lg" :aria-label="`Изменить раздел: ${group.section.title}`" @click="editing = `s:${group.section.id}`"><Pencil class="size-4" /></button>
+              <button type="button" class="hover:text-danger grid size-8 place-items-center rounded-lg disabled:opacity-30" :disabled="group.items.length > 0" :aria-label="`Удалить раздел: ${group.section.title}`" @click="remove('section', group.section.id)"><Trash2 class="size-4" /></button>
             </div>
           </div>
-          <div v-if="editing === `q:${question.id}`" class="px-4 pb-4">
-            <AdminQuestionForm :question="question" :sections="sections" @saved="saved" @cancel="editing = null" />
-          </div>
-        </li>
-      </ol>
-      <AdminQuestionForm v-if="editing === 'q:new'" :question="null" :sections="sections" @saved="saved" @cancel="editing = null" />
-      <UiButton v-else variant="ghost" @click="editing = 'q:new'"><Plus class="size-4" aria-hidden="true" /> Добавить вопрос</UiButton>
+        </header>
+
+        <ol>
+          <li v-for="(item, index) in group.items" :key="item.question.id" class="border-line border-t first:border-t-0">
+            <div class="flex items-start gap-3 px-4 py-3">
+              <span class="bg-paper text-ink-soft grid size-7 shrink-0 place-items-center rounded-lg text-xs font-semibold">{{ item.number }}</span>
+              <div class="min-w-0 flex-1">
+                <p class="text-sm font-medium">{{ item.question.label }}</p>
+                <p class="text-ink-soft text-xs">
+                  {{ TYPE[item.question.type] }}{{ item.question.format ? ` · ${FORMAT[item.question.format]}` : "" }}{{ item.question.minLength ? ` · от ${item.question.minLength} знаков` : "" }}{{ item.question.required ? "" : " · необязательный" }} · ответов: {{ item.question.answers }}
+                </p>
+              </div>
+              <div class="flex shrink-0 gap-0.5">
+                <button type="button" class="hover:bg-paper grid size-8 place-items-center rounded-lg disabled:opacity-30" :disabled="index === 0" :aria-label="`Выше: ${item.question.label}`" @click="move('question', item.question.id, -1)"><ArrowUp class="size-4" /></button>
+                <button type="button" class="hover:bg-paper grid size-8 place-items-center rounded-lg disabled:opacity-30" :disabled="index === group.items.length - 1" :aria-label="`Ниже: ${item.question.label}`" @click="move('question', item.question.id, 1)"><ArrowDown class="size-4" /></button>
+                <button type="button" class="hover:bg-paper grid size-8 place-items-center rounded-lg" :aria-label="`Изменить: ${item.question.label}`" @click="editing = `q:${item.question.id}`"><Pencil class="size-4" /></button>
+                <button type="button" class="hover:text-danger grid size-8 place-items-center rounded-lg disabled:opacity-30" :disabled="item.question.answers > 0" :aria-label="`Удалить: ${item.question.label}`" @click="remove('question', item.question.id)"><Trash2 class="size-4" /></button>
+              </div>
+            </div>
+            <div v-if="editing === `q:${item.question.id}`" class="px-4 pb-4">
+              <AdminQuestionForm :question="item.question" :sections="sections" @saved="saved" @cancel="editing = null" />
+            </div>
+          </li>
+        </ol>
+        <div v-if="group.section.id" class="border-line border-t p-3">
+          <AdminQuestionForm v-if="editing === `q:new:${group.section.id}`" :question="null" :sections="sections" :section="group.section.title" @saved="saved" @cancel="editing = null" />
+          <button v-else type="button" class="text-accent flex items-center gap-1.5 px-1 text-sm font-medium hover:underline" @click="editing = `q:new:${group.section.id}`">
+            <Plus class="size-4" aria-hidden="true" /> Вопрос в этот раздел
+          </button>
+        </div>
+      </article>
+
+      <AdminSectionForm v-if="editing === 's:new'" :section="null" @saved="saved" @cancel="editing = null" />
+      <UiButton v-else variant="ghost" @click="editing = 's:new'"><Plus class="size-4" aria-hidden="true" /> Добавить раздел</UiButton>
     </section>
 
     <!-- Оценка этапа -->

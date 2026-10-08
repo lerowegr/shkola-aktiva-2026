@@ -4,7 +4,7 @@ import { itemTitle, move } from "~~/lib/admin/forms";
 import { requirePermission } from "~~/server/utils/session";
 
 const schema = z.object({
-  kind: z.enum(["question", "criterion", "marker"]),
+  kind: z.enum(["question", "criterion", "marker", "section"]),
   id: z.string().min(1),
   direction: z.union([z.literal(-1), z.literal(1)]),
 });

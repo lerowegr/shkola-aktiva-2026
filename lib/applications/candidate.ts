@@ -18,12 +18,22 @@ export interface CandidateQuestion {
   required: boolean;
   options: string[];
   maxLength: number | null;
+  minLength: number | null;
+  format: "DIGITS" | "GROUP" | "PHONE" | "VK" | "TELEGRAM" | null;
+}
+
+/** Раздел анкеты — шаг: название и описание. */
+export interface CandidateSection {
+  title: string;
+  description: string | null;
 }
 
 export interface CandidateApplication {
   seasonTitle: string;
   stage: { state: StageState; opensAt: Date | null; closesAt: Date | null };
   questions: CandidateQuestion[];
+  /** Шаги в порядке разделов; в каждом — только те, где есть вопросы. */
+  sections: CandidateSection[];
   application: {
     id: string | null;
     status: "DRAFT" | "SUBMITTED";
@@ -71,8 +81,29 @@ export async function applicationQuestions(seasonId: string): Promise<CandidateQ
       required: true,
       options: true,
       maxLength: true,
+      minLength: true,
+      format: true,
     },
   });
+}
+
+/**
+ * Разделы-шаги в порядке. Вопрос с разделом, которого нет в таблице
+ * (переименовали раньше, чем появились разделы), — отдельным шагом в конце:
+ * ответ не должен потеряться.
+ */
+export async function applicationSections(seasonId: string, questions: readonly { section: string }[]): Promise<CandidateSection[]> {
+  const rows = await db.formSection.findMany({
+    where: { seasonId, stageKind: "APPLICATION" },
+    orderBy: { order: "asc" },
+    select: { title: true, description: true },
+  });
+  const used = new Set(questions.map((question) => question.section));
+  const sections = rows.filter((row) => used.has(row.title));
+  for (const title of used) {
+    if (!sections.some((section) => section.title === title)) sections.push({ title, description: null });
+  }
+  return sections;
 }
 
 export async function loadCandidateApplication(userId: string): Promise<CandidateApplication | null> {
@@ -94,6 +125,7 @@ export async function loadCandidateApplication(userId: string): Promise<Candidat
     seasonTitle: current.seasonTitle,
     stage: current.stage,
     questions,
+    sections: await applicationSections(current.seasonId, questions),
     application: {
       id: application?.id ?? null,
       status,
@@ -113,12 +145,20 @@ export async function loadCandidateApplication(userId: string): Promise<Candidat
   };
 }
 
-/** Черновик кандидата: создаётся при первом сохранении, а не при просмотре. */
+/**
+ * Черновик кандидата: создаётся при первом сохранении, а не при просмотре.
+ *
+ * Первые ответы летят пачкой одновременно, и два upsert-а гоняются за одну
+ * строку: второй падает на уникальности (seasonId, userId), и его ответ
+ * терялся. Проигравший просто перечитывает созданный черновик.
+ */
 export async function draftFor(userId: string, seasonId: string) {
-  return db.application.upsert({
-    where: { seasonId_userId: { seasonId, userId } },
-    create: { seasonId, userId },
-    update: {},
-    select: { id: true, status: true },
-  });
+  const where = { seasonId_userId: { seasonId, userId } };
+  const select = { id: true, status: true } as const;
+  try {
+    return await db.application.upsert({ where, create: { seasonId, userId }, update: {}, select });
+  } catch (error) {
+    if ((error as { code?: string }).code !== "P2002") throw error;
+    return db.application.findUniqueOrThrow({ where, select });
+  }
 }

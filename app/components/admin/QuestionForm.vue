@@ -1,5 +1,9 @@
 <script setup lang="ts">
-/** Форма вопроса анкеты — новой или существующей. */
+/**
+ * Форма вопроса анкеты — новой или существующей. Раздел — из списка
+ * разделов; у строки — формат с проверкой (цифры, группа, телефон, ВК,
+ * Telegram); у текста — минимум знаков (развёрнутым — 200 по умолчанию).
+ */
 interface Question {
   id?: string;
   section: string;
@@ -9,21 +13,45 @@ interface Question {
   required: boolean;
   options: string[];
   maxLength: number | null;
+  minLength?: number | null;
+  format?: Format | null;
   answers?: number;
 }
+type Format = "DIGITS" | "GROUP" | "PHONE" | "VK" | "TELEGRAM";
 
-const props = defineProps<{ question: Question | null; sections: string[] }>();
+const props = defineProps<{ question: Question | null; sections: string[]; section?: string }>();
 const emit = defineEmits<{ saved: []; cancel: [] }>();
 
 const form = reactive({
-  section: props.question?.section ?? props.sections.at(-1) ?? "О себе",
+  section: props.question?.section ?? props.section ?? props.sections.at(-1) ?? "Вопросы",
   type: props.question?.type ?? "LONG_TEXT",
   label: props.question?.label ?? "",
   help: props.question?.help ?? "",
   required: props.question?.required ?? true,
   options: (props.question?.options ?? []).join("\n"),
   maxLength: props.question?.maxLength ?? 3000,
+  minLength: props.question ? (props.question.minLength ?? 0) : 200,
+  format: (props.question?.format ?? "") as Format | "",
 });
+
+const FORMATS = [
+  { key: "", label: "Любой текст" },
+  { key: "DIGITS", label: "Только цифры" },
+  { key: "GROUP", label: "Номер группы — ТЦБМ23-2" },
+  { key: "PHONE", label: "Телефон — +7 (XXX) XXX-XX-XX" },
+  { key: "VK", label: "ВКонтакте — ссылка на vk.ru" },
+  { key: "TELEGRAM", label: "Telegram — @ник" },
+] as const;
+
+// Новому вопросу: развёрнутый — минимум 200, строка — без минимума.
+watch(
+  () => form.type,
+  (type) => {
+    if (props.question) return;
+    form.minLength = type === "LONG_TEXT" ? 200 : 0;
+    if (type !== "SHORT_TEXT") form.format = "";
+  },
+);
 
 const TYPES = [
   { key: "SHORT_TEXT", label: "Строка" },
@@ -47,6 +75,8 @@ async function submit() {
     required: form.required,
     options: choice.value ? form.options.split("\n") : [],
     maxLength: choice.value ? null : form.maxLength || null,
+    minLength: choice.value ? null : form.minLength || null,
+    format: form.type === "SHORT_TEXT" && form.format ? form.format : null,
   });
   if (result.ok) emit("saved");
 }
@@ -59,8 +89,10 @@ async function submit() {
     <div class="grid gap-4 sm:grid-cols-2">
       <label class="flex flex-col gap-1.5 text-sm font-medium">
         Раздел
-        <input v-model="form.section" list="sections" class="border-line bg-card min-h-12 rounded-2xl border px-4 text-base" >
-        <datalist id="sections"><option v-for="section in sections" :key="section" :value="section" /></datalist>
+        <select v-model="form.section" class="border-line bg-card min-h-12 rounded-2xl border px-4 text-base">
+          <option v-for="item in sections" :key="item" :value="item">{{ item }}</option>
+          <option v-if="!sections.includes(form.section)" :value="form.section">{{ form.section }}</option>
+        </select>
       </label>
       <label class="flex flex-col gap-1.5 text-sm font-medium">
         Вид ответа
@@ -74,7 +106,26 @@ async function submit() {
       Варианты — каждый с новой строки
       <textarea v-model="form.options" rows="4" class="border-line bg-card rounded-2xl border px-4 py-3 text-base font-normal" />
     </label>
-    <UiInput v-else :model-value="String(form.maxLength ?? '')" label="Не длиннее, знаков" inputmode="numeric" @update:model-value="form.maxLength = Number($event) || 0" />
+    <template v-else>
+      <label v-if="form.type === 'SHORT_TEXT'" class="flex flex-col gap-1.5 text-sm font-medium">
+        Формат ответа
+        <select v-model="form.format" :disabled="locked" class="border-line bg-card min-h-12 rounded-2xl border px-4 text-base disabled:opacity-60">
+          <option v-for="item in FORMATS" :key="item.key" :value="item.key">{{ item.label }}</option>
+        </select>
+        <span class="text-ink-soft text-xs font-normal">
+          {{ locked ? "На вопрос уже отвечали — формат не меняется." : "Сайт проверит ответ и приведёт к единому виду: vk.com/ivan → https://vk.ru/ivan." }}
+        </span>
+      </label>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <UiInput
+          :model-value="String(form.minLength || '')"
+          label="Не короче, знаков — пусто, если неважно"
+          inputmode="numeric"
+          @update:model-value="form.minLength = Number($event) || 0"
+        />
+        <UiInput :model-value="String(form.maxLength ?? '')" label="Не длиннее, знаков" inputmode="numeric" @update:model-value="form.maxLength = Number($event) || 0" />
+      </div>
+    </template>
     <label class="flex items-center gap-2 text-sm">
       <input v-model="form.required" type="checkbox" class="accent-accent size-4" > Обязательный вопрос
     </label>

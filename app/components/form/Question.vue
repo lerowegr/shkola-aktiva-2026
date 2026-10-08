@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import type { AnswerValue } from "~~/lib/applications/form";
+import { FORMAT_EXAMPLE, formatValue, plural, type AnswerValue } from "~~/lib/applications/form";
 
 /**
  * Один вопрос анкеты в нужном виде: строка, развёрнутый ответ, выбор
  * одного или нескольких вариантов, ссылка. В режиме чтения — просто ответ.
+ *
+ * У строки с форматом — своя клавиатура на телефоне и пример; уходя с поля,
+ * верный ввод приводится к единому виду (vk.com/ivan → https://vk.ru/ivan).
+ * У ответа с минимумом — счётчик «N из 200».
  */
 const props = defineProps<{
   number: number;
@@ -15,6 +19,8 @@ const props = defineProps<{
     required: boolean;
     options: string[];
     maxLength: number | null;
+    minLength?: number | null;
+    format?: "DIGITS" | "GROUP" | "PHONE" | "VK" | "TELEGRAM" | null;
   };
   readonly?: boolean;
   error?: string | null;
@@ -54,6 +60,31 @@ function grow() {
 }
 onMounted(grow);
 watch(text, () => nextTick(grow));
+
+// Клавиатура и пример под формат.
+const INPUT_MODE = { DIGITS: "numeric", PHONE: "tel", GROUP: "text", VK: "url", TELEGRAM: "text" } as const;
+const inputMode = computed(() =>
+  props.question.format ? INPUT_MODE[props.question.format] : props.question.type === "URL" ? "url" : "text",
+);
+const placeholder = computed(() => {
+  if (props.question.format) return `Например, ${FORMAT_EXAMPLE[props.question.format]}`;
+  return props.question.type === "URL" ? "vk.ru/…" : "Ваш ответ";
+});
+
+function tidy() {
+  if (!props.question.format || typeof model.value !== "string") return;
+  const formatted = formatValue(props.question.format, model.value);
+  if (formatted.ok && formatted.value !== model.value) model.value = formatted.value;
+}
+
+// Счётчик до минимума: «150 из 200», дописал — зелёная галочка в тексте.
+const length = computed(() => text.value.trim().length);
+const counter = computed(() => {
+  const min = props.question.minLength;
+  if (!min || props.readonly) return null;
+  if (length.value >= min) return { done: true, text: `${length.value} ${plural(length.value, "знак", "знака", "знаков")} — достаточно` };
+  return { done: false, text: `${length.value} из ${min} — нужно развёрнуто` };
+});
 
 const shown = computed(() => {
   if (Array.isArray(model.value)) return model.value.join(", ");
@@ -124,14 +155,21 @@ const shown = computed(() => {
       v-else
       :id="id"
       v-model="text"
-      :type="question.type === 'URL' ? 'url' : 'text'"
-      :inputmode="question.type === 'URL' ? 'url' : 'text'"
+      :type="question.type === 'URL' && !question.format ? 'url' : question.format === 'PHONE' ? 'tel' : 'text'"
+      :inputmode="inputMode"
+      :autocomplete="question.format === 'PHONE' ? 'tel' : 'off'"
+      :autocapitalize="question.format === 'GROUP' ? 'characters' : 'off'"
       :maxlength="question.maxLength ?? undefined"
       :aria-invalid="!!error || undefined"
-      :placeholder="question.type === 'URL' ? 'vk.com/…' : 'Ваш ответ'"
+      :placeholder="placeholder"
       class="border-line bg-paper focus:border-accent focus:ring-accent/20 min-h-12 rounded-2xl border px-4 text-base outline-none focus:ring-4 sm:ml-10"
+      @blur="tidy"
     >
 
+    <!-- Счётчик — после всей цепочки v-if/v-else: внутри неё он рвал бы её. -->
+    <p v-if="counter && !readonly" class="text-sm sm:pl-10" :class="counter.done ? 'text-ok' : 'text-ink-soft'" aria-live="polite">
+      {{ counter.text }}
+    </p>
     <p v-if="error" class="text-danger text-sm sm:pl-10">{{ error }}</p>
   </div>
 </template>

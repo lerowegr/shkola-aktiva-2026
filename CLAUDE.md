@@ -107,7 +107,7 @@ app/components/     ui/* — базовые, app/* — общие, staff/* — �
                     form/* — вопросы анкеты
 app/utils/          moscow (время), chart (оси и числа графиков), avatar
 app/composables/    useSession, useAction, useAutosave, useTelegramLogin
-lib/applications/   анкета: form (правила ответов), review (итог), assign
+lib/applications/   анкета: form (правила и форматы ответов), review (итог), assign
                     (распределение), staff (списки), review-store, defaults
 lib/notifications/  notify, очередь и разносчик (worker), отправители
                     Telegram и пуш, колокольчик и настройки (inbox)
@@ -191,6 +191,13 @@ prisma/             схема, миграции, сид
   `/media/site/<id>/<ширина>.webp` с вечным кешем. Тексты ссылаются на фото
   по id (`PhotoRef`); фото без ссылок старше часа убираются при сохранении
   текстов. `sharp` — нативный модуль, он во внешних модулях Nitro.
+- **Анкета — по шагам** (`app/components/form/Wizard.vue`): раздел — шаг, шаг —
+  в адресе `?step=`. Разделы — таблица `FormSection` (название, описание,
+  порядок), вопросы ссылаются на раздел по названию; сквозной `order` вопросов
+  всегда идёт по разделам (`renumberQuestions`), поэтому всё, что сортирует по
+  `order`, показывает по шагам. Форматы строки (`formatValue`: цифры, группа,
+  телефон, ВК → vk.ru, Telegram) и минимум знаков — в чистом
+  `lib/applications/form.ts`, одни правила для «Далее» и отправки.
 - **Мини-игры** на отбор не влияют: результаты не попадают в карточки
   оценки. Рейтинг публичен под псевдонимами (`lib/profile/display.ts`):
   ник или обезличенный код, настоящих имён нет; место и число игроков —
