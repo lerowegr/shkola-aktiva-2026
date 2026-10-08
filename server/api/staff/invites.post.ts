@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { normalizeEmail } from "~~/lib/auth/email-code";
+import { normalizeEmail } from "~~/lib/auth/email";
 import { createInvite } from "~~/lib/auth/invite";
 import { db } from "~~/lib/db";
 import { canGrantRole } from "~~/lib/permissions";

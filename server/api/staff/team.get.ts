@@ -30,8 +30,7 @@ export default defineEventHandler(async (event) => {
         email: person.email,
         blocked: person.status === "BLOCKED",
         isOwner: person.isOwner,
-        // Вход по коду на почту и через Telegram работает и без пароля;
-        // пароль нужен только для вкладки «Организаторам».
+        // Вход — через Telegram или по паролю: без того и другого человек не войдёт.
         hasPassword: person.passwordHash !== null,
         hasTelegram: person.telegramId !== null,
         roles: person.roles.sort((a, b) => b.role.priority - a.role.priority).map((item) => item.role.name),

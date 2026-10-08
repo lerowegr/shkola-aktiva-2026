@@ -4,7 +4,7 @@
  * показывается как есть: лучше странная строка, чем пустое место.
  */
 export const AUDIT_LABELS: Record<string, string> = {
-  "auth.email_login": "Вход по коду на почту",
+  "auth.email_login": "Вход по коду на почту (прежний способ)",
   "auth.password_login": "Вход по паролю",
   "auth.telegram_login": "Вход через Telegram",
   "auth.telegram_miniapp": "Вход из Mini App",
@@ -26,6 +26,14 @@ export const AUDIT_LABELS: Record<string, string> = {
   "role.grant": "Выдача роли",
   "role.revoke": "Снятие роли",
   "user.block": "Блокировка",
+  "user.password_reset": "Новый пароль из консоли сервера",
+  "assessment.group.create": "ЦО: группа создана",
+  "assessment.group.update": "ЦО: группа изменена",
+  "assessment.group.delete": "ЦО: группа удалена",
+  "assessment.experts": "ЦО: эксперты группы",
+  "assessment.member": "ЦО: кандидат в группу",
+  "assessment.distribute": "ЦО: раскладка по группам",
+  "assessment.notify": "ЦО: место сообщено группе",
   "user.unblock": "Разблокировка",
   "form.question": "Вопрос анкеты",
   "form.question_delete": "Удаление вопроса",

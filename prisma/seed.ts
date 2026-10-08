@@ -6,7 +6,7 @@
  * админке — сид их не перезаписывает, только создаёт недостающие.
  */
 import { db } from "../lib/db";
-import { normalizeEmail } from "../lib/auth/email-code";
+import { normalizeEmail } from "../lib/auth/email";
 import {
   DEFAULT_APPLICATION_CRITERIA,
   DEFAULT_APPLICATION_MARKERS,
@@ -184,9 +184,9 @@ async function main() {
       create: { email, isOwner: true },
       update: { isOwner: true },
     });
-    // Первый вход владельца — по коду на почту: пароля у него ещё нет, а
-    // приглашать его некому. Пароль потом задаётся себе же приглашением.
-    console.log(`Владелец: ${email}. Первый вход — по коду на эту почту.`);
+    // Пароля у нового владельца нет, а приглашать его некому: пароль
+    // задаёт скрипт — npm run user:password -- почта.
+    console.log(`Владелец: ${email}. Пароль: npm run user:password -- ${email}`);
   }
 
   console.log("Готово: роли, сезон «Школа Актива 2026», этапы, анкета, критерии и маркеры.");

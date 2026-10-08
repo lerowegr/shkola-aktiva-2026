@@ -55,24 +55,24 @@
 Копии базы и файлов — каждую ночь в 06:30 МСК в том `sha-site_backups`,
 14 дней. Посмотреть: `./deploy/dc.sh exec backup ls -la /backups`.
 
-## Временный адрес и домен
+## Домен
 
-Пока домена нет, сайт открыт через быстрый туннель Cloudflare
-(`*.trycloudflare.com`, строка `TUNNEL=quick` в `.env.production`). Адрес
-случайный; при каждом деплое ссылка проверяется и, если умерла, заменяется —
-новый адрес печатается в конце лога деплоя.
+Сайт — https://schoolofactivity.ru (DNS в Beget: A-записи `@` и `www` →
+82.22.38.111). Подключён 2026-10-08:
 
-С доменом:
-1. A-запись домена → IP сервера.
-2. Сертификат Let's Encrypt — `acme.sh` на сервере (он уже стоит и
-   продлевает чужие сертификаты) в `/root/infra/certs/<домен>/`.
-3. Свой `server`-блок в `/root/infra/nginx.conf` (общий edge-nginx,
-   контейнер `arkadium-edge-nginx`): `proxy_pass http://sha-site-app:3000` —
-   сайт уже в сети `arkadium_shared`. Перед правкой — копия
-   `nginx.conf.bak-<дата>`, после — `nginx -t` в контейнере и `nginx -s reload`.
-4. В `.env.production`: `NUXT_PUBLIC_APP_URL="https://домен"`, строку
-   `TUNNEL=quick` убрать; `./deploy/dc.sh up -d --force-recreate app` и
-   `./deploy/dc.sh rm -sf tunnel`.
+- Сертификат Let's Encrypt выпущен `acme.sh` (webroot
+  `/root/infra/certs/acme-webroot`), лежит в `/root/infra/certs/schoolofactivity/`,
+  продлевается кроном acme.sh сам и перезагружает edge-nginx.
+- Блоки `server` в конце `/root/infra/nginx.conf` (общий edge-nginx,
+  контейнер `arkadium-edge-nginx`): :80 — проверка Let's Encrypt и редирект
+  на https, :443 — `proxy_pass http://sha-site-app:3000`, `www` → без `www`.
+  Перед правкой — копия `nginx.conf.bak-<дата>`, после — `nginx -t` в
+  контейнере и `nginx -s reload`.
+- В `.env.production`: `NUXT_PUBLIC_APP_URL="https://schoolofactivity.ru"`,
+  строки `TUNNEL=quick` нет — деплой туннель не поднимает.
+
+Временный туннель (`deploy/quick-tunnel.sh`, `TUNNEL=quick`) остался на
+случай, если домен отвалится: вернуть строку и задеплоить.
 
 ## Первая настройка сервера (один раз)
 
