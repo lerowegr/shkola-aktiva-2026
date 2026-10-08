@@ -12,7 +12,7 @@ const { data, refresh } = await useFetch<DailyStatus>("/api/cabinet/daily");
 const KIND_TITLE: Record<DailyStatus["kind"], string> = {
   MEMORY: GAMES.MEMORY.title,
   PIXEL: GAMES.PIXEL.title,
-  QUIZ: GAMES.QUIZ.title,
+  QUIZ: "Викторина",
 };
 </script>
 

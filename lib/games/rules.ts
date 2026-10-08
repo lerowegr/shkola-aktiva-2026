@@ -7,6 +7,11 @@
  */
 export type GameKind = "MEMORY" | "SLIDE" | "CATCH" | "TETRIS" | "PIXEL" | "SNAKE" | "QUIZ" | "MERGE";
 export const GAME_KINDS: GameKind[] = ["MEMORY", "SLIDE", "CATCH", "TETRIS", "PIXEL", "SNAKE", "QUIZ", "MERGE"];
+/**
+ * Игры с партиями и рейтингом. «Тест про ША» (QUIZ) — не партия: попытка
+ * одна, счёт считает сервер (lib/games/sha-test.ts), в рейтинг не идёт.
+ */
+export const RATED_GAMES: GameKind[] = GAME_KINDS.filter((kind) => kind !== "QUIZ");
 
 export interface GameRules {
   slug: string;
@@ -95,8 +100,8 @@ export const GAMES: Record<GameKind, GameRules> = {
   },
   QUIZ: {
     slug: "quiz",
-    title: "Викторина",
-    about: "Десять вопросов о Школе Актива на время. Вопросы пишут организаторы.",
+    title: "Тест про ША",
+    about: "Насколько хорошо ты знаешь Школу Актива? Десять вопросов, попытка одна, в конце — только баллы.",
     better: "higher",
     // Десять ответов: максимум 250 за вопрос.
     score: { min: 0, max: 2_500 },

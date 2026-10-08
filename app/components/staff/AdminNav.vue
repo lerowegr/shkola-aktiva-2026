@@ -11,7 +11,7 @@ const items = computed(() => {
     { to: "/staff/admin/people", label: "Люди", show: can.team },
     { to: "/staff/admin/roles", label: "Роли", show: can.roles },
     { to: "/staff/admin/forms", label: "Анкета и оценка", show: can.forms },
-    { to: "/staff/admin/quiz", label: "Викторина", show: can.forms },
+    { to: "/staff/admin/quiz", label: "Тест про ША", show: can.forms },
     { to: "/staff/admin/site", label: "Сайт", show: can.content },
     { to: "/staff/admin/broadcast", label: "Рассылки", show: can.broadcast },
     { to: "/staff/admin/audit", label: "Журнал", show: can.audit },

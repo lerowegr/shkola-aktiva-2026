@@ -21,7 +21,7 @@ import {
   type DefaultMarker,
 } from "../lib/applications/defaults";
 import { PERMISSION_GROUPS, PERMISSION_KEYS } from "../lib/permissions";
-import { QUIZ_QUESTIONS } from "../app/games/quiz";
+import { SHA_TEST_QUESTIONS } from "../app/games/sha-test-questions";
 
 const selection = PERMISSION_GROUPS.find((group) => group.key === "selection")!.permissions.map(
   (permission) => permission.key,
@@ -161,16 +161,16 @@ async function main() {
   await seedEvaluation(season.id, "ASSESSMENT", DEFAULT_ASSESSMENT_CRITERIA, DEFAULT_ASSESSMENT_MARKERS);
   await seedEvaluation(season.id, "INTERVIEW", DEFAULT_INTERVIEW_CRITERIA, DEFAULT_INTERVIEW_MARKERS);
 
-  // Вопросы викторины — только если их ещё нет: правки из админки сид
+  // Вопросы теста про ША — только если их ещё нет: правки из админки сид
   // не перезаписывает.
   if ((await db.quizQuestion.count({ where: { seasonId: season.id } })) === 0) {
     await db.quizQuestion.createMany({
-      data: QUIZ_QUESTIONS.map((question, index) => ({
+      data: SHA_TEST_QUESTIONS.map((question, index) => ({
         seasonId: season.id,
         order: index + 1,
         text: question.text,
-        options: [question.answer, ...question.wrong],
-        correct: 0,
+        options: question.options,
+        correct: question.correct,
         isActive: true,
       })),
     });

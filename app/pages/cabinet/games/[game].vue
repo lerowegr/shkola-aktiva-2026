@@ -10,10 +10,10 @@ if (!game) throw createError({ statusCode: 404, statusMessage: "Такой иг�
 
 useHead({ title: GAMES[game].title });
 
-// Топ игры — под итогом партии.
+// Топ игры — под итогом партии. У теста про ША рейтинга нет.
 const { data: board } = useFetch<{ rows: { rank: number; name: string; avatar: string | null; isMe: boolean; fullName: string | null; score: number; moves: number | null; durationMs: number }[]; players: number }>(
   "/api/cabinet/games/board",
-  { query: { game: GAMES[game].slug } },
+  { query: { game: GAMES[game].slug }, immediate: game !== "QUIZ" },
 );
 
 // Новая партия — новый компонент: состояние игры начинается с нуля.
@@ -61,7 +61,7 @@ function again() {
         <GameTetris v-else-if="game === 'TETRIS'" :key="round" @finished="finished" />
         <GamePixel v-else-if="game === 'PIXEL'" :key="round" @finished="finished" />
         <GameSnake v-else-if="game === 'SNAKE'" :key="round" @finished="finished" />
-        <GameQuiz v-else-if="game === 'QUIZ'" :key="round" @finished="finished" />
+        <GameShaTest v-else-if="game === 'QUIZ'" />
         <GameMerge v-else :key="round" @finished="finished" />
         <template #fallback>
           <div class="bg-line/60 mx-auto aspect-square w-full max-w-sm animate-pulse rounded-3xl" aria-hidden="true" />

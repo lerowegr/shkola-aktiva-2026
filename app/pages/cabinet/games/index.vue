@@ -4,10 +4,13 @@ import { ArrowLeft, ChevronRight } from "lucide-vue-next";
 import type { Standing } from "~~/lib/games/results";
 import { describeResult, GAMES } from "~~/lib/games/rules";
 
-/** Мини-игры: три карточки со своим лучшим результатом и местом. */
+/** Мини-игры: тест про ША сверху, дальше игры со своим лучшим результатом и местом. */
 useHead({ title: "Мини-игры" });
 
-const { data } = await useFetch<{ games: Standing[]; staff: boolean }>("/api/cabinet/games");
+const [{ data }, { data: test }] = await Promise.all([
+  useFetch<{ games: Standing[]; staff: boolean }>("/api/cabinet/games"),
+  useFetch<{ done: { score: number; total: number } | null }>("/api/cabinet/test"),
+]);
 
 const LOOK = {
   MEMORY: { tone: "bg-brand-green-soft", image: "/brand/mascots/green.webp" },
@@ -35,6 +38,19 @@ const LOOK = {
           <NuxtLink to="/cabinet/rating" class="underline">Общий рейтинг</NuxtLink>.
         </p>
       </div>
+
+      <NuxtLink
+        :to="`/cabinet/games/${GAMES.QUIZ.slug}`"
+        class="bg-brand-red-soft border-ink/10 group flex items-center gap-4 rounded-3xl border p-4 transition hover:-translate-y-0.5"
+      >
+        <img :src="LOOK.QUIZ.image" alt="" class="w-20 shrink-0 transition group-hover:-rotate-6">
+        <span class="flex min-w-0 flex-1 flex-col gap-1">
+          <span class="font-display text-xl">{{ GAMES.QUIZ.title }}</span>
+          <span class="text-ink/75 text-sm">{{ GAMES.QUIZ.about }}</span>
+          <span v-if="test?.done" class="text-sm">Пройден: <strong>{{ test.done.score }} из {{ test.done.total }}</strong></span>
+        </span>
+        <ChevronRight class="size-5 shrink-0" aria-hidden="true" />
+      </NuxtLink>
 
       <ul class="flex flex-col gap-3">
         <li v-for="item in data?.games ?? []" :key="item.game">

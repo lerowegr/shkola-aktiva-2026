@@ -1,7 +1,7 @@
 import { db } from "~~/lib/db";
 import { Prisma } from "~~/lib/generated/prisma/client";
 
-import { GAME_KINDS, GAMES, implausible, isBetter, type GameKind, type ResultInput } from "./rules";
+import { RATED_GAMES, GAMES, implausible, isBetter, type GameKind, type ResultInput } from "./rules";
 
 /**
  * Результаты мини-игр: сохранить партию и узнать своё место.
@@ -92,7 +92,7 @@ export async function standing(userId: string, game: GameKind): Promise<Standing
 }
 
 export async function standings(userId: string): Promise<Standing[]> {
-  return Promise.all(GAME_KINDS.map((game) => standing(userId, game)));
+  return Promise.all(RATED_GAMES.map((game) => standing(userId, game)));
 }
 
 /** Для дашборда: сколько кандидатов играло и сколько партий. */

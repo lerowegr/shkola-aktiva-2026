@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { seeded, shuffled, type Rng } from "~/games/rng";
-import { buildRound, questionScore, QUIZ_ROUND_SIZE, QUIZ_SECONDS_PER_QUESTION, type QuizRoundItem } from "~/games/quiz";
+import { seeded, type Rng } from "~/games/rng";
+import { buildRound, questionScore, QUIZ_SECONDS_PER_QUESTION, type QuizRoundItem } from "~/games/quiz";
 
 /**
  * «Викторина»: десять вопросов на время, 15 секунд на вопрос.
- * Вопросы — из админки (/api/cabinet/quiz), пока их нет — встроенный пул.
- * pool="local" — только встроенный пул (для задания дня: одинаково всем).
+ * Вопросы — встроенный пул (app/games/quiz.ts); pool="local" — с сидом дня,
+ * чтобы задание дня было одинаковым у всех.
  */
 const props = withDefaults(defineProps<{ seed?: number; pool?: "server" | "local" }>(), {
   seed: () => Date.now(),
@@ -14,27 +14,9 @@ const props = withDefaults(defineProps<{ seed?: number; pool?: "server" | "local
 const emit = defineEmits<{ finished: [result: { score: number; durationMs: number }] }>();
 
 const rng: Rng = seeded(props.seed);
-const { data } = useFetch<{ questions: { id: string; text: string; options: string[]; correct: number }[] }>("/api/cabinet/quiz");
-
-const round = computed<QuizRoundItem[] | null>(() => {
-  const server = data.value?.questions ?? [];
-  if (props.pool === "server" && server.length >= 4) {
-    return shuffled(server, rng)
-      .slice(0, QUIZ_ROUND_SIZE)
-      .map((question) => {
-        const order = shuffled(question.options.map((_, index) => index), rng);
-        return {
-          id: question.id,
-          text: question.text,
-          answer: question.options[question.correct]!,
-          options: order.map((index) => question.options[index]!),
-          correct: order.indexOf(question.correct),
-        };
-      });
-  }
-  if (props.pool === "local") return buildRound(seeded(props.seed));
-  return data.value ? buildRound(rng) : null;
-});
+// Только встроенный пул: вопросы из админки — это «Тест про ША», и их
+// верные ответы в браузер не отдаём.
+const round = computed<QuizRoundItem[] | null>(() => buildRound(props.pool === "local" ? seeded(props.seed) : rng));
 
 const index = ref(0);
 const score = ref(0);

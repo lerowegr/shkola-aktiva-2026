@@ -26,6 +26,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   "role.grant": "Выдача роли",
   "role.revoke": "Снятие роли",
   "user.block": "Блокировка",
+  "quiz.export": "Выгрузка результатов теста про ША",
   "user.password_reset": "Новый пароль из консоли сервера",
   "assessment.group.create": "ЦО: группа создана",
   "assessment.group.update": "ЦО: группа изменена",

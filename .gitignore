@@ -34,3 +34,4 @@ npm-debug.log*
 
 # рабочие таблицы организаторов
 *.xlsx
+/.owner-password.txt

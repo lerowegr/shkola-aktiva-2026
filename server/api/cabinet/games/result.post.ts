@@ -1,11 +1,12 @@
 import { z } from "zod";
 
 import { saveResult, standing } from "~~/lib/games/results";
-import { GAME_KINDS } from "~~/lib/games/rules";
+import { RATED_GAMES } from "~~/lib/games/rules";
+import type { GameKind } from "~~/lib/games/rules";
 import { requireSignedIn } from "~~/server/utils/session";
 
 const schema = z.object({
-  game: z.enum(GAME_KINDS),
+  game: z.enum(RATED_GAMES as [GameKind, ...GameKind[]]),
   score: z.number().int(),
   moves: z.number().int().nullish(),
   durationMs: z.number().int(),

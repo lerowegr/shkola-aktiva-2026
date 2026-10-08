@@ -2,7 +2,7 @@ import { db } from "~~/lib/db";
 import { Prisma } from "~~/lib/generated/prisma/client";
 
 import { displayName } from "../profile/display";
-import { GAME_KINDS, GAMES, isBetter, type GameKind } from "./rules";
+import { RATED_GAMES, GAMES, isBetter, type GameKind } from "./rules";
 
 /**
  * Публичные таблицы рейтинга: топ игры и общий зачёт.
@@ -123,7 +123,7 @@ export interface OverallEntry {
 
 export async function overallBoard(meId: string, options: { limit?: number; staff?: boolean } = {}): Promise<OverallBoard> {
   const { limit = 20, staff = false } = options;
-  const perGame = await Promise.all(GAME_KINDS.map(async (game) => ({ game, rows: ranked(game, await gameBests(game)) })));
+  const perGame = await Promise.all(RATED_GAMES.map(async (game) => ({ game, rows: ranked(game, await gameBests(game)) })));
 
   const totals = new Map<string, { points: number; played: number; breakdown: { game: GameKind; rank: number; points: number }[]; profile: Best }>();
   for (const { game, rows } of perGame) {

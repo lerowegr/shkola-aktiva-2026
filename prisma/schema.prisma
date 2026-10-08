@@ -154,6 +154,7 @@ model User {
   telegramLinkCodes TelegramLinkCode[]
   uploads           Upload[]
   assessmentGroups  AssessmentExpert[]
+  quizAttempts      QuizAttempt[]
   decisionsMade     StageDecision[]          @relation("DecisionAuthor")
   auditLogs         AuditLog[]
   invites           StaffInvite[]            @relation("InviteFor")
@@ -317,6 +318,7 @@ model Season {
   assessmentGroups AssessmentGroup[]
   siteContent      SiteContent?
   siteImages       SiteImage[]
+  quizAttempts     QuizAttempt[]
 
   @@map("seasons")
 }
@@ -505,10 +507,10 @@ model Review {
   comment       String?
 
   assignedById String?
-  assignedAt   DateTime @default(now())
+  assignedAt   DateTime  @default(now())
   /// Кто и когда последним что-то поменял — строка «Оценка сохранена».
   updatedById  String?
-  updatedAt    DateTime @updatedAt
+  updatedAt    DateTime  @updatedAt
 
   application Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   reviewer    User           @relation("ReviewReviewer", fields: [reviewerId], references: [id], onDelete: Cascade)
@@ -873,6 +875,34 @@ model QuizQuestion {
 
   @@index([seasonId, order])
   @@map("quiz_questions")
+}
+
+/// Прохождение «Теста про ША». Попытка одна: на человека — и на Telegram,
+/// если тест проходили в боте до переезда на сайт (тогда userId пуст до
+/// первого входа через этот Telegram). Ответы — снимком: текст вопроса,
+/// выбранный вариант, верно ли, время; правка вопросов их не портит.
+model QuizAttempt {
+  id          String   @id @default(cuid())
+  seasonId    String
+  userId      String?
+  telegramId  String?
+  score       Int
+  total       Int
+  durationMs  Int
+  /// [{ questionId, question, chosen, correct, ms }]
+  answers     Json
+  /// Анкета из бота: ФИО, курс, факультет, студбилет, телефон, ник.
+  profile     Json?
+  /// SITE — прошёл в кабинете, BOT — перенесён из Mini App.
+  source      String   @default("SITE")
+  completedAt DateTime @default(now())
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([seasonId, userId])
+  @@unique([seasonId, telegramId])
+  @@map("quiz_attempts")
 }
 
 /// Решённое ежедневное задание. Попытка одна в день: уникальность пары

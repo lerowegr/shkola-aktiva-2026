@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ArrowLeft } from "lucide-vue-next";
 
-import { GAME_KINDS, GAMES, type GameKind } from "~~/lib/games/rules";
+import { RATED_GAMES, GAMES, type GameKind } from "~~/lib/games/rules";
 
 /**
  * Рейтинг: общий зачёт и топ каждой игры. Только псевдонимы — настоящее
@@ -51,7 +51,7 @@ watch(tab, (value) => {
   if (value !== "overall") void load(value);
 });
 
-const TABS = [{ key: "overall", label: "Общий" }, ...GAME_KINDS.map((game) => ({ key: game, label: GAMES[game].title }))] as const;
+const TABS = [{ key: "overall", label: "Общий" }, ...RATED_GAMES.map((game) => ({ key: game, label: GAMES[game].title }))] as const;
 </script>
 
 <template>

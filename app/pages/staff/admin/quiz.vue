@@ -1,12 +1,32 @@
 <script setup lang="ts">
-import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from "lucide-vue-next";
+import { ArrowDown, ArrowUp, Download, Pencil, Plus, Trash2 } from "lucide-vue-next";
 
 /**
- * Викторина: вопросы и ответы для игры. Верный вариант помечен галочкой.
- * Выключенные вопросы в игру не попадают, удалённые — не возвращаются.
+ * «Тест про ША»: вопросы теста и его итоги. Тест — все активные вопросы
+ * по порядку; попытка одна, счёт считает сервер. Выключенные вопросы в тест
+ * не попадают, удалённые — не возвращаются. Прошлые результаты хранят
+ * ответы снимком, поэтому правка вопроса их не портит.
  */
 definePageMeta({ layout: "staff" });
-useHead({ title: "Викторина" });
+useHead({ title: "Тест про ША" });
+
+interface Stats {
+  participants: number;
+  average: number | null;
+  distribution: { score: number; count: number }[];
+  questions: { question: string; answered: number; correctShare: number; averageMs: number }[];
+  bySource: { site: number; bot: number };
+}
+const { data: results } = await useFetch<{ stats: Stats; canExport: boolean }>("/api/admin/quiz/results");
+const stats = computed(() => results.value?.stats ?? null);
+const percent = (share: number) => `${Math.round(share * 100)}%`;
+const seconds = (ms: number) => `${(ms / 1000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} с`;
+// От сложного к простому: на что стоит посмотреть в первую очередь.
+const hardest = computed(() =>
+  [...(stats.value?.questions ?? [])]
+    .sort((a, b) => a.correctShare - b.correctShare)
+    .map((row) => ({ label: row.question, value: Math.round(row.correctShare * 100), share: percent(row.correctShare), hint: `ответили ${row.answered} · в среднем ${seconds(row.averageMs)}` })),
+);
 
 interface Question {
   id: string;
@@ -62,12 +82,52 @@ const remove = (id: string) => post("/api/admin/quiz/delete", { id });
 <template>
   <main class="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
     <div class="flex items-center justify-between">
-      <h1 class="font-display text-2xl">Викторина</h1>
+      <h1 class="font-display text-2xl">Тест про ША</h1>
       <div class="shrink-0">
         <UiButton @click="edit(null)"><Plus class="size-4" aria-hidden="true" /> Вопрос</UiButton>
       </div>
     </div>
-    <p class="text-ink-soft text-sm">Десять случайных активных вопросов попадают в партию. Верный вариант игроки не видят.</p>
+    <p class="text-ink-soft text-sm">
+      Тест — все активные вопросы по порядку, варианты кандидату перемешиваются. Попытка одна, в конце кандидат видит
+      только число баллов; верные ответы не уходят в браузер. На отбор тест не влияет. Если кандидаты уже проходят тест,
+      меняйте вопросы осторожно: те, кто прошёл раньше, отвечали на старые.
+    </p>
+
+    <section v-if="stats" class="flex flex-col gap-4">
+      <div class="flex items-center justify-between gap-3">
+        <h2 class="font-display text-xl">Итоги</h2>
+        <div v-if="results?.canExport && stats.participants" class="shrink-0">
+          <UiButton variant="ghost" href="/api/admin/quiz/results.csv"><Download class="size-4" aria-hidden="true" /> CSV</UiButton>
+        </div>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-3">
+        <DashStat label="Прошли" :value="String(stats.participants)" :note="`на сайте ${stats.bySource.site} · в боте ${stats.bySource.bot}`" />
+        <DashStat label="Средний балл" :value="stats.average === null ? '—' : stats.average.toLocaleString('ru-RU')" />
+        <DashStat label="Ответили на всё верно" :value="String(stats.distribution.at(-1)?.count ?? 0)" />
+      </div>
+      <template v-if="stats.participants">
+        <DashCard title="Баллы" hint="Сколько человек набрали каждый балл.">
+          <DashHistogram :counts="stats.distribution.map((row) => row.count)" :mean="stats.average" caption="Распределение баллов теста про ША" />
+        </DashCard>
+        <DashCard title="Вопросы — от сложного к простому" hint="Доля верных ответов и среднее время на вопрос.">
+          <ul class="flex flex-col gap-3">
+            <li v-for="row in hardest" :key="row.label" class="flex flex-col gap-1.5">
+              <div class="flex items-baseline justify-between gap-3 text-sm">
+                <span class="min-w-0">{{ row.label }}</span>
+                <span class="shrink-0 tabular-nums"><strong>{{ row.share }}</strong> <span class="text-ink-soft">верно</span></span>
+              </div>
+              <div class="bg-paper h-3 overflow-hidden rounded-r-[4px]" aria-hidden="true">
+                <div class="bg-brand-blue h-full rounded-r-[4px]" :style="{ width: `${row.value}%` }" />
+              </div>
+              <p class="text-ink-soft text-xs">{{ row.hint }}</p>
+            </li>
+          </ul>
+        </DashCard>
+      </template>
+      <p v-else class="text-ink-soft text-sm">Тест ещё никто не прошёл.</p>
+    </section>
+
+    <h2 class="font-display text-xl">Вопросы</h2>
     <UiNotice v-if="problem" :message="problem" />
 
     <ul class="flex flex-col gap-2">
@@ -106,12 +166,14 @@ const remove = (id: string) => post("/api/admin/quiz/delete", { id });
     <section v-if="editing" class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5">
       <h2 class="font-display text-lg">{{ editing === "new" ? "Новый вопрос" : "Править вопрос" }}</h2>
       <UiInput v-model="form.text" label="Вопрос" />
-      <UiTextarea v-model="form.options" label="Варианты — каждый с новой строки, первый верный по умолчанию" :rows="5" />
+      <UiTextarea v-model="form.options" label="Варианты — каждый с новой строки" :rows="5" />
       <label class="flex flex-col gap-1 text-sm">
-        <span class="text-ink-soft">Верный вариант (номер с нуля: первый — 0)</span>
-        <input v-model.number="form.correct" type="number" min="0" max="5" class="border-line bg-paper w-24 rounded-xl border p-2">
+        <span class="text-ink-soft">Верный вариант</span>
+        <select v-model.number="form.correct" class="border-line bg-paper min-h-11 rounded-xl border px-3">
+          <option v-for="(option, i) in form.options.split('\n').filter((line) => line.trim())" :key="i" :value="i">{{ option }}</option>
+        </select>
       </label>
-      <UiCheckbox v-model="form.isActive">Активен (попадает в игру)</UiCheckbox>
+      <UiCheckbox v-model="form.isActive">Активен (попадает в тест)</UiCheckbox>
       <div class="flex gap-2">
         <UiButton @click="save(editing === 'new' ? undefined : editing)">Сохранить</UiButton>
         <UiButton variant="ghost" @click="editing = null">Отмена</UiButton>
