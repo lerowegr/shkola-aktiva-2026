@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, CalendarClock, CircleCheck, MapPin } from "lucide-vue-next";
+import { ArrowLeft, CalendarClock, ChevronDown, CircleCheck, MapPin } from "lucide-vue-next";
 
 import type { StaffCriterion, StaffReview } from "~~/lib/applications/staff";
 import { placeLine } from "~~/lib/assessment/rules";
@@ -133,9 +133,10 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
               Вашей оценки у этого кандидата нет — обновите страницу или попросите распределяющего проверить группу.
             </p>
 
-            <details v-if="member.reviews.some((item) => !item.isMine)" class="flex flex-col gap-3" :open="!data?.isExpert">
-              <summary class="min-h-10 cursor-pointer text-sm font-medium">
+            <details v-if="member.reviews.some((item) => !item.isMine)" class="group flex flex-col gap-3" :open="!data?.isExpert">
+              <summary class="flex min-h-10 cursor-pointer items-center gap-1.5 text-sm font-medium">
                 Оценки других экспертов: {{ member.reviews.filter((item) => !item.isMine).length }}
+                <ChevronDown class="text-ink-soft size-4 transition-transform group-open:rotate-180" aria-hidden="true" />
               </summary>
               <div class="mt-3 flex flex-col gap-4">
                 <StaffReviewPanel

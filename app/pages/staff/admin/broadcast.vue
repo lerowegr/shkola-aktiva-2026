@@ -42,13 +42,12 @@ watch(segment, () => (confirming.value = false));
     </div>
 
     <form class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-5" @submit.prevent="confirming = true">
-      <label class="flex flex-col gap-1.5 text-sm font-medium">
-        Кому
-        <select v-model="segment" class="border-line bg-paper min-h-12 rounded-2xl border px-4 text-base">
+      <div class="flex min-w-0 flex-col gap-1.5">
+        <UiSelect v-model="segment" label="Кому">
           <option v-for="(label, key) in SEGMENTS" :key="key" :value="key">{{ label }}</option>
-        </select>
-        <span class="text-ink-soft text-xs font-normal">Получат: {{ preview?.count ?? "…" }}</span>
-      </label>
+        </UiSelect>
+        <span class="text-ink-soft text-xs">Получат: {{ preview?.count ?? "…" }}</span>
+      </div>
       <UiInput v-model="title" label="Заголовок" placeholder="До дедлайна анкеты — сутки" />
       <label class="flex flex-col gap-1.5 text-sm font-medium">
         Текст — необязательно

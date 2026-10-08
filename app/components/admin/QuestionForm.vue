@@ -87,35 +87,30 @@ async function submit() {
     <UiInput v-model="form.label" label="Вопрос" />
     <UiInput v-model="form.help" label="Подсказка под вопросом — необязательно" />
     <div class="grid gap-4 sm:grid-cols-2">
-      <label class="flex flex-col gap-1.5 text-sm font-medium">
-        Раздел
-        <select v-model="form.section" class="border-line bg-card min-h-12 rounded-2xl border px-4 text-base">
-          <option v-for="item in sections" :key="item" :value="item">{{ item }}</option>
-          <option v-if="!sections.includes(form.section)" :value="form.section">{{ form.section }}</option>
-        </select>
-      </label>
-      <label class="flex flex-col gap-1.5 text-sm font-medium">
-        Вид ответа
-        <select v-model="form.type" :disabled="locked" class="border-line bg-card min-h-12 rounded-2xl border px-4 text-base disabled:opacity-60">
+      <UiSelect v-model="form.section" label="Раздел">
+        <option v-for="item in sections" :key="item" :value="item">{{ item }}</option>
+        <option v-if="!sections.includes(form.section)" :value="form.section">{{ form.section }}</option>
+      </UiSelect>
+      <div class="flex min-w-0 flex-col gap-1.5">
+        <UiSelect v-model="form.type" label="Вид ответа" :disabled="locked">
           <option v-for="type in TYPES" :key="type.key" :value="type.key">{{ type.label }}</option>
-        </select>
-        <span v-if="locked" class="text-ink-soft text-xs font-normal">На вопрос уже отвечали — вид не меняется.</span>
-      </label>
+        </UiSelect>
+        <span v-if="locked" class="text-ink-soft text-xs">На вопрос уже отвечали — вид не меняется.</span>
+      </div>
     </div>
     <label v-if="choice" class="flex flex-col gap-1.5 text-sm font-medium">
       Варианты — каждый с новой строки
       <textarea v-model="form.options" rows="4" class="border-line bg-card rounded-2xl border px-4 py-3 text-base font-normal" />
     </label>
     <template v-else>
-      <label v-if="form.type === 'SHORT_TEXT'" class="flex flex-col gap-1.5 text-sm font-medium">
-        Формат ответа
-        <select v-model="form.format" :disabled="locked" class="border-line bg-card min-h-12 rounded-2xl border px-4 text-base disabled:opacity-60">
+      <div v-if="form.type === 'SHORT_TEXT'" class="flex min-w-0 flex-col gap-1.5">
+        <UiSelect v-model="form.format" label="Формат ответа" :disabled="locked">
           <option v-for="item in FORMATS" :key="item.key" :value="item.key">{{ item.label }}</option>
-        </select>
-        <span class="text-ink-soft text-xs font-normal">
+        </UiSelect>
+        <span class="text-ink-soft text-xs">
           {{ locked ? "На вопрос уже отвечали — формат не меняется." : "Сайт проверит ответ и приведёт к единому виду: vk.com/ivan → https://vk.ru/ivan." }}
         </span>
-      </label>
+      </div>
       <div class="grid gap-4 sm:grid-cols-2">
         <UiInput
           :model-value="String(form.minLength || '')"
@@ -126,9 +121,7 @@ async function submit() {
         <UiInput :model-value="String(form.maxLength ?? '')" label="Не длиннее, знаков" inputmode="numeric" @update:model-value="form.maxLength = Number($event) || 0" />
       </div>
     </template>
-    <label class="flex items-center gap-2 text-sm">
-      <input v-model="form.required" type="checkbox" class="accent-accent size-4" > Обязательный вопрос
-    </label>
+    <UiCheckbox v-model="form.required">Обязательный вопрос</UiCheckbox>
     <UiNotice :message="save.result.value?.ok ? null : save.result.value?.message" />
     <div class="flex gap-2 sm:w-80">
       <UiButton variant="ghost" @click="emit('cancel')">Отмена</UiButton>

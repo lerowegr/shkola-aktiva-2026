@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CheckCircle2, FileText, Send, Upload } from "lucide-vue-next";
+import { CheckCircle2, ChevronDown, FileText, Send, Upload } from "lucide-vue-next";
 
 import type { HomeworkView } from "~~/lib/applications/homework";
 
@@ -147,8 +147,8 @@ async function submit() {
           </p>
         </form>
 
-        <details v-if="hw.submissions.length > 1" class="text-sm">
-          <summary class="text-ink-soft cursor-pointer">Все версии: {{ hw.submissions.length }}</summary>
+        <details v-if="hw.submissions.length > 1" class="group text-sm">
+          <summary class="text-ink-soft flex cursor-pointer items-center gap-1.5">Все версии: {{ hw.submissions.length }}<ChevronDown class="size-4 transition-transform group-open:rotate-180" aria-hidden="true" /></summary>
           <ul class="mt-2 flex flex-col gap-1">
             <li v-for="item in hw.submissions" :key="item.id" class="text-ink-soft">
               {{ day(item.submittedAt) }}<template v-if="item.file"> — {{ item.file.filename }}</template>

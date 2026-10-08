@@ -76,13 +76,20 @@ const labelOf = computed(() => new Map((data.value?.groups ?? []).flatMap((group
       <div class="grid gap-4 md:grid-cols-2">
         <fieldset v-for="group in data?.groups ?? []" :key="group.key" class="border-line rounded-2xl border p-4">
           <legend class="px-1 text-sm font-semibold">{{ group.label }}</legend>
-          <label v-for="permission in group.permissions" :key="permission.key" class="flex items-start gap-3 py-1.5">
-            <input v-model="form.permissions" type="checkbox" :value="permission.key" class="accent-accent mt-1 size-4 shrink-0" >
-            <span>
-              <span class="block text-sm font-medium">{{ permission.label }}</span>
-              <span class="text-ink-soft block text-xs">{{ permission.description }}</span>
-            </span>
-          </label>
+          <div class="flex flex-col">
+            <UiCheckbox
+              v-for="permission in group.permissions"
+              :key="permission.key"
+              v-model="form.permissions"
+              :value="permission.key"
+              class="py-1.5"
+            >
+              <span>
+                <span class="block text-sm font-medium">{{ permission.label }}</span>
+                <span class="text-ink-soft block text-xs">{{ permission.description }}</span>
+              </span>
+            </UiCheckbox>
+          </div>
         </fieldset>
       </div>
 

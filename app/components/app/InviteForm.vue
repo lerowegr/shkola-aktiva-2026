@@ -55,15 +55,9 @@ async function copy() {
     </div>
     <UiInput v-model="email" label="Почта" type="email" inputmode="email" autocomplete="off" />
 
-    <label class="flex flex-col gap-1.5">
-      <span class="text-sm font-medium">Роль</span>
-      <select
-        v-model="roleId"
-        class="border-line bg-card focus:border-accent focus:ring-accent/20 min-h-12 rounded-2xl border px-4 text-base outline-none focus:ring-4"
-      >
-        <option v-for="role in data?.roles ?? []" :key="role.id" :value="role.id">{{ role.name }}</option>
-      </select>
-    </label>
+    <UiSelect v-model="roleId" label="Роль">
+      <option v-for="role in data?.roles ?? []" :key="role.id" :value="role.id">{{ role.name }}</option>
+    </UiSelect>
 
     <UiNotice :ok="invite.result.value?.ok" :message="invite.result.value?.message" />
 

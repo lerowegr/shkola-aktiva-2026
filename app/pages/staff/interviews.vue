@@ -76,10 +76,7 @@ const time = mskTime;
         </p>
       </div>
 
-      <label class="flex items-center gap-2 self-start text-sm">
-        <input v-model="onlyMine" type="checkbox" class="accent-accent size-4" >
-        Только мои собеседования
-      </label>
+      <UiCheckbox v-model="onlyMine" class="self-start">Только мои собеседования</UiCheckbox>
 
       <UiNotice v-if="remove.result.value && !remove.result.value.ok" :message="remove.result.value.message" />
 
@@ -154,10 +151,7 @@ const time = mskTime;
         </label>
         <fieldset class="flex flex-col gap-2">
           <legend class="mb-1.5 text-sm font-medium">Собеседуют</legend>
-          <label v-for="person in pool?.people ?? []" :key="person.id" class="flex items-center gap-2 text-sm">
-            <input v-model="form.interviewerIds" type="checkbox" :value="person.id" class="accent-accent size-4" >
-            {{ person.name }}
-          </label>
+          <UiCheckbox v-for="person in pool?.people ?? []" :key="person.id" v-model="form.interviewerIds" :value="person.id">{{ person.name }}</UiCheckbox>
         </fieldset>
         <p class="text-ink-soft text-xs">Время — московское.</p>
         <UiNotice :ok="cut.result.value?.ok" :message="cut.result.value?.message" />

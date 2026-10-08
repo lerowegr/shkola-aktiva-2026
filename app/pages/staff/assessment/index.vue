@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BellRing, CalendarClock, ChevronRight, MapPin, Pencil, Plus, Shuffle, Trash2, TriangleAlert, UsersRound } from "lucide-vue-next";
+import { BellRing, CalendarClock, ChevronDown, ChevronRight, MapPin, Pencil, Plus, Shuffle, Trash2, TriangleAlert, UsersRound } from "lucide-vue-next";
 
 import type { ActionResult } from "~/composables/useAction";
 import { placeLine } from "~~/lib/assessment/rules";
@@ -161,6 +161,7 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
           <details class="group/members">
             <summary class="flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium">
               <UsersRound class="size-4" aria-hidden="true" /> Кандидаты: {{ group.members.length }}
+              <ChevronDown class="text-ink-soft size-4 transition-transform group-open/members:rotate-180" aria-hidden="true" />
             </summary>
             <ul class="mt-2 flex flex-col divide-y divide-line">
               <li v-for="member in group.members" :key="member.applicationId" class="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
@@ -168,17 +169,17 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
                   {{ member.name }}
                   <span class="text-ink-soft text-xs">· оценок {{ member.done }} из {{ member.total }}</span>
                 </span>
-                <select
+                <UiSelect
                   v-if="data?.manage"
-                  :value="group.id"
+                  size="sm"
+                  :model-value="group.id"
                   :disabled="busy === `m:${member.applicationId}`"
                   :aria-label="`Группа: ${member.name}`"
-                  class="border-line bg-paper min-h-10 rounded-xl border px-2 text-sm"
                   @change="move(member.applicationId, ($event.target as HTMLSelectElement).value)"
                 >
                   <option v-for="option in data.groups" :key="option.id" :value="option.id">{{ option.title }}</option>
                   <option value="">Убрать из групп</option>
-                </select>
+                </UiSelect>
               </li>
               <li v-if="group.members.length === 0" class="text-ink-soft py-2 text-sm">Пока никого.</li>
             </ul>
@@ -219,17 +220,17 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
       <ul class="flex flex-col divide-y divide-line">
         <li v-for="person in data.free" :key="person.applicationId" class="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
           <span class="text-sm">{{ person.name }}</span>
-          <select
+          <UiSelect
             v-if="data.groups.length"
-            value=""
+            size="sm"
+            model-value=""
             :disabled="busy === `m:${person.applicationId}`"
             :aria-label="`В группу: ${person.name}`"
-            class="border-line bg-paper min-h-10 rounded-xl border px-2 text-sm"
             @change="move(person.applicationId, ($event.target as HTMLSelectElement).value)"
           >
             <option value="" disabled>В группу…</option>
             <option v-for="option in data.groups" :key="option.id" :value="option.id">{{ option.title }}</option>
-          </select>
+          </UiSelect>
         </li>
       </ul>
     </section>

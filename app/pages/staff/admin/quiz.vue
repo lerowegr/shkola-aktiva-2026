@@ -111,9 +111,7 @@ const remove = (id: string) => post("/api/admin/quiz/delete", { id });
         <span class="text-ink-soft">Верный вариант (номер с нуля: первый — 0)</span>
         <input v-model.number="form.correct" type="number" min="0" max="5" class="border-line bg-paper w-24 rounded-xl border p-2">
       </label>
-      <label class="flex items-center gap-2 text-sm">
-        <input v-model="form.isActive" type="checkbox"> Активен (попадает в игру)
-      </label>
+      <UiCheckbox v-model="form.isActive">Активен (попадает в игру)</UiCheckbox>
       <div class="flex gap-2">
         <UiButton @click="save(editing === 'new' ? undefined : editing)">Сохранить</UiButton>
         <UiButton variant="ghost" @click="editing = null">Отмена</UiButton>

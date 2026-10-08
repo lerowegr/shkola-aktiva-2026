@@ -82,6 +82,7 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  color-scheme: light;
 }
 
 body {
@@ -137,6 +138,17 @@ body {
 .font-script,
 .font-retro {
   font-synthesis: none;
+}
+
+/*
+ * Раскрывайки <details>: нативный треугольник прячем везде, свой шеврон
+ * каждая ставит сама (как плюс в Faq). Без этого — дефолтный браузер.
+ */
+summary::-webkit-details-marker {
+  display: none;
+}
+summary::marker {
+  content: "";
 }
 
 /*

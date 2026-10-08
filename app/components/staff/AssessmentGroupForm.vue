@@ -101,10 +101,7 @@ const field = "border-line bg-paper focus:border-accent min-h-11 rounded-xl bord
       <legend class="mb-1.5 text-sm font-medium">Эксперты — оценивают всех кандидатов группы</legend>
       <p v-if="pool.length === 0" class="text-ink-soft text-sm">Мастеров отбора пока нет — их добавляют в «Админка → Люди».</p>
       <div class="grid gap-2 sm:grid-cols-2">
-        <label v-for="person in pool" :key="person.id" class="flex min-h-9 items-center gap-2 text-sm">
-          <input v-model="form.experts" type="checkbox" :value="person.id" class="accent-accent size-4" >
-          {{ person.name }}
-        </label>
+        <UiCheckbox v-for="person in pool" :key="person.id" v-model="form.experts" :value="person.id">{{ person.name }}</UiCheckbox>
       </div>
     </fieldset>
 

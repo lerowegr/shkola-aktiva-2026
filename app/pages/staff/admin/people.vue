@@ -133,10 +133,10 @@ function initialsOf(name: string) {
                     <X class="size-3.5" aria-hidden="true" />
                   </button>
                 </span>
-                <select
-                  class="border-line bg-card min-h-8 rounded-lg border px-2 text-xs"
-                  value=""
+                <UiSelect
+                  size="xs"
                   aria-label="Выдать роль"
+                  :model-value="''"
                   @change="grantRole(person, $event)"
                 >
                   <option value="" disabled>+ выдать роль</option>
@@ -147,7 +147,7 @@ function initialsOf(name: string) {
                   >
                     {{ role.name }}
                   </option>
-                </select>
+                </UiSelect>
               </div>
 
               <div class="flex flex-wrap gap-2">

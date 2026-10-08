@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CalendarClock, ChevronLeft, ChevronRight, FileText, MapPin, Send } from "lucide-vue-next";
+import { CalendarClock, ChevronDown, ChevronLeft, ChevronRight, FileText, MapPin, Send } from "lucide-vue-next";
 
 import type { StaffApplication, StaffApplicationResponse } from "~~/lib/applications/staff";
 
@@ -155,8 +155,8 @@ async function pass() {
             </a>
             <p v-if="currentWork.text" class="text-sm whitespace-pre-line">{{ currentWork.text }}</p>
 
-            <details v-if="olderWork.length" class="text-sm">
-              <summary class="text-ink-soft cursor-pointer">Прежние версии: {{ olderWork.length }}</summary>
+            <details v-if="olderWork.length" class="group text-sm">
+              <summary class="text-ink-soft flex cursor-pointer items-center gap-1.5">Прежние версии: {{ olderWork.length }}<ChevronDown class="size-4 transition-transform group-open:rotate-180" aria-hidden="true" /></summary>
               <ul class="mt-2 flex flex-col gap-2">
                 <li v-for="item in olderWork" :key="item.id" class="text-ink-soft flex flex-wrap gap-x-2">
                   <span>{{ mskFormat(item.submittedAt, "d MMM, HH:mm") }}</span>
@@ -170,7 +170,7 @@ async function pass() {
           </section>
 
           <details class="group">
-            <summary class="text-ink-soft hover:text-ink cursor-pointer px-1 text-sm font-medium">Анкета кандидата</summary>
+            <summary class="text-ink-soft hover:text-ink flex cursor-pointer items-center gap-1.5 px-1 text-sm font-medium">Анкета кандидата<ChevronDown class="size-4 transition-transform group-open:rotate-180" aria-hidden="true" /></summary>
             <div class="mt-3">
         <section class="bg-card border-line flex flex-col rounded-3xl border">
         <dl class="bg-paper m-3 grid grid-cols-2 gap-3 rounded-2xl p-4 sm:grid-cols-4">
@@ -297,10 +297,11 @@ v-for="field in [
         >
           <label for="reassign" class="text-sm font-semibold">Передать другому мастеру</label>
           <div class="flex gap-2">
-            <select
+            <UiSelect
               id="reassign"
               v-model="target"
-              class="border-line bg-paper min-h-11 min-w-0 flex-1 rounded-xl border px-3 text-sm"
+              size="md"
+              aria-label="Передать другому мастеру"
             >
               <option value="" disabled>Выберите мастера</option>
               <option
@@ -311,10 +312,12 @@ v-for="field in [
               >
                 {{ person.name }} — {{ person.load }}
               </option>
-            </select>
-            <UiButton type="submit" class="min-h-11 w-auto px-4 text-sm" :pending="reassign.pending.value" :disabled="!target">
-              Передать
-            </UiButton>
+            </UiSelect>
+            <div class="shrink-0 self-end">
+              <UiButton type="submit" :pending="reassign.pending.value" :disabled="!target">
+                Передать
+              </UiButton>
+            </div>
           </div>
           <UiNotice :ok="reassign.result.value?.ok" :message="reassign.result.value?.message" />
         </form>
