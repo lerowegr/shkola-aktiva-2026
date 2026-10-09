@@ -131,13 +131,10 @@ const time = mskTime;
           <CalendarPlus class="size-5" aria-hidden="true" />
           <h2 class="font-display text-lg">Нарезать слоты</h2>
         </div>
-        <label class="flex flex-col gap-1.5 text-sm font-medium">
-          День
-          <input v-model="form.date" type="date" class="border-line bg-paper min-h-11 rounded-xl border px-3 text-base" >
-        </label>
+        <UiDateTime v-model="form.date" mode="date" size="md" label="День" />
         <div class="grid grid-cols-2 gap-3">
-          <label class="flex flex-col gap-1.5 text-sm font-medium">С<input v-model="form.from" type="time" class="border-line bg-paper min-h-11 rounded-xl border px-3 text-base" ></label>
-          <label class="flex flex-col gap-1.5 text-sm font-medium">До<input v-model="form.to" type="time" class="border-line bg-paper min-h-11 rounded-xl border px-3 text-base" ></label>
+          <UiTime v-model="form.from" label="С" />
+          <UiTime v-model="form.to" label="До" />
           <label class="flex flex-col gap-1.5 text-sm font-medium">Минут на одного<input v-model.number="form.duration" type="number" min="5" class="border-line bg-paper min-h-11 rounded-xl border px-3 text-base" ></label>
           <label class="flex flex-col gap-1.5 text-sm font-medium">Перерыв, мин<input v-model.number="form.gap" type="number" min="0" class="border-line bg-paper min-h-11 rounded-xl border px-3 text-base" ></label>
         </div>

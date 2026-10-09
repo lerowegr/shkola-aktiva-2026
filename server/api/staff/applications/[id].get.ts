@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: "Домашнее задание ещё не сдано." });
   }
 
-  const assignedToMe = card.reviews.some((review) => review.isMine);
+  const assignedToMe = card.reviews.some((review) => review.isMine && !review.released);
   const mayReview = assignedToMe && can(user, "applications.review");
 
   if (!mayReview && !can(user, "applications.view_all")) {

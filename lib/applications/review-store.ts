@@ -1,5 +1,8 @@
 import { writeAudit } from "~~/lib/audit";
+import { loadUser } from "~~/lib/auth/actor";
 import { db } from "~~/lib/db";
+import type { StageKind } from "~~/lib/generated/prisma/enums";
+import { can } from "~~/lib/permissions";
 
 import { validScore } from "./review";
 
@@ -31,10 +34,20 @@ export interface AuditContext {
 async function ownReview(reviewId: string, actorId: string) {
   const review = await db.review.findUnique({
     where: { id: reviewId },
-    select: { id: true, reviewerId: true, stageKind: true, application: { select: { seasonId: true } } },
+    select: {
+      id: true,
+      applicationId: true,
+      reviewerId: true,
+      stageKind: true,
+      releasedAt: true,
+      application: { select: { seasonId: true } },
+    },
   });
 
   if (!review) return { ok: false as const, message: "Оценка не найдена — обновите страницу." };
+  if (review.releasedAt) {
+    return { ok: false as const, message: "Оценка возвращена на биржу — только чтение." };
+  }
   if (review.reviewerId !== actorId) {
     return { ok: false as const, message: "Эта анкета назначена другому мастеру — её можно только смотреть." };
   }
@@ -176,4 +189,137 @@ export async function saveText(
   }
 
   return { ok: true, updatedAt: review.updatedAt };
+}
+
+// ---------------------------------------------------------------------------
+// Биржа: взять, передать, вернуть
+// ---------------------------------------------------------------------------
+
+export type BookingResult = { ok: true; reviewId: string } | { ok: false; message: string };
+
+async function activeOwnReview(applicationId: string, stageKind: StageKind, actorId: string) {
+  return db.review.findUnique({
+    where: { applicationId_stageKind_reviewerId: { applicationId, stageKind, reviewerId: actorId } },
+    select: { id: true, releasedAt: true },
+  });
+}
+
+/**
+ * Взять анкету на проверку: бронь за мастером. Брать можно только
+ * отправленную; чужие брони не мешают — параллельные оценки были всегда,
+ * holders видны в карточке. Повторный вызов возвращает ту же строку.
+ */
+export async function takeReview(
+  params: { applicationId: string; stageKind: StageKind; actorId: string },
+  context: AuditContext = {},
+): Promise<BookingResult> {
+  const application = await db.application.findUnique({
+    where: { id: params.applicationId },
+    select: { id: true, status: true, lastName: true, firstName: true },
+  });
+  if (!application || application.status !== "SUBMITTED") {
+    return { ok: false, message: "Брать на проверку можно только отправленную анкету." };
+  }
+
+  const existing = await activeOwnReview(params.applicationId, params.stageKind, params.actorId);
+  if (existing && !existing.releasedAt) return { ok: true, reviewId: existing.id };
+
+  try {
+    const review = await db.review.create({
+      data: {
+        applicationId: params.applicationId,
+        stageKind: params.stageKind,
+        reviewerId: params.actorId,
+        assignedById: params.actorId,
+      },
+      select: { id: true },
+    });
+    await writeAudit({
+      actorId: params.actorId,
+      action: "review.take",
+      entityType: "review",
+      entityId: review.id,
+      meta: { applicationId: params.applicationId, stageKind: params.stageKind },
+      ...context,
+    });
+    return { ok: true, reviewId: review.id };
+  } catch {
+    // Гонка двух «взять» одновременно: unique отдаёт победу одному,
+    // второй забирает свою строку.
+    const retry = await activeOwnReview(params.applicationId, params.stageKind, params.actorId);
+    if (retry && !retry.releasedAt) return { ok: true, reviewId: retry.id };
+    return { ok: false, message: "Не получилось взять — обновите страницу." };
+  }
+}
+
+/** Передать свою активную оценку другому мастеру — вместе с баллами. */
+export async function transferReview(
+  params: { reviewId: string; actorId: string; toUserId: string },
+  context: AuditContext = {},
+): Promise<BookingResult> {
+  const own = await ownReview(params.reviewId, params.actorId);
+  if (!own.ok) return own;
+  if (params.toUserId === params.actorId) {
+    return { ok: false, message: "Оценка уже ваша — передавать некому." };
+  }
+
+  const target = await loadUser(params.toUserId);
+  if (!target || !target.isActive || (!target.isOwner && !can(target, "applications.review"))) {
+    return { ok: false, message: "Передать можно только активному мастеру отбора." };
+  }
+  const clash = await db.review.findUnique({
+    where: {
+      applicationId_stageKind_reviewerId: {
+        applicationId: own.review.applicationId,
+        stageKind: own.review.stageKind,
+        reviewerId: params.toUserId,
+      },
+    },
+    select: { id: true, releasedAt: true },
+  });
+  if (clash && !clash.releasedAt) {
+    return { ok: false, message: "У этого мастера уже есть оценка этой анкеты." };
+  }
+
+  await db.review.update({
+    where: { id: params.reviewId },
+    data: { reviewerId: params.toUserId, assignedById: params.actorId, updatedById: params.actorId },
+  });
+  await writeAudit({
+    actorId: params.actorId,
+    action: "review.transfer",
+    entityType: "review",
+    entityId: params.reviewId,
+    meta: { toUserId: params.toUserId, toName: target.name },
+    ...context,
+  });
+  return { ok: true, reviewId: params.reviewId };
+}
+
+/**
+ * Вернуть оценку на биржу. Без сохранения — строка удаляется вместе
+ * с баллами; с сохранением — замораживается: видна всем, менять не может
+ * никто, бронь освобождается.
+ */
+export async function releaseReview(
+  params: { reviewId: string; actorId: string; keep: boolean },
+  context: AuditContext = {},
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const own = await ownReview(params.reviewId, params.actorId);
+  if (!own.ok) return own;
+
+  if (params.keep) {
+    await db.review.update({ where: { id: params.reviewId }, data: { releasedAt: new Date(), updatedById: params.actorId } });
+  } else {
+    await db.review.delete({ where: { id: params.reviewId } });
+  }
+  await writeAudit({
+    actorId: params.actorId,
+    action: "review.release",
+    entityType: "review",
+    entityId: params.reviewId,
+    meta: { kept: params.keep },
+    ...context,
+  });
+  return { ok: true };
 }

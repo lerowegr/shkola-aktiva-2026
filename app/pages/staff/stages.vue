@@ -22,7 +22,7 @@ interface StageRow {
 
 const { data, refresh } = await useFetch<{ season: { title: string; stages: StageRow[] } | null }>("/api/staff/stages");
 
-// Поля datetime-local — без часового пояса; заполняем и читаем их по Москве.
+// Поля даты — строки без часового пояса; заполняем и читаем их по Москве.
 const local = mskInputValue;
 const iso = mskFromInput;
 
@@ -101,22 +101,8 @@ const MODES = [
       </div>
 
       <div v-if="forms[stage.id]" class="grid gap-4 sm:grid-cols-2">
-        <label class="flex flex-col gap-1.5 text-sm font-medium">
-          Открывается, по Москве
-          <input
-            v-model="forms[stage.id]!.opensAt"
-            type="datetime-local"
-            class="border-line bg-paper min-h-12 rounded-2xl border px-4 text-base"
-          >
-        </label>
-        <label class="flex flex-col gap-1.5 text-sm font-medium">
-          Закрывается, по Москве
-          <input
-            v-model="forms[stage.id]!.closesAt"
-            type="datetime-local"
-            class="border-line bg-paper min-h-12 rounded-2xl border px-4 text-base"
-          >
-        </label>
+        <UiDateTime v-model="forms[stage.id]!.opensAt" label="Открывается, по Москве" />
+        <UiDateTime v-model="forms[stage.id]!.closesAt" label="Закрывается, по Москве" />
       </div>
 
       <div v-if="forms[stage.id]" role="radiogroup" aria-label="Режим" class="bg-paper grid grid-cols-3 gap-1 rounded-2xl p-1">

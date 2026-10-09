@@ -46,7 +46,7 @@ function pick(applicationId: string) {
 }
 
 const card = computed(() => ({ stage: "ASSESSMENT" as const, criteria: sheet.value?.criteria ?? [], markers: sheet.value?.markers ?? [] }));
-const mine = (member: Sheet["members"][number]) => member.reviews.find((review) => review.isMine) ?? null;
+const mine = (member: Sheet["members"][number]) => member.reviews.find((review) => review.isMine && !review.released) ?? null;
 const done = (member: Sheet["members"][number]) => mine(member)?.summary.status === "done";
 const doneCount = computed(() => (sheet.value?.members ?? []).filter(done).length);
 
@@ -122,7 +122,7 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
             </div>
 
             <StaffReviewPanel
-              v-for="review in member.reviews.filter((item) => item.isMine)"
+              v-for="review in member.reviews.filter((item) => item.isMine && !item.released)"
               :key="review.id"
               :card="card"
               :review="review"

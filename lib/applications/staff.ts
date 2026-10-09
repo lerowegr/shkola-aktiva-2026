@@ -66,7 +66,7 @@ export interface ListRow {
   initials: string;
   telegramUsername: string | null;
   submittedAt: Date | null;
-  reviewers: { id: string; name: string; isMe: boolean }[];
+  reviewers: { id: string; name: string; isMe: boolean; released: boolean }[];
   mine: boolean;
   summary: ReviewSummary;
   /** Маркеры, по которым мастер что-то написал, — чипы в списке. */
@@ -105,7 +105,7 @@ export async function listApplications(params: {
         seasonId,
         AND: [
           stageFilter(stage),
-          scope === "mine" ? { reviews: { some: { stageKind: stage, reviewerId: viewerId } } } : {},
+          scope === "mine" ? { reviews: { some: { stageKind: stage, reviewerId: viewerId, releasedAt: null } } } : {},
         ],
       },
       orderBy: { submittedAt: "asc" },
@@ -128,6 +128,7 @@ export async function listApplications(params: {
           orderBy: { assignedAt: "asc" },
           select: {
             reviewerId: true,
+            releasedAt: true,
             reviewer: { select: { firstName: true, lastName: true, telegramUsername: true, email: true } },
             scores: { select: { criterionId: true, score: true } },
             markers: { where: { note: { not: "" } }, select: { marker: { select: { title: true, order: true } } } },
@@ -154,8 +155,9 @@ export async function listApplications(params: {
         id: review.reviewerId,
         name: displayName(review.reviewer),
         isMe: review.reviewerId === viewerId,
+        released: review.releasedAt !== null,
       })),
-      mine: application.reviews.some((review) => review.reviewerId === viewerId),
+      mine: application.reviews.some((review) => review.reviewerId === viewerId && review.releasedAt === null),
       summary: reviewSummary(criteria, main?.scores ?? []),
       markers: (main?.markers ?? [])
         .map((item) => item.marker)
@@ -186,6 +188,8 @@ export interface StaffReview {
   id: string;
   reviewer: { id: string; name: string };
   isMine: boolean;
+  /** Возвращена на биржу с сохранением: заморожена, только чтение. */
+  released: boolean;
   scores: Record<string, number>;
   markers: Record<string, string>;
   comment: string;
@@ -294,6 +298,7 @@ export async function loadStaffApplication(
         select: {
           id: true,
           reviewerId: true,
+          releasedAt: true,
           reviewer: { select: { firstName: true, lastName: true, telegramUsername: true, email: true } },
           comment: true,
           updatedAt: true,
@@ -381,6 +386,7 @@ export async function loadStaffApplication(
       id: review.id,
       reviewer: { id: review.reviewerId, name: displayName(review.reviewer) },
       isMine: review.reviewerId === viewerId,
+      released: review.releasedAt !== null,
       scores: Object.fromEntries(review.scores.map((score) => [score.criterionId, score.score])),
       markers: Object.fromEntries(review.markers.map((marker) => [marker.markerId, marker.note])),
       comment: review.comment ?? "",

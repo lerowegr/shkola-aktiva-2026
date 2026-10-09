@@ -517,6 +517,9 @@ model Review {
 
   assignedById String?
   assignedAt   DateTime  @default(now())
+  /// Возврат на биржу с сохранением: оценка заморожена — видна всем,
+  /// менять не может никто. Пусто — активная бронь мастера.
+  releasedAt   DateTime?
   /// Кто и когда последним что-то поменял — строка «Оценка сохранена».
   updatedById  String?
   updatedAt    DateTime  @updatedAt

@@ -28,7 +28,7 @@ const shownReview = ref(0);
 watch(id, () => (shownReview.value = 0));
 const review = computed(() => {
   const reviews = card.value?.reviews ?? [];
-  const mine = reviews.findIndex((item) => item.isMine);
+  const mine = reviews.findIndex((item) => item.isMine && !item.released);
   return reviews[mine >= 0 && shownReview.value === 0 ? mine : shownReview.value] ?? null;
 });
 
@@ -57,6 +57,48 @@ function answerText(answer: StaffApplication["questions"][number]["answer"]) {
 
 function isLink(value: string | null) {
   return !!value && /^https?:\/\//.test(value);
+}
+
+// --- Биржа: взять, передать, вернуть -------------------------------------------
+const session = await useSession();
+const canReview = computed(() => session.value?.permissions.includes("applications.review") ?? false);
+const myActive = computed(() => card.value?.reviews.find((item) => item.isMine && !item.released) ?? null);
+const holders = computed(() => (card.value?.reviews ?? []).filter((item) => !item.released && !item.isMine));
+
+const { data: mates } = await useFetch("/api/staff/colleagues", {
+  immediate: canReview.value,
+  key: "staff-colleagues",
+});
+const take = useAction("/api/staff/reviews/take");
+const transfer = useAction("/api/staff/reviews/transfer");
+const release = useAction("/api/staff/reviews/release");
+const passTo = ref("");
+const confirmDrop = ref(false);
+
+async function done(ok: unknown) {
+  if (ok) {
+    passTo.value = "";
+    confirmDrop.value = false;
+    await refresh();
+    await refreshNuxtData("staff-nav");
+  }
+}
+
+async function takeIt() {
+  const result = await take.submit({ applicationId: id.value, stage: stage.value });
+  await done(result.ok);
+}
+
+async function passIt() {
+  if (!myActive.value || !passTo.value) return;
+  const result = await transfer.submit({ reviewId: myActive.value.id, toUserId: passTo.value });
+  await done(result.ok);
+}
+
+async function releaseIt(keep: boolean) {
+  if (!myActive.value) return;
+  const result = await release.submit({ reviewId: myActive.value.id, keep });
+  await done(result.ok);
 }
 
 // --- Переназначение -----------------------------------------------------------
@@ -274,7 +316,7 @@ v-for="field in [
             :class="review?.id === item.id ? 'bg-paper font-semibold' : 'text-ink-soft'"
             @click="shownReview = index"
           >
-            {{ item.isMine ? "Моя оценка" : item.reviewer.name }}
+            {{ item.isMine ? "Моя оценка" : item.reviewer.name }}{{ item.released ? " (возвращена)" : "" }}
           </button>
         </div>
 
@@ -288,6 +330,51 @@ v-for="field in [
         />
         <div v-else class="bg-card border-line text-ink-soft rounded-3xl border p-5 text-sm">
           Анкета ещё никому не назначена.
+        </div>
+
+        <div v-if="canReview" class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-4">
+          <p class="text-sm font-semibold">Проверка</p>
+          <p v-if="holders.length > 0" class="text-ink-soft text-sm">
+            На проверке у: {{ holders.map((item) => item.reviewer.name).join(", ") }}
+          </p>
+          <template v-if="myActive">
+            <div class="flex gap-2">
+              <UiSelect v-model="passTo" size="md" aria-label="Передать мастеру">
+                <option value="" disabled>Мастер…</option>
+                <option
+                  v-for="person in mates?.colleagues ?? []"
+                  :key="person.id"
+                  :value="person.id"
+                  :disabled="card.reviews.some((item) => item.reviewer.id === person.id && !item.released)"
+                >
+                  {{ person.name }} — {{ person.load }}
+                </option>
+              </UiSelect>
+              <div class="shrink-0 self-end">
+                <UiButton :pending="transfer.pending.value" :disabled="!passTo" @click="passIt">Передать</UiButton>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <UiButton variant="ghost" :pending="release.pending.value" @click="releaseIt(true)">Вернуть с сохранением</UiButton>
+              <UiButton
+                v-if="!confirmDrop"
+                variant="ghost"
+                @click="confirmDrop = true"
+              >
+                Вернуть без сохранения
+              </UiButton>
+              <UiButton
+                v-else
+                variant="ghost"
+                :pending="release.pending.value"
+                @click="releaseIt(false)"
+              >
+                Точно удалить баллы?
+              </UiButton>
+            </div>
+          </template>
+          <UiButton v-else :pending="take.pending.value" @click="takeIt">Взять на проверку</UiButton>
+          <UiNotice :message="take.result.value?.ok === false ? take.result.value.message : transfer.result.value?.ok === false ? transfer.result.value.message : release.result.value?.ok === false ? release.result.value.message : null" />
         </div>
 
         <form

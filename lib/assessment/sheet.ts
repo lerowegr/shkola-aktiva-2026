@@ -46,6 +46,7 @@ export async function loadSheet(seasonId: string, groupId: string, viewerId: str
                 select: {
                   id: true,
                   reviewerId: true,
+                  releasedAt: true,
                   reviewer: { select: { firstName: true, lastName: true, telegramUsername: true, email: true } },
                   comment: true,
                   updatedAt: true,
@@ -99,6 +100,7 @@ export async function loadSheet(seasonId: string, groupId: string, viewerId: str
           id: review.id,
           reviewer: { id: review.reviewerId, name: displayName(review.reviewer) },
           isMine: review.reviewerId === viewerId,
+          released: review.releasedAt !== null,
           scores: Object.fromEntries(review.scores.map((score) => [score.criterionId, score.score])),
           markers: Object.fromEntries(review.markers.map((marker) => [marker.markerId, marker.note])),
           comment: review.comment ?? "",

@@ -82,10 +82,7 @@ const field = "border-line bg-paper focus:border-accent min-h-11 rounded-xl bord
         <input v-model="form.room" maxlength="120" :class="field" placeholder="Например, 305" >
       </label>
     </div>
-    <label class="flex flex-col gap-1.5 text-sm font-medium">
-      Начало — по Москве
-      <input v-model="form.startsAt" type="datetime-local" :class="field" >
-    </label>
+    <UiDateTime v-model="form.startsAt" label="Начало — по Москве" size="md" />
     <label class="flex flex-col gap-1.5 text-sm font-medium">
       Заметка для кандидатов — необязательно
       <textarea
