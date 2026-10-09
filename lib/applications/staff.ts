@@ -1,6 +1,7 @@
 import { displayName } from "~~/lib/auth/actor";
 import { db } from "~~/lib/db";
 import type { StageKind } from "~~/lib/generated/prisma/enums";
+import type { GuideBlock } from "~~/lib/interviews/guide";
 
 import type { AnswerValue } from "./form";
 import { reviewSummary, type ReviewSummary } from "./review";
@@ -405,6 +406,8 @@ export interface StaffApplicationResponse {
   canEdit: boolean;
   canAssign: boolean;
   scope: ListScope;
+  /** Сценарий собеса с ячейками — только на этапе INTERVIEW. */
+  guide: GuideBlock[];
   prev: string | null;
   next: string | null;
 }

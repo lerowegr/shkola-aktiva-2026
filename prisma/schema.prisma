@@ -171,6 +171,7 @@ model User {
   slotInterviewers  SlotInterviewer[]
   gameResults       GameResult[]
   dailySolutions    DailySolution[]
+  interviewNotes    InterviewNote[]
 
   @@index([status])
   @@map("users")
@@ -328,6 +329,7 @@ model Season {
   siteContent      SiteContent?
   siteImages       SiteImage[]
   quizAttempts     QuizAttempt[]
+  interviewQuestions InterviewQuestion[]
 
   @@map("seasons")
 }
@@ -441,6 +443,7 @@ model Application {
   decisions   StageDecision[]
   submissions Submission[]
   bookings    InterviewBooking[]
+  interviewNotes InterviewNote[]
   assessment  AssessmentMember?
 
   @@unique([seasonId, userId])
@@ -669,6 +672,43 @@ model InterviewBooking {
   @@index([slotId, cancelledAt])
   @@index([applicationId, cancelledAt])
   @@map("interview_bookings")
+}
+
+/// Вопрос сценария собеседования: блок + текст. Заполняются из таблицы
+/// «Портрет участника» (лист «вопросы собеса»), правятся через сид.
+model InterviewQuestion {
+  id       String @id @default(cuid())
+  seasonId String
+  order    Int
+  /// Название блока: характеристика, «Блиц», «Отводка».
+  block String
+  /// Текст вопроса. У вводной — текст сценария.
+  text String
+  /// Вводная читается, остальное — с ячейками для комментариев.
+  intro Boolean @default(false)
+
+  season Season          @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  notes  InterviewNote[]
+
+  @@index([seasonId, order])
+  @@map("interview_questions")
+}
+
+/// Комментарий мастера к вопросу собеса: одна ячейка на мастера.
+model InterviewNote {
+  id            String   @id @default(cuid())
+  applicationId String
+  questionId    String
+  authorId      String
+  note          String
+  updatedAt     DateTime @updatedAt
+
+  application Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  question    InterviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  author      User              @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, questionId, authorId])
+  @@map("interview_notes")
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { EVALUATED_STAGES, loadStaffApplication, neighbours } from "~~/lib/applications/staff";
+import { loadGuide } from "~~/lib/interviews/guide";
 import { can } from "~~/lib/permissions";
 import { requireCurrentSeasonId } from "~~/server/utils/season";
 import { requireUser } from "~~/server/utils/session";
@@ -36,8 +37,9 @@ export default defineEventHandler(async (event) => {
   }
 
   // Листаем тот список, из которого пришли; «мои» — только если анкета моя.
+  const seasonId = await requireCurrentSeasonId();
   const scope = from === "mine" && assignedToMe ? "mine" : can(user, "applications.view_all") ? "all" : "mine";
-  const around = await neighbours(await requireCurrentSeasonId(), user.id, id, scope, stage);
+  const around = await neighbours(seasonId, user.id, id, scope, stage);
 
   return {
     card,
@@ -45,6 +47,7 @@ export default defineEventHandler(async (event) => {
     canEdit: mayReview,
     canAssign: can(user, "applications.assign"),
     scope,
+    guide: stage === "INTERVIEW" ? await loadGuide(seasonId, id, user.id) : [],
     ...around,
   };
 });

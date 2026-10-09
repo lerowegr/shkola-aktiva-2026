@@ -21,6 +21,7 @@ import {
   type DefaultMarker,
 } from "../lib/applications/defaults";
 import { PERMISSION_GROUPS, PERMISSION_KEYS } from "../lib/permissions";
+import { DEFAULT_INTERVIEW_QUESTIONS } from "../lib/interviews/questions";
 import { SHA_TEST_QUESTIONS } from "../app/games/sha-test-questions";
 
 const selection = PERMISSION_GROUPS.find((group) => group.key === "selection")!.permissions.map(
@@ -172,6 +173,19 @@ async function main() {
         options: question.options,
         correct: question.correct,
         isActive: true,
+      })),
+    });
+  }
+
+  // Сценарий собеседования из таблицы — только если его ещё нет.
+  if ((await db.interviewQuestion.count({ where: { seasonId: season.id } })) === 0) {
+    await db.interviewQuestion.createMany({
+      data: DEFAULT_INTERVIEW_QUESTIONS.map((question, index) => ({
+        seasonId: season.id,
+        order: index + 1,
+        block: question.block,
+        text: question.text,
+        intro: question.intro ?? false,
       })),
     });
   }
