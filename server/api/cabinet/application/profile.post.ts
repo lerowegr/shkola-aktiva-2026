@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import { db } from "~~/lib/db";
 import { editableDraft } from "~~/server/utils/application-guard";
-import { requireSignedIn } from "~~/server/utils/session";
+import { requireProfile } from "~~/server/utils/session";
 
 const text = (max: number, label: string) =>
   z.string().max(max, `${label}: не длиннее ${max} знаков.`).optional();
@@ -22,7 +22,7 @@ const schema = z.object({
  * кабинетов лучше видеть второе.
  */
 export default defineAction(schema, async ({ body, event }) => {
-  const user = await requireSignedIn(event);
+  const user = await requireProfile(event);
   const draft = await editableDraft(user);
   if (!draft.ok) return draft;
 

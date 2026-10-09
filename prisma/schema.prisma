@@ -113,8 +113,17 @@ model User {
   /// Короткое имя в Telegram без собачки: её добавляет интерфейс.
   telegramUsername String?
 
-  firstName String?
-  lastName  String?
+  firstName  String?
+  lastName   String?
+  /// Знакомство при первом входе (кабинет /cabinet/welcome): подставляется
+  /// в анкету отбора и выгрузки. Пока нет consentAt — кабинет закрыт.
+  middleName String?
+  course     String?
+  faculty    String?
+  studentId  String?
+  phone      String?
+  /// Когда человек дал согласие на обработку персональных данных.
+  consentAt  DateTime?
 
   /// Публичный ник для рейтинга. Показывает displayName() из lib/profile.
   nickname          String?

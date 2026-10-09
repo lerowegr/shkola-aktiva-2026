@@ -1,6 +1,6 @@
 import { submitHomework } from "~~/lib/applications/homework";
 import { MAX_UPLOAD_BYTES } from "~~/lib/uploads";
-import { requireSignedIn } from "~~/server/utils/session";
+import { requireProfile } from "~~/server/utils/session";
 
 /**
  * Сдать домашнее задание: PDF и/или текст.
@@ -9,10 +9,12 @@ import { requireSignedIn } from "~~/server/utils/session";
  * Защиту от чужих сайтов держит общий middleware, права — здесь.
  */
 export default defineEventHandler(async (event) => {
-  const user = await requireSignedIn(event).catch(() => null);
-  if (!user) {
+  let user;
+  try {
+    user = await requireProfile(event);
+  } catch (error) {
     setResponseStatus(event, 403);
-    return { ok: false, message: "Нужно войти." };
+    return { ok: false, message: (error as Error).message || "Нужно войти." };
   }
 
   // Отказываем до чтения тела: не тянуть в память лишние мегабайты.

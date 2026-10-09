@@ -18,4 +18,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (to.path.startsWith("/staff") && !user.value.isStaff) {
     return navigateTo("/cabinet");
   }
+
+  // Кандидат без знакомства — сначала «Давай познакомимся», потом куда шёл.
+  if (to.path.startsWith("/cabinet") && to.path !== "/cabinet/welcome" && user.value.needsProfile) {
+    return navigateTo(`/cabinet/welcome?next=${encodeURIComponent(to.fullPath)}`);
+  }
 });

@@ -141,6 +141,11 @@ export async function testRows(seasonId: string): Promise<TestRow[]> {
           lastName: true,
           email: true,
           telegramUsername: true,
+          middleName: true,
+          course: true,
+          faculty: true,
+          studentId: true,
+          phone: true,
           applications: {
             where: { seasonId },
             select: { lastName: true, firstName: true, middleName: true, studentId: true },
@@ -158,13 +163,16 @@ export async function testRows(seasonId: string): Promise<TestRow[]> {
       : "";
     const fromBot = [text(profile, "lastName"), text(profile, "firstName"), text(profile, "middleName")].filter(Boolean).join(" ");
     const username = attempt.user?.telegramUsername ?? text(profile, "username");
+    // Знакомство на сайте — свежее анкеты и бота; дальше анкета, потом бот.
+    const person = attempt.user;
+    const fromOnboarding = person?.lastName && person.firstName ? [person.lastName, person.firstName, person.middleName].filter(Boolean).join(" ") : "";
     return {
-      name: fromApplication || (attempt.user ? displayName(attempt.user) : "") || fromBot || "Без имени",
+      name: fromOnboarding || fromApplication || (person ? displayName(person) : "") || fromBot || "Без имени",
       telegram: username ? `@${username}` : null,
-      course: text(profile, "course"),
-      faculty: text(profile, "faculty"),
-      studentId: application?.studentId ?? text(profile, "studentId"),
-      phone: text(profile, "phone"),
+      course: person?.course ?? text(profile, "course"),
+      faculty: person?.faculty ?? text(profile, "faculty"),
+      studentId: person?.studentId ?? application?.studentId ?? text(profile, "studentId"),
+      phone: person?.phone ?? text(profile, "phone"),
       score: attempt.score,
       total: attempt.total,
       durationMs: attempt.durationMs,

@@ -168,7 +168,7 @@ prisma/             схема, миграции, сид
   раньше, чем ребёнок получил данные, — нули и расхождение гидрации.
 - **Клиентский код импортирует из `lib/` только чистые модули** (без
   `lib/db`): `form`, `review`, `password-rules`, `permissions`,
-  `admin/segments`, `site/content`, `site/landing`, `games/rules`, `games/sha-test`, `assessment/rules` и типы (`import type` — можно любые). Значение из модуля,
+  `admin/segments`, `site/content`, `site/landing`, `games/rules`, `games/sha-test`, `assessment/rules`, `profile/onboarding` и типы (`import type` — можно любые). Значение из модуля,
   который тянет базу, утащит Prisma в браузерную сборку.
 - **`$fetch` в setup страницы на сервере идёт без куки посетителя** — и
   получает отказ. Для первой загрузки — `useFetch`; если нужен ручной
@@ -204,6 +204,14 @@ prisma/             схема, миграции, сид
   `order`, показывает по шагам. Форматы строки (`formatValue`: цифры, группа,
   телефон, ВК → vk.ru, Telegram) и минимум знаков — в чистом
   `lib/applications/form.ts`, одни правила для «Далее» и отправки.
+- **Знакомство** (`/cabinet/welcome`): кандидат без `User.consentAt` в кабинет не
+  попадает (`needsProfile` в сессии, `auth.global.ts`), а анкету, тест, ДЗ и
+  запись сервер не принимает (`requireProfile`). Поля — ФИО, курс 1/2, факультет,
+  студбилет, телефон, согласие (`lib/profile/onboarding.ts`, чистый; условия —
+  `/privacy`, черновик). В анкету подставляются по смыслу (`suggestAnswers`):
+  показ — в `loadCandidateApplication`, запись — при отправке. Mini App у
+  кандидата открывает тест (`NUXT_PUBLIC_MINI_APP=test`, по умолчанию);
+  `cabinet` — весь кабинет.
 - **«Тест про ША»** (`GameKind` QUIZ, `/cabinet/games/quiz`) — перенесённый Mini
   App «ША бот внешка»: все активные `QuizQuestion` по порядку, попытка одна
   (`QuizAttempt`, уникально на человека и на Telegram), счёт считает сервер

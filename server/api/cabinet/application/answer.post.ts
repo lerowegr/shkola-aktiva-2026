@@ -3,7 +3,7 @@ import { z } from "zod";
 import { normalizeAnswer, isEmptyAnswer } from "~~/lib/applications/form";
 import { db } from "~~/lib/db";
 import { editableDraft } from "~~/server/utils/application-guard";
-import { requireSignedIn } from "~~/server/utils/session";
+import { requireProfile } from "~~/server/utils/session";
 
 const schema = z.object({
   questionId: z.string().min(1),
@@ -16,7 +16,7 @@ const schema = z.object({
  * данные. В журнал попадает отправка анкеты.
  */
 export default defineAction(schema, async ({ body, event }) => {
-  const user = await requireSignedIn(event);
+  const user = await requireProfile(event);
   const draft = await editableDraft(user);
   if (!draft.ok) return draft;
 

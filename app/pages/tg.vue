@@ -52,7 +52,10 @@ onMounted(async () => {
 
   // Кнопка «Открыть» в сообщении бота ведёт сразу на нужный экран: /tg?to=/cabinet/messages.
   const to = typeof route.query.to === "string" && route.query.to.startsWith("/") && !route.query.to.startsWith("//") ? route.query.to : null;
-  await navigateTo(to ?? homeFor(user), { replace: true });
+  // Пока идёт тест, Mini App у кандидата — это он: знакомство и тест, как прежний бот.
+  const testMode = useRuntimeConfig().public.miniApp !== "cabinet";
+  const home = user && !user.isStaff && testMode ? "/cabinet/games/quiz" : homeFor(user);
+  await navigateTo(to ?? home, { replace: true });
 });
 </script>
 

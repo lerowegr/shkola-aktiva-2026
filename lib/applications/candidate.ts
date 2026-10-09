@@ -1,4 +1,5 @@
 import { db } from "~~/lib/db";
+import { suggestAnswers } from "~~/lib/profile/onboarding";
 import { stageState, type StageState } from "~~/lib/stages";
 
 import type { AnswerValue } from "./form";
@@ -116,7 +117,10 @@ export async function loadCandidateApplication(userId: string): Promise<Candidat
       where: { seasonId_userId: { seasonId: current.seasonId, userId } },
       include: { answers: { select: { questionId: true, value: true } } },
     }),
-    db.user.findUnique({ where: { id: userId }, select: { firstName: true, lastName: true } }),
+    db.user.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true, middleName: true, studentId: true, course: true, faculty: true, phone: true },
+    }),
   ]);
 
   const status = application?.status ?? "DRAFT";
@@ -130,16 +134,18 @@ export async function loadCandidateApplication(userId: string): Promise<Candidat
       id: application?.id ?? null,
       status,
       submittedAt: application?.submittedAt ?? null,
-      // Пока анкеты нет, подставляем имя из Telegram — меньше печатать.
+      // Чего в анкете ещё нет — из знакомства (а имя — из Telegram): меньше
+      // печатать. Отправка берёт то же самое (profileForSubmit).
       profile: {
         lastName: application?.lastName ?? user?.lastName ?? "",
         firstName: application?.firstName ?? user?.firstName ?? "",
-        middleName: application?.middleName ?? "",
-        studentId: application?.studentId ?? "",
+        middleName: application?.middleName ?? user?.middleName ?? "",
+        studentId: application?.studentId ?? user?.studentId ?? "",
       },
-      answers: Object.fromEntries(
-        (application?.answers ?? []).map((answer) => [answer.questionId, answer.value as AnswerValue]),
-      ),
+      answers: {
+        ...(status === "DRAFT" && user ? suggestAnswers(questions, user) : {}),
+        ...Object.fromEntries((application?.answers ?? []).map((answer) => [answer.questionId, answer.value as AnswerValue])),
+      },
     },
     editable: status === "DRAFT" && current.stage.state === "open",
   };

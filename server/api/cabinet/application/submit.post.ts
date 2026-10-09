@@ -5,8 +5,9 @@ import { applicationQuestions } from "~~/lib/applications/candidate";
 import { notifyAssigned, notifySubmitted } from "~~/lib/applications/notifications";
 import { formatValue, normalizeUrl, submitProblems } from "~~/lib/applications/form";
 import { db } from "~~/lib/db";
+import { suggestAnswers } from "~~/lib/profile/onboarding";
 import { editableDraft } from "~~/server/utils/application-guard";
-import { requireSignedIn } from "~~/server/utils/session";
+import { requireProfile } from "~~/server/utils/session";
 
 /**
  * Отправить анкету.
@@ -16,7 +17,7 @@ import { requireSignedIn } from "~~/server/utils/session";
  * организатор раздаст её кнопкой «Распределить».
  */
 export default defineAction(z.object({}), async ({ event }) => {
-  const user = await requireSignedIn(event);
+  const user = await requireProfile(event);
   const draft = await editableDraft(user);
   if (!draft.ok) return draft;
 
@@ -26,18 +27,28 @@ export default defineAction(z.object({}), async ({ event }) => {
       where: { id: draft.applicationId },
       include: { answers: { select: { id: true, questionId: true, value: true } } },
     }),
-    db.user.findUniqueOrThrow({ where: { id: user.id }, select: { firstName: true, lastName: true } }),
+    db.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: { firstName: true, lastName: true, middleName: true, studentId: true, course: true, faculty: true, phone: true },
+    }),
   ]);
 
-  // Имя и фамилию форма подставляет из профиля (Telegram) — если человек их
-  // не трогал, в анкете их ещё нет. Берём те же, что он видел.
+  // Чего человек в анкете не трогал, форма подставила из знакомства — если
+  // в анкете этого ещё нет, берём то же, что он видел.
   const profile = {
     lastName: application.lastName ?? person.lastName,
     firstName: application.firstName ?? person.firstName,
-    studentId: application.studentId,
+    middleName: application.middleName ?? person.middleName,
+    studentId: application.studentId ?? person.studentId,
   };
+  const suggested = suggestAnswers(questions, person);
+  const known = new Set(application.answers.map((answer) => answer.questionId));
+  const filled = Object.entries(suggested).filter(([questionId]) => !known.has(questionId));
 
-  const answers = Object.fromEntries(application.answers.map((answer) => [answer.questionId, answer.value]));
+  const answers = {
+    ...Object.fromEntries(filled),
+    ...Object.fromEntries(application.answers.map((answer) => [answer.questionId, answer.value])),
+  };
   const problems = submitProblems(questions, answers, profile);
 
   if (problems.length > 0) {
@@ -57,6 +68,12 @@ export default defineAction(z.object({}), async ({ event }) => {
   const byId = new Map(questions.map((question) => [question.id, question]));
 
   await db.$transaction(async (tx) => {
+    if (filled.length) {
+      await tx.answer.createMany({
+        data: filled.map(([questionId, value]) => ({ applicationId: application.id, questionId, value })),
+        skipDuplicates: true,
+      });
+    }
     for (const answer of application.answers) {
       const question = byId.get(answer.questionId);
       if (!question || typeof answer.value !== "string") continue;
@@ -76,6 +93,7 @@ export default defineAction(z.object({}), async ({ event }) => {
       data: {
         lastName: profile.lastName,
         firstName: profile.firstName,
+        middleName: profile.middleName,
         ...(studentId.ok ? { studentId: studentId.value } : {}),
       },
     });

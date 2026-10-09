@@ -123,6 +123,19 @@ export async function requireSignedIn(event: AppEvent): Promise<CurrentUser> {
 }
 
 /**
+ * Для действий кандидата в отборе: анкета, тест, домашка, запись. Без
+ * знакомства и согласия на обработку данных ничего из этого не принимаем —
+ * страница сама уводит на /cabinet/welcome, а это — на случай прямого запроса.
+ */
+export async function requireProfile(event: AppEvent): Promise<CurrentUser> {
+  const user = await requireSignedIn(event);
+  if (user.needsProfile) {
+    throw new ForbiddenError("Сначала расскажите о себе: в кабинете откроется экран «Давай познакомимся».");
+  }
+  return user;
+}
+
+/**
  * Для обработчиков, которые отдают данные страницам.
  *
  * Отвечаем честным 401, а не перенаправлением: перенаправляет тот, кто

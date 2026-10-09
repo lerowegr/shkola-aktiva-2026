@@ -29,6 +29,9 @@ export default defineNuxtConfig({
       // Тестовый вход по логину и паролю для показа сайта, пока нет бота и
       // почты. NUXT_PUBLIC_PREVIEW_LOGINS=true; на боевом сайте не включать.
       previewLogins: false,
+      // Что открывает Mini App у кандидата: "test" — знакомство и «Тест про ША»,
+      // как прежний бот; "cabinet" — весь кабинет. NUXT_PUBLIC_MINI_APP.
+      miniApp: "test",
     },
   },
 
