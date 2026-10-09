@@ -10,7 +10,6 @@ const good = {
   faculty: "СНиМК",
   studentId: "19 01 23",
   phone: "8 (999) 123-45-67",
-  consent: true,
 };
 
 describe("checkOnboarding", () => {
@@ -30,10 +29,10 @@ describe("checkOnboarding", () => {
   });
 
   it("каждое поле — своя ошибка", () => {
-    const result = checkOnboarding({ ...good, lastName: "", course: "3", faculty: "Мехмат", studentId: "12a", phone: "123", consent: false });
+    const result = checkOnboarding({ ...good, lastName: "", course: "3", faculty: "Мехмат", studentId: "12a", phone: "123" });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.problems.map((problem) => problem.field)).toEqual(["lastName", "course", "faculty", "studentId", "phone", "consent"]);
+      expect(result.problems.map((problem) => problem.field)).toEqual(["lastName", "course", "faculty", "studentId", "phone"]);
     }
   });
 

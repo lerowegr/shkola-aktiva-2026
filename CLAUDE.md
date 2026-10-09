@@ -204,11 +204,10 @@ prisma/             схема, миграции, сид
   `order`, показывает по шагам. Форматы строки (`formatValue`: цифры, группа,
   телефон, ВК → vk.ru, Telegram) и минимум знаков — в чистом
   `lib/applications/form.ts`, одни правила для «Далее» и отправки.
-- **Знакомство** (`/cabinet/welcome`): кандидат без `User.consentAt` в кабинет не
+- **Знакомство** (`/cabinet/welcome`): кандидат без `User.onboardedAt` в кабинет не
   попадает (`needsProfile` в сессии, `auth.global.ts`), а анкету, тест, ДЗ и
   запись сервер не принимает (`requireProfile`). Поля — ФИО, курс 1/2, факультет,
-  студбилет, телефон, согласие (`lib/profile/onboarding.ts`, чистый; условия —
-  `/privacy`, черновик). В анкету подставляются по смыслу (`suggestAnswers`):
+  студбилет, телефон (`lib/profile/onboarding.ts`, чистый). В анкету подставляются по смыслу (`suggestAnswers`):
   показ — в `loadCandidateApplication`, запись — при отправке. Mini App у
   кандидата открывает тест (`NUXT_PUBLIC_MINI_APP=test`, по умолчанию);
   `cabinet` — весь кабинет.

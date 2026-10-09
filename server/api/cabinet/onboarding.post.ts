@@ -12,11 +12,10 @@ const schema = z.object({
   faculty: text(20),
   studentId: text(30),
   phone: text(30),
-  consent: z.boolean().default(false),
 });
 
 /**
- * Знакомство при первом входе. Время согласия сохраняется один раз —
+ * Знакомство при первом входе. Время прохождения сохраняется один раз —
  * правка данных его не сдвигает.
  */
 export default defineAction(schema, async ({ body, event }) => {

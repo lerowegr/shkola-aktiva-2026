@@ -19,13 +19,12 @@ export interface OnboardingInput {
   faculty: string;
   studentId: string;
   phone: string;
-  consent: boolean;
 }
 
 export type OnboardingField = keyof OnboardingInput;
 
 export type OnboardingResult =
-  | { ok: true; value: Omit<OnboardingInput, "consent" | "middleName"> & { middleName: string | null } }
+  | { ok: true; value: Omit<OnboardingInput, "middleName"> & { middleName: string | null } }
   | { ok: false; problems: { field: OnboardingField; message: string }[] };
 
 const NAME = /^[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё' -]{0,59}$/;
@@ -56,8 +55,6 @@ export function checkOnboarding(input: OnboardingInput): OnboardingResult {
   const phone = formatValue("PHONE", input.phone);
   if (!input.phone.trim()) problems.push({ field: "phone", message: "Укажите телефон — по нему свяжемся, если не ответите в Telegram." });
   else if (!phone.ok) problems.push({ field: "phone", message: "Телефон — российский номер: +7 и 10 цифр." });
-
-  if (!input.consent) problems.push({ field: "consent", message: "Без согласия на обработку данных участвовать в отборе нельзя." });
 
   if (problems.length) return { ok: false, problems };
   return {

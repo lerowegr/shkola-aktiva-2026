@@ -7,7 +7,7 @@ import { checkOnboarding, type OnboardingInput, type OnboardingResult } from "./
  * анкеты отбора (если человек подавался до появления экрана), иначе имя и
  * фамилию из Telegram.
  */
-export async function loadOnboarding(userId: string): Promise<Omit<OnboardingInput, "consent"> & { consented: boolean }> {
+export async function loadOnboarding(userId: string): Promise<OnboardingInput & { done: boolean }> {
   const user = await db.user.findUniqueOrThrow({
     where: { id: userId },
     select: {
@@ -18,7 +18,7 @@ export async function loadOnboarding(userId: string): Promise<Omit<OnboardingInp
       faculty: true,
       studentId: true,
       phone: true,
-      consentAt: true,
+      onboardedAt: true,
       applications: {
         where: { season: { isCurrent: true } },
         select: { lastName: true, firstName: true, middleName: true, studentId: true },
@@ -34,7 +34,7 @@ export async function loadOnboarding(userId: string): Promise<Omit<OnboardingInp
     faculty: user.faculty ?? "",
     studentId: user.studentId ?? application?.studentId ?? "",
     phone: user.phone ?? "",
-    consented: user.consentAt !== null,
+    done: user.onboardedAt !== null,
   };
 }
 
@@ -42,10 +42,10 @@ export async function saveOnboarding(userId: string, input: OnboardingInput): Pr
   const checked = checkOnboarding(input);
   if (!checked.ok) return checked;
 
-  const before = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { consentAt: true } });
+  const before = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { onboardedAt: true } });
   await db.user.update({
     where: { id: userId },
-    data: { ...checked.value, consentAt: before.consentAt ?? new Date() },
+    data: { ...checked.value, onboardedAt: before.onboardedAt ?? new Date() },
   });
 
   // Черновик анкеты, если он уже есть, — те же ФИО и студбилет: человек

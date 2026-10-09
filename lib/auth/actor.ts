@@ -50,7 +50,7 @@ export async function loadUser(userId: string | null | undefined): Promise<Curre
       telegramUsername: true,
       status: true,
       isOwner: true,
-      consentAt: true,
+      onboardedAt: true,
       roles: { select: { role: { select: { permissions: true } } } },
     },
   });
@@ -73,7 +73,7 @@ export async function loadUser(userId: string | null | undefined): Promise<Curre
     isActive: user.status === "ACTIVE",
     permissions,
     isStaff: user.isOwner || permissions.length > 0,
-    needsProfile: !(user.isOwner || permissions.length > 0) && user.consentAt === null,
+    needsProfile: !(user.isOwner || permissions.length > 0) && user.onboardedAt === null,
   };
 }
 

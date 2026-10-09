@@ -116,14 +116,14 @@ model User {
   firstName  String?
   lastName   String?
   /// Знакомство при первом входе (кабинет /cabinet/welcome): подставляется
-  /// в анкету отбора и выгрузки. Пока нет consentAt — кабинет закрыт.
+  /// в анкету отбора и выгрузки.
   middleName String?
   course     String?
   faculty    String?
   studentId  String?
   phone      String?
-  /// Когда человек дал согласие на обработку персональных данных.
-  consentAt  DateTime?
+  /// Когда человек прошёл знакомство. Пусто — кабинет закрыт.
+  onboardedAt DateTime?
 
   /// Публичный ник для рейтинга. Показывает displayName() из lib/profile.
   nickname          String?

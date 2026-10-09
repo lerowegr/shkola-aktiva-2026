@@ -19,7 +19,7 @@ interface Known {
   faculty: string;
   studentId: string;
   phone: string;
-  consented: boolean;
+  done: boolean;
 }
 
 const route = useRoute();
@@ -33,7 +33,6 @@ const form = reactive({
   faculty: data.value?.faculty ?? "",
   studentId: data.value?.studentId ?? "",
   phone: data.value?.phone ?? "",
-  consent: data.value?.consented ?? false,
 });
 
 const errors = ref<Partial<Record<OnboardingField, string>>>({});
@@ -151,14 +150,6 @@ const chip = (active: boolean, invalid: boolean) =>
           :hint="errors.phone"
           :invalid="!!errors.phone"
         />
-      </div>
-
-      <div class="flex flex-col gap-1" :data-invalid="errors.consent ? '' : undefined">
-        <UiCheckbox v-model="form.consent">
-          Согласен(на) на обработку персональных данных по
-          <NuxtLink to="/privacy" target="_blank" class="text-accent underline">условиям</NuxtLink>
-        </UiCheckbox>
-        <p v-if="errors.consent" class="text-danger text-sm">{{ errors.consent }}</p>
       </div>
 
       <UiNotice :message="problem" />

@@ -1,5 +1,5 @@
 # Plan
-- `User`: middleName, course, faculty, studentId, phone, consentAt. `CurrentUser.needsProfile`.
+- `User`: middleName, course, faculty, studentId, phone, onboardedAt. `CurrentUser.needsProfile`.
 - Чистое ядро `lib/profile/onboarding.ts`: списки, проверка, подсказки ответов анкеты.
 - `GET/POST /api/cabinet/onboarding`; страница `/cabinet/welcome`; ворота в `auth.global.ts`
   и на сервере (`requireProfile` в отправке анкеты и теста).

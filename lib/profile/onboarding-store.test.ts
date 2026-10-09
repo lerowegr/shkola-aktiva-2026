@@ -15,26 +15,25 @@ const input = {
   faculty: "ФФ",
   studentId: "190123",
   phone: "89991234567",
-  consent: true,
 };
 
 describe("знакомство на базе", () => {
   beforeEach(resetDatabase);
 
-  it("до знакомства кабинет закрыт, после — открыт; согласие не сдвигается", async () => {
+  it("до знакомства кабинет закрыт, после — открыт; время знакомства не сдвигается", async () => {
     const user = await db.user.create({ data: { firstName: "Аня", telegramId: "1" } });
     expect((await loadUser(user.id))?.needsProfile).toBe(true);
-    expect(await loadOnboarding(user.id)).toMatchObject({ firstName: "Аня", consented: false });
+    expect(await loadOnboarding(user.id)).toMatchObject({ firstName: "Аня", done: false });
 
-    expect(await saveOnboarding(user.id, { ...input, consent: false })).toMatchObject({ ok: false });
+    expect(await saveOnboarding(user.id, { ...input, phone: "" })).toMatchObject({ ok: false });
     expect(await saveOnboarding(user.id, input)).toMatchObject({ ok: true });
-    const first = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { consentAt: true, phone: true } });
+    const first = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { onboardedAt: true, phone: true } });
     expect(first.phone).toBe("+7 (999) 123-45-67");
     expect((await loadUser(user.id))?.needsProfile).toBe(false);
 
     await saveOnboarding(user.id, { ...input, faculty: "ЮФ" });
-    const second = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { consentAt: true } });
-    expect(second.consentAt).toEqual(first.consentAt);
+    const second = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { onboardedAt: true } });
+    expect(second.onboardedAt).toEqual(first.onboardedAt);
   });
 
   it("анкета видит курс и факультет из знакомства", async () => {
