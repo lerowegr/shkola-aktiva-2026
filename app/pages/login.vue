@@ -2,8 +2,9 @@
 import { KeyRound, Send } from "lucide-vue-next";
 
 /**
- * Вход. Две двери: участникам и организаторам — сервер пускает каждого
- * только в свою (`as`). Вход — Telegram или логин/почта и пароль.
+ * Вход — один для всех: Telegram или логин/почта и пароль. Дальше сайт
+ * сам ведёт по правам: организатора — в кабинет организатора, участника —
+ * в личный кабинет.
  *
  * Регистрация участника — только через Telegram: первый вход и есть
  * регистрация, логин, почту и пароль человек задаёт при знакомстве.
@@ -12,7 +13,6 @@ import { KeyRound, Send } from "lucide-vue-next";
 useHead({ title: "Вход" });
 
 const route = useRoute();
-const door = ref<"candidate" | "staff">(route.query.as === "staff" ? "staff" : "candidate");
 
 async function signedIn() {
   const user = await refreshSession();
@@ -33,11 +33,9 @@ const password = ref("");
 const passwordLogin = useAction("/api/auth/password-login");
 
 async function signInWithPassword() {
-  const result = await passwordLogin.submit({ email: login.value, password: password.value, as: door.value });
+  const result = await passwordLogin.submit({ email: login.value, password: password.value });
   if (result.ok) await signedIn();
 }
-
-watch(door, () => (passwordLogin.result.value = null));
 </script>
 
 <template>
@@ -51,24 +49,6 @@ watch(door, () => (passwordLogin.result.value = null));
 
     <AppDemoLogin @signed-in="signedIn" />
 
-    <div role="tablist" class="bg-line/60 grid grid-cols-2 gap-1 rounded-2xl p-1">
-      <button
-        v-for="tab in [
-          { key: 'candidate', label: 'Участникам' },
-          { key: 'staff', label: 'Организаторам' },
-        ] as const"
-        :key="tab.key"
-        role="tab"
-        type="button"
-        :aria-selected="door === tab.key"
-        class="min-h-11 rounded-xl text-sm font-semibold transition"
-        :class="door === tab.key ? 'bg-card shadow-sm' : 'text-ink-soft hover:text-ink'"
-        @click="door = tab.key"
-      >
-        {{ tab.label }}
-      </button>
-    </div>
-
     <section class="flex flex-col gap-5">
       <div class="flex flex-col gap-2">
         <UiButton
@@ -79,9 +59,9 @@ watch(door, () => (passwordLogin.result.value = null));
           @click="telegram.started"
         >
           <Send class="size-5" aria-hidden="true" />
-          {{ door === "candidate" ? "Регистрация и вход через Telegram" : "Войти через Telegram" }}
+          Регистрация и вход через Telegram
         </UiButton>
-        <p v-else-if="door === 'candidate'" class="bg-brand-yellow-soft rounded-2xl px-4 py-3 text-sm">
+        <p v-else class="bg-brand-yellow-soft rounded-2xl px-4 py-3 text-sm">
           Регистрация — через Telegram. Бот вот-вот заработает, загляните чуть позже.
         </p>
         <p v-if="telegram.waiting.value" class="text-ink-soft text-center text-sm" aria-live="polite">
@@ -99,9 +79,9 @@ watch(door, () => (passwordLogin.result.value = null));
       <form class="flex flex-col gap-4" @submit.prevent="signInWithPassword">
         <UiInput
           v-model="login"
-          :label="door === 'candidate' ? 'Логин или почта' : 'Почта'"
-          :type="door === 'candidate' ? 'text' : 'email'"
-          :inputmode="door === 'candidate' ? 'text' : 'email'"
+          label="Логин или почта"
+          type="text"
+          inputmode="text"
           autocomplete="username"
         />
         <div class="flex flex-col gap-1.5">

@@ -74,7 +74,7 @@ async function submit() {
     <template v-else>
       <h1 class="font-display text-2xl">Ссылка не работает</h1>
       <UiNotice :message="invite?.ok === false ? invite.message : 'Приглашение не найдено.'" />
-      <UiButton href="/login?as=staff" variant="ghost">На страницу входа</UiButton>
+      <UiButton href="/login" variant="ghost">На страницу входа</UiButton>
     </template>
   </main>
 </template>

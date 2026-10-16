@@ -22,13 +22,12 @@ const ABSENT =
 const schema = z.object({
   email: z.string().trim().min(1, "Введите почту или логин."),
   password: z.string().min(1, "Введите пароль."),
-  /** Вкладка входа: участники и организаторы входят раздельно. */
-  as: z.enum(["candidate", "staff"]).default("candidate"),
 });
 
 /**
- * Вход по паролю: организатор — почтой, кандидат — логином, который
- * придумал при регистрации. Что ввели — понятно по «@».
+ * Вход по паролю — один для всех: почта или логин и пароль. Что ввели —
+ * понятно по «@». Куда дальше — решает страница по правам: организатор
+ * попадает в кабинет организатора, участник — в личный кабинет.
  *
  * Ответ на неверный пароль, на незнакомый адрес и на адрес без пароля
  * одинаков намеренно. У кандидатов, вошедших через Telegram, пароля нет,
@@ -61,8 +60,6 @@ export default defineAction(schema, async ({ body, event }) => {
       tempPasswordHash: true,
       tempPasswordExpiresAt: true,
       status: true,
-      isOwner: true,
-      roles: { select: { role: { select: { permissions: true } } } },
     },
   });
 
@@ -92,16 +89,6 @@ export default defineAction(schema, async ({ body, event }) => {
 
   if (user.status === "BLOCKED") {
     return { ok: false, message: "Доступ закрыт. Если это ошибка — напишите главному организатору." };
-  }
-
-  // Разные двери: организатор — на своей вкладке, участник — на своей.
-  // Говорим об этом только после верного пароля: чужому это ничего не даёт.
-  const staff = user.isOwner || user.roles.some((item) => item.role.permissions.length > 0);
-  if (body.as === "candidate" && staff) {
-    return { ok: false, message: "Это вход для участников. Организаторам — вкладка «Организаторам»." };
-  }
-  if (body.as === "staff" && !staff) {
-    return { ok: false, message: "Это вход для организаторов. Участникам — вкладка «Участникам»." };
   }
 
   await clearMisses(email);
