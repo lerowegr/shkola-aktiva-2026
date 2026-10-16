@@ -32,6 +32,13 @@ describe("главная кнопка лендинга", () => {
     expect(landingCta(stage("open"), { isStaff: true }, format)).toMatchObject({ label: "Кабинет организатора", to: "/staff" });
   });
 
+  it("вошёл через Telegram, но не зарегистрировался — к знакомству", () => {
+    expect(landingCta(stage("open"), { isStaff: false, needsProfile: true }, format)).toMatchObject({
+      label: "Зарегистрироваться",
+      to: "/cabinet/welcome",
+    });
+  });
+
   it("без сезона — как будто анкета скоро", () => {
     expect(landingCta([], null, format)).toMatchObject({ label: "Зарегистрироваться", status: "Анкета скоро откроется" });
   });

@@ -26,9 +26,6 @@ export default defineNuxtConfig({
       telegramBotUsername: "",
       // Открытая половина ключа пушей — браузер подписывается ею.
       vapidPublicKey: "",
-      // Что открывает Mini App у кандидата: "test" — знакомство и «Тест про ША»,
-      // как прежний бот; "cabinet" — весь кабинет. NUXT_PUBLIC_MINI_APP.
-      miniApp: "test",
       // Демо-копия сайта (demo.schoolofactivity.ru, своя база): вход «как…»
       // в один клик и сброс демо. NUXT_PUBLIC_DEMO=true; на боевом — никогда.
       demo: false,

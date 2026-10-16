@@ -5,8 +5,10 @@ import { stashInitData, telegramInitData } from "~/utils/telegram";
  * Вход в Mini App.
  *
  * Бот открывает эту страницу; Telegram приписывает к адресу подпись,
- * по которой сервер узнаёт человека без пароля. Страница только входит и
- * уводит в кабинет — показывать тут нечего.
+ * по которой сервер узнаёт человека без пароля. Дальше: ещё не
+ * зарегистрировался (не прошёл знакомство) — главная сайта ША с кнопкой
+ * «Зарегистрироваться»; зарегистрирован — личный кабинет, организатор —
+ * кабинет организатора.
  */
 useHead({ title: "Школа Актива" });
 
@@ -52,9 +54,7 @@ onMounted(async () => {
 
   // Кнопка «Открыть» в сообщении бота ведёт сразу на нужный экран: /tg?to=/cabinet/messages.
   const to = typeof route.query.to === "string" && route.query.to.startsWith("/") && !route.query.to.startsWith("//") ? route.query.to : null;
-  // Пока идёт тест, Mini App у кандидата — это он: знакомство и тест, как прежний бот.
-  const testMode = useRuntimeConfig().public.miniApp !== "cabinet";
-  const home = user && !user.isStaff && testMode ? "/cabinet/games/quiz" : homeFor(user);
+  const home = user?.needsProfile ? "/" : homeFor(user);
   await navigateTo(to ?? home, { replace: true });
 });
 </script>

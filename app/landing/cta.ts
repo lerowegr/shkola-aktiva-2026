@@ -26,7 +26,7 @@ export interface LandingCta {
 
 export function landingCta(
   stages: readonly LandingStage[],
-  user: { isStaff: boolean } | null,
+  user: { isStaff: boolean; needsProfile?: boolean } | null,
   format: (value: string, pattern: string) => string,
 ): LandingCta {
   const application = stages.find((stage) => stage.kind === "APPLICATION");
@@ -43,6 +43,8 @@ export function landingCta(
           : "Анкета скоро откроется"
         : "Приём анкет завершён";
 
+  // Вошёл через Telegram (Mini App), но ещё не зарегистрировался — знакомство.
+  if (user?.needsProfile) return { label: "Зарегистрироваться", to: "/cabinet/welcome", status, live: state === "open" };
   if (user) {
     return user.isStaff
       ? { label: "Кабинет организатора", to: "/staff", status, live: state === "open" }

@@ -16,13 +16,6 @@ const { data: board } = useFetch<{ rows: { rank: number; name: string; avatar: s
   { query: { game: GAMES[game].slug }, immediate: game !== "QUIZ" },
 );
 
-// В Mini App в режиме теста кандидату некуда «назад»: бот — это тест.
-// Узнаём после загрузки: сервер не знает, что страница внутри Telegram.
-const miniAppTest = ref(false);
-onMounted(() => {
-  miniAppTest.value = game === "QUIZ" && inTelegram() && useRuntimeConfig().public.miniApp !== "cabinet";
-});
-
 // Новая партия — новый компонент: состояние игры начинается с нуля.
 const round = ref(0);
 const result = ref<{ score: number; moves?: number | null; durationMs: number } | null>(null);
@@ -46,7 +39,7 @@ function again() {
   <div>
     <AppHeader />
     <main class="mx-auto flex max-w-xl flex-col gap-5 px-4 py-6">
-      <NuxtLink v-if="!miniAppTest" to="/cabinet/games" class="text-ink-soft hover:text-ink inline-flex items-center gap-1 self-start text-sm">
+      <NuxtLink to="/cabinet/games" class="text-ink-soft hover:text-ink inline-flex items-center gap-1 self-start text-sm">
         <ArrowLeft class="size-4" aria-hidden="true" /> Все игры
       </NuxtLink>
       <div class="flex flex-col gap-1">
