@@ -13,7 +13,14 @@ export NODE_ENV=production
 createdb sha_load 2>/dev/null && echo "База sha_load создана." || true
 npx prisma migrate deploy
 npx tsx prisma/seed.ts
-[ -f .output/server/index.mjs ] && [ "$1" != "--rebuild" ] || npm run build
+# Сборка — из текущего кода: запоминаем коммит и пересобираем, если код
+# изменился (старая сборка мерила бы не тот сайт).
+HEAD_NOW="$(git rev-parse HEAD)$(git status --porcelain | shasum | cut -c1-8)"
+if [ "$1" = "--rebuild" ] || [ ! -f .output/server/index.mjs ] || [ "$(cat .output/.loadtest-build 2>/dev/null)" != "$HEAD_NOW" ]; then
+  echo "Собираю сайт из текущего кода…"
+  npm run build
+  echo "$HEAD_NOW" > .output/.loadtest-build
+fi
 
 echo "Локальная копия: http://localhost:3300"
 node .output/server/index.mjs
