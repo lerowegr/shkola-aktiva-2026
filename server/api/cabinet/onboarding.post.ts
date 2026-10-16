@@ -12,6 +12,11 @@ const schema = z.object({
   faculty: text(20),
   studentId: text(30),
   phone: text(30),
+  // Данные для входа — у пришедших через Telegram без пароля.
+  login: text(64),
+  email: text(160),
+  password: z.string().max(256).default(""),
+  repeat: z.string().max(256).default(""),
 });
 
 /**
@@ -20,7 +25,9 @@ const schema = z.object({
  */
 export default defineAction(schema, async ({ body, event }) => {
   const user = await requireSignedIn(event);
-  const result = await saveOnboarding(user.id, body);
+  const { login, email, password, repeat, ...profile } = body;
+  const result = await saveOnboarding(user.id, profile, { login, email, password, repeat });
   if (!result.ok) return { ok: false, message: result.problems[0]!.message, problems: result.problems };
+  await audit(event, { actorId: user.id, action: "profile.onboarding", entityType: "user", entityId: user.id });
   return { ok: true, message: "Готово, добро пожаловать!" };
 });

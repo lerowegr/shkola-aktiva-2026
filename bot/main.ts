@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 
 import { Bot, InlineKeyboard, type Context } from "grammy";
 
+import { issueTempPassword } from "../lib/auth/temp-password";
 import { confirmLoginCode, linkTelegram, upsertTelegramUser  } from "../lib/auth/telegram-users";
 import { submitHomework } from "../lib/applications/homework";
 import { receiveFromTelegram } from "../lib/messages/bot-inbox";
@@ -43,8 +44,43 @@ const GREETING =
   "Здесь приходят новости отбора: когда открылся этап, сколько осталось до дедлайна и что ответили организаторы.\n\n" +
   "Есть вопрос — просто напишите его сюда, организаторы ответят.";
 
+/**
+ * «Забыли пароль?» на сайте ведёт сюда: Telegram уже знает, кто это, и
+ * временный пароль на 24 часа приходит только в личные сообщения.
+ */
+async function sendTempPassword(ctx: Context) {
+  if (ctx.chat?.type !== "private") return;
+  const result = await issueTempPassword(String(ctx.from!.id));
+  if (!result.ok) {
+    const replies = {
+      no_account: `Аккаунта с этим Telegram пока нет. Зарегистрируйтесь через Telegram на сайте: ${APP_URL}/login`,
+      no_credentials: `У вас ещё нет логина и пароля — их задают при знакомстве на сайте. Войдите через Telegram: ${APP_URL}/login`,
+      blocked: "Доступ закрыт. Если это ошибка — напишите организаторам.",
+    } as const;
+    await ctx.reply(replies[result.reason]);
+    return;
+  }
+  const until = new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Moscow",
+  }).format(result.expiresAt);
+  await ctx.reply(
+    `Временный пароль: ${result.password}\n` +
+      `${result.signIn.includes("@") ? "Почта" : "Логин"}: ${result.signIn}\n\n` +
+      `Действует до ${until} (МСК). Войдите на сайте во вкладке «${result.staff ? "Организаторам" : "Участникам"}» — ` +
+      "сразу после входа сайт попросит придумать новый пароль.\n\n" +
+      "Если пароль просили не вы — ничего не делайте: старый пароль продолжает работать.",
+    { reply_markup: APP_URL.startsWith("https://") ? new InlineKeyboard().url("Открыть сайт", `${APP_URL}/login`) : undefined },
+  );
+}
+
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
+
+  bot.command("password", sendTempPassword);
 
   bot.command("start", async (ctx) => {
     const payload = ctx.match?.trim() ?? "";
@@ -68,6 +104,11 @@ export function createBot(token: string): Bot {
             .text("Нет", "login_no"),
         },
       );
+      return;
+    }
+
+    if (payload === "reset") {
+      await sendTempPassword(ctx);
       return;
     }
 
@@ -179,7 +220,10 @@ async function main() {
   }
 
   const bot = createBot(token);
-  await bot.api.setMyCommands([{ command: "start", description: "Открыть Школу Актива" }]);
+  await bot.api.setMyCommands([
+    { command: "start", description: "Открыть Школу Актива" },
+    { command: "password", description: "Забыли пароль — временный на 24 часа" },
+  ]);
 
   console.log("Бот запущен.");
   await bot.start();

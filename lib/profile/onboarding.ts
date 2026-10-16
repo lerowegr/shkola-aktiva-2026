@@ -1,4 +1,6 @@
 import { formatValue, type AnswerValue } from "~~/lib/applications/form";
+import { loginProblem, normalizeLogin } from "~~/lib/auth/login";
+import { passwordProblem } from "~~/lib/auth/password-rules";
 
 /**
  * Знакомство при первом входе: кто ты — до анкеты, теста и кабинета.
@@ -69,6 +71,44 @@ export function checkOnboarding(input: OnboardingInput): OnboardingResult {
       phone: phone.ok ? phone.value : "",
     },
   };
+}
+
+/**
+ * Данные для входа — у тех, кто пришёл через Telegram и пароля ещё не
+ * задавал: логин, почта и пароль. Дальше входить можно и без Telegram.
+ */
+export interface CredentialsInput {
+  login: string;
+  email: string;
+  password: string;
+  repeat: string;
+}
+
+export type CredentialsField = keyof CredentialsInput;
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+export function checkCredentials(
+  input: CredentialsInput,
+): { ok: true; value: { login: string; email: string; password: string } } | { ok: false; problems: { field: CredentialsField; message: string }[] } {
+  const problems: { field: CredentialsField; message: string }[] = [];
+  const login = normalizeLogin(input.login);
+  const email = input.email.trim().toLowerCase();
+
+  const badLogin = loginProblem(login);
+  if (badLogin) problems.push({ field: "login", message: badLogin });
+  if (!email) problems.push({ field: "email", message: "Укажите почту — на неё можно будет войти вместо логина." });
+  else if (!EMAIL.test(email) || email.length > 120) problems.push({ field: "email", message: "Почта указана неверно: нужен адрес вида name@mail.ru." });
+
+  const badPassword = passwordProblem(input.password, { email });
+  if (badPassword) problems.push({ field: "password", message: badPassword });
+  else if (login && input.password.toLowerCase().includes(login)) {
+    problems.push({ field: "password", message: "Пароль повторяет логин — его угадают с первой попытки." });
+  }
+  if (input.password && input.repeat !== input.password) problems.push({ field: "repeat", message: "Пароли не совпадают." });
+
+  if (problems.length) return { ok: false, problems };
+  return { ok: true, value: { login, email, password: input.password } };
 }
 
 interface Question {

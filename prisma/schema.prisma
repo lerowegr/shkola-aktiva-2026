@@ -145,9 +145,15 @@ model User {
   isOwner Boolean @default(false)
 
   /// Хеш пароля вместе с солью и настройками scrypt в одной строке.
-  /// Пароль бывает только у организаторов: его задают по приглашению.
-  passwordHash  String?
-  passwordSetAt DateTime?
+  /// Организаторы задают пароль по приглашению, участники — при знакомстве
+  /// после регистрации через Telegram.
+  passwordHash          String?
+  /// Временный пароль из бота («Забыли пароль?»): хеш и срок, 24 часа.
+  tempPasswordHash      String?
+  tempPasswordExpiresAt DateTime?
+  /// Вошёл временным паролем — сайт не пустит дальше, пока не задаст свой.
+  mustChangePassword    Boolean   @default(false)
+  passwordSetAt         DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

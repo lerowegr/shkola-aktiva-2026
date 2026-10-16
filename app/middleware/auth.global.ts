@@ -11,6 +11,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   const user = await useSession();
 
+  // Вошёл временным паролем из бота — сначала свой пароль, потом всё остальное.
+  if (user.value?.mustChangePassword) return navigateTo("/password");
+
   if (!user.value) {
     return navigateTo(`/login?from=${encodeURIComponent(to.fullPath)}`);
   }

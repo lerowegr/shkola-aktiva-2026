@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkOnboarding, suggestAnswers } from "./onboarding";
+import { checkCredentials, checkOnboarding, suggestAnswers } from "./onboarding";
 
 const good = {
   lastName: " Иванова ",
@@ -59,5 +59,22 @@ describe("suggestAnswers", () => {
   it("«1» не путается с «11»", () => {
     const questions = [{ id: "c", type: "SINGLE_CHOICE", label: "Курс", options: ["11 класс", "1 курс"], format: null }];
     expect(suggestAnswers(questions, { course: "1", faculty: null, phone: null })).toEqual({ c: "1 курс" });
+  });
+});
+
+describe("checkCredentials", () => {
+  it("годные — логин и почта в нижнем регистре", () => {
+    expect(checkCredentials({ login: "Anna.K", email: " Anna@Mail.ru ", password: "берёзы-у-озера", repeat: "берёзы-у-озера" })).toEqual({
+      ok: true,
+      value: { login: "anna.k", email: "anna@mail.ru", password: "берёзы-у-озера" },
+    });
+  });
+
+  it("ошибки по полям", () => {
+    const result = checkCredentials({ login: "1a", email: "mail", password: "123", repeat: "" });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.problems.map((problem) => problem.field)).toEqual(["login", "email", "password", "repeat"]);
+    const mismatch = checkCredentials({ login: "anna", email: "a@b.ru", password: "берёзы-у-озера", repeat: "другое" });
+    expect(!mismatch.ok && mismatch.problems[0]!.field).toBe("repeat");
   });
 });

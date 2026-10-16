@@ -110,6 +110,7 @@ export async function requirePermission(event: AppEvent, permission: string): Pr
   const user = await currentUser(event);
 
   if (!user) throw new ForbiddenError("Нужно войти.");
+  if (user.mustChangePassword) throw new ForbiddenError("Сначала задайте свой пароль вместо временного.");
   if (!can(user, permission)) throw new ForbiddenError();
 
   return user;
@@ -129,6 +130,7 @@ export async function requireSignedIn(event: AppEvent): Promise<CurrentUser> {
  */
 export async function requireProfile(event: AppEvent): Promise<CurrentUser> {
   const user = await requireSignedIn(event);
+  if (user.mustChangePassword) throw new ForbiddenError("Сначала задайте свой пароль вместо временного.");
   if (user.needsProfile) {
     throw new ForbiddenError("Сначала расскажите о себе: в кабинете откроется экран «Давай познакомимся».");
   }

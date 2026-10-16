@@ -2,11 +2,13 @@
 import { ArrowRight } from "lucide-vue-next";
 
 import type { ActionResult } from "~/composables/useAction";
-import { COURSES, FACULTIES, type OnboardingField } from "~~/lib/profile/onboarding";
+import { COURSES, FACULTIES, type CredentialsField, type OnboardingField } from "~~/lib/profile/onboarding";
 
 /**
  * «Давай познакомимся» — один раз после первого входа, до кабинета, анкеты
  * и теста. Имя и фамилия уже из Telegram; группа и VK — потом, в анкете.
+ * Пришёл через Telegram без пароля — здесь же логин, почта и пароль:
+ * дальше можно входить и без Telegram.
  * Дальше — куда шёл (?next=), в Mini App — сразу к тесту.
  */
 useHead({ title: "Давай познакомимся" });
@@ -20,6 +22,9 @@ interface Known {
   studentId: string;
   phone: string;
   done: boolean;
+  needsCredentials: boolean;
+  login: string;
+  email: string;
 }
 
 const route = useRoute();
@@ -33,9 +38,14 @@ const form = reactive({
   faculty: data.value?.faculty ?? "",
   studentId: data.value?.studentId ?? "",
   phone: data.value?.phone ?? "",
+  login: data.value?.login ?? "",
+  email: data.value?.email ?? "",
+  password: "",
+  repeat: "",
 });
+const needsCredentials = computed(() => data.value?.needsCredentials ?? false);
 
-const errors = ref<Partial<Record<OnboardingField, string>>>({});
+const errors = ref<Partial<Record<OnboardingField | CredentialsField, string>>>({});
 const pending = ref(false);
 const problem = ref<string | null>(null);
 
@@ -51,7 +61,7 @@ async function save() {
       (): ActionResult => ({ ok: false, message: "Нет связи с сайтом. Проверьте интернет и нажмите ещё раз." }),
     );
     if (!result.ok) {
-      const problems = (result.problems as { field: OnboardingField; message: string }[] | undefined) ?? [];
+      const problems = (result.problems as { field: OnboardingField | CredentialsField; message: string }[] | undefined) ?? [];
       errors.value = Object.fromEntries(problems.map((item) => [item.field, item.message]));
       problem.value = problems.length ? "Проверьте выделенные поля." : (result.message ?? "Не получилось сохранить.");
       await nextTick();
@@ -151,6 +161,45 @@ const chip = (active: boolean, invalid: boolean) =>
           :invalid="!!errors.phone"
         />
       </div>
+
+      <fieldset v-if="needsCredentials" class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-4">
+        <legend class="px-1 text-sm font-semibold">Данные для входа</legend>
+        <p class="text-ink-soft -mt-1 text-sm">Чтобы входить и без Telegram: по логину или почте и паролю.</p>
+        <UiInput
+          v-model="form.login"
+          label="Логин"
+          autocomplete="username"
+          placeholder="Латиница и цифры, например anna.k"
+          :hint="errors.login"
+          :invalid="!!errors.login"
+        />
+        <UiInput
+          v-model="form.email"
+          label="Почта"
+          type="email"
+          inputmode="email"
+          autocomplete="email"
+          placeholder="name@mail.ru"
+          :hint="errors.email"
+          :invalid="!!errors.email"
+        />
+        <UiInput
+          v-model="form.password"
+          label="Пароль — от 8 знаков"
+          type="password"
+          autocomplete="new-password"
+          :hint="errors.password"
+          :invalid="!!errors.password"
+        />
+        <UiInput
+          v-model="form.repeat"
+          label="Пароль ещё раз"
+          type="password"
+          autocomplete="new-password"
+          :hint="errors.repeat"
+          :invalid="!!errors.repeat"
+        />
+      </fieldset>
 
       <UiNotice :message="problem" />
       <UiButton type="submit" :pending="pending">Готово <ArrowRight class="size-5" aria-hidden="true" /></UiButton>

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { verifyPassword } from "~~/lib/auth/password";
 import { normalizeEmail } from "~~/lib/auth/email";
 import { loginKind, normalizeLogin } from "~~/lib/auth/login";
+import { tempPasswordMatches } from "~~/lib/auth/temp-password";
 import { checkThrottle, clearMisses, forgetOldAttempts, recordMiss } from "~~/lib/auth/throttle";
 import { db } from "~~/lib/db";
 import { startSession } from "~~/server/utils/session";
@@ -21,6 +22,8 @@ const ABSENT =
 const schema = z.object({
   email: z.string().trim().min(1, "Введите почту или логин."),
   password: z.string().min(1, "Введите пароль."),
+  /** Вкладка входа: участники и организаторы входят раздельно. */
+  as: z.enum(["candidate", "staff"]).default("candidate"),
 });
 
 /**
@@ -52,13 +55,24 @@ export default defineAction(schema, async ({ body, event }) => {
 
   const user = await db.user.findUnique({
     where: kind === "email" ? { email } : { login: normalizeLogin(body.email) },
-    select: { id: true, passwordHash: true, status: true },
+    select: {
+      id: true,
+      passwordHash: true,
+      tempPasswordHash: true,
+      tempPasswordExpiresAt: true,
+      status: true,
+      isOwner: true,
+      roles: { select: { role: { select: { permissions: true } } } },
+    },
   });
 
   // Пароль считаем всегда, даже когда считать нечего: см. ABSENT.
   const ok = await verifyPassword(body.password, user?.passwordHash ?? ABSENT);
+  // Временный пароль из бота («Забыли пароль?») — тоже впускает, но дальше
+  // сайт сначала попросит задать свой.
+  const temporary = !ok && user ? await tempPasswordMatches(user, body.password) : false;
 
-  if (!ok || !user) {
+  if ((!ok && !temporary) || !user) {
     await recordMiss(email, ip);
     const after = await checkThrottle(email);
 
@@ -80,7 +94,18 @@ export default defineAction(schema, async ({ body, event }) => {
     return { ok: false, message: "Доступ закрыт. Если это ошибка — напишите главному организатору." };
   }
 
+  // Разные двери: организатор — на своей вкладке, участник — на своей.
+  // Говорим об этом только после верного пароля: чужому это ничего не даёт.
+  const staff = user.isOwner || user.roles.some((item) => item.role.permissions.length > 0);
+  if (body.as === "candidate" && staff) {
+    return { ok: false, message: "Это вход для участников. Организаторам — вкладка «Организаторам»." };
+  }
+  if (body.as === "staff" && !staff) {
+    return { ok: false, message: "Это вход для организаторов. Участникам — вкладка «Участникам»." };
+  }
+
   await clearMisses(email);
+  if (temporary) await db.user.update({ where: { id: user.id }, data: { mustChangePassword: true } });
   await startSession(event, user.id);
 
   await audit(event, {
@@ -88,6 +113,7 @@ export default defineAction(schema, async ({ body, event }) => {
     action: "auth.password_login",
     entityType: "user",
     entityId: user.id,
+    meta: { temporary },
   });
 
   return { ok: true, message: "Здравствуйте!" };

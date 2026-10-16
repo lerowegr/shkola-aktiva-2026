@@ -22,6 +22,8 @@ export interface CurrentUser extends Actor {
   isStaff: boolean;
   /** Кандидат ещё не прошёл знакомство (/cabinet/welcome): кабинет закрыт. */
   needsProfile: boolean;
+  /** Вошёл временным паролем из бота — сначала задать свой (/password). */
+  mustChangePassword: boolean;
 }
 
 export function displayName(user: {
@@ -51,6 +53,7 @@ export async function loadUser(userId: string | null | undefined): Promise<Curre
       status: true,
       isOwner: true,
       onboardedAt: true,
+      mustChangePassword: true,
       roles: { select: { role: { select: { permissions: true } } } },
     },
   });
@@ -74,6 +77,7 @@ export async function loadUser(userId: string | null | undefined): Promise<Curre
     permissions,
     isStaff: user.isOwner || permissions.length > 0,
     needsProfile: !(user.isOwner || permissions.length > 0) && user.onboardedAt === null,
+    mustChangePassword: user.mustChangePassword,
   };
 }
 
