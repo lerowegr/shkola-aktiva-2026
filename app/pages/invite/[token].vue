@@ -29,7 +29,7 @@ async function submit() {
 
 <template>
   <main class="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 px-4 py-10">
-    <span class="bg-lime grid size-12 place-items-center rounded-2xl font-display">ША</span>
+    <AppMark class="size-12 rounded-2xl text-base" />
 
     <template v-if="invite?.ok">
       <div class="flex flex-col gap-2">

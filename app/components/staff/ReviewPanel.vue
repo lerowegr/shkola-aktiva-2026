@@ -125,6 +125,7 @@ function when(date: Date) {
           </span>
         </div>
         <p v-if="criterion.description" class="text-ink-soft -mt-1 text-xs leading-relaxed">{{ criterion.description }}</p>
+        <p v-if="criterion.indicators" class="bg-paper text-ink rounded-xl px-3 py-2 text-xs leading-relaxed whitespace-pre-line">{{ criterion.indicators }}</p>
 
         <div
           role="radiogroup"

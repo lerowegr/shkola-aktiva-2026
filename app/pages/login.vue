@@ -43,7 +43,7 @@ watch(door, () => (passwordLogin.result.value = null));
 <template>
   <main class="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-8 px-4 py-10">
     <NuxtLink to="/" class="flex items-center gap-2 self-start font-display text-sm">
-      <span class="bg-lime grid size-9 place-items-center rounded-xl">ША</span>
+      <AppMark class="size-9 rounded-xl text-sm" />
       Школа Актива 2026
     </NuxtLink>
 

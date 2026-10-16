@@ -5,7 +5,8 @@
  *
  * Безопасно для живых данных: этап заменяется, только пока по нему нет ни
  * одного балла и маркера; анкета — только пока нет ни одного ответа. Иначе
- * этап пропускается с объяснением — такие правки делаются в админке руками.
+ * у этапа обновляются только тексты критериев (описание, индикаторы, расшифровки)
+ * с тем же названием и максимумом; остальное правится в админке руками.
  *
  *   npx tsx scripts/apply-portrait.ts --dry-run   — только показать, что будет
  *   npx tsx scripts/apply-portrait.ts
@@ -45,7 +46,17 @@ async function main() {
       db.reviewMarker.count({ where: { marker: { seasonId: season.id, stageKind } } }),
     ]);
     if (scores + notes > 0) {
-      console.log(`· ${label}: пропуск — уже стоят баллы (${scores}) и маркеры (${notes}). Правьте в админке.`);
+      // Баллы уже стоят — структуру не трогаем, обновляем только тексты
+      // критериев с тем же названием и тем же максимумом: баллы не теряют смысла.
+      const existing = await db.criterion.findMany({ where: { seasonId: season.id, stageKind }, select: { id: true, title: true, maxScore: true } });
+      const updates = existing.flatMap((row) => {
+        const source = criteria.find((criterion) => criterion.title === row.title && criterion.maxScore === row.maxScore);
+        return source
+          ? [db.criterion.update({ where: { id: row.id }, data: { description: source.description ?? null, indicators: source.indicators ?? null, levels: source.levels } })]
+          : [];
+      });
+      console.log(`· ${label}: уже стоят баллы (${scores}) и маркеры (${notes}) — обновлены только тексты ${updates.length} из ${existing.length} критериев.`);
+      if (!dry) await db.$transaction(updates);
       continue;
     }
     console.log(`· ${label}: критериев ${criteria.length} (${criteria.map((c) => `${c.title} 0–${c.maxScore}`).join(", ")}), маркеров ${markers.length}`);
@@ -61,6 +72,7 @@ async function main() {
           title: criterion.title,
           badge: criterion.badge ?? null,
           description: criterion.description ?? null,
+          indicators: criterion.indicators ?? null,
           maxScore: criterion.maxScore,
           levels: criterion.levels,
         })),

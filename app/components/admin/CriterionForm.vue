@@ -5,6 +5,7 @@ interface Criterion {
   title: string;
   badge: string | null;
   description?: string | null;
+  indicators?: string | null;
   maxScore: number;
   levels: { score: number; text: string }[];
 }
@@ -16,6 +17,7 @@ const form = reactive({
   title: props.criterion?.title ?? "",
   badge: props.criterion?.badge ?? "",
   description: props.criterion?.description ?? "",
+  indicators: props.criterion?.indicators ?? "",
   maxScore: props.criterion?.maxScore ?? 4,
   texts: {} as Record<number, string>,
 });
@@ -29,6 +31,7 @@ async function submit() {
     title: form.title,
     badge: form.badge || null,
     description: form.description || null,
+    indicators: form.indicators || null,
     maxScore: form.maxScore,
     levels: Array.from({ length: form.maxScore + 1 }, (_, score) => ({ score, text: form.texts[score] ?? "" })),
   });
@@ -50,8 +53,12 @@ async function submit() {
       Что это за характеристика — эксперт увидит при оценке, необязательно
       <textarea v-model="form.description" rows="2" maxlength="1000" class="border-line bg-card field-sizing-content min-h-12 rounded-2xl border px-4 py-3 text-sm font-normal" />
     </label>
+    <label class="flex flex-col gap-1.5 text-sm font-medium">
+      Индикаторы — общий список, по строке на пункт; эксперт видит его один раз над баллами
+      <textarea v-model="form.indicators" rows="3" maxlength="3000" placeholder="1) Кандидат…&#10;2) Кандидат…" class="border-line bg-card field-sizing-content min-h-12 rounded-2xl border px-4 py-3 text-sm font-normal" />
+    </label>
     <fieldset class="flex flex-col gap-2">
-      <legend class="mb-1 text-sm font-medium">Что значит балл — можно не для каждого</legend>
+      <legend class="mb-1 text-sm font-medium">Что значит балл — коротко, со ссылкой на индикаторы; можно не для каждого</legend>
       <label v-for="score in form.maxScore + 1" :key="score" class="flex items-start gap-3">
         <span class="text-accent mt-3 w-4 text-sm font-semibold">{{ score - 1 }}</span>
         <textarea v-model="form.texts[score - 1]" rows="1" maxlength="1500" class="border-line bg-card field-sizing-content flex-1 rounded-xl border px-3 py-2.5 text-sm" />

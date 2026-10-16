@@ -1,7 +1,7 @@
 import { displayName } from "~~/lib/auth/actor";
 import { db } from "~~/lib/db";
 import type { StageKind } from "~~/lib/generated/prisma/enums";
-import type { GuideBlock } from "~~/lib/interviews/guide";
+import type { GuideView } from "~~/lib/interviews/guide";
 
 import type { AnswerValue } from "./form";
 import { reviewSummary, type ReviewSummary } from "./review";
@@ -50,7 +50,7 @@ export async function criteriaFor(seasonId: string, stage: StageKind) {
   return db.criterion.findMany({
     where: { seasonId, stageKind: stage },
     orderBy: { order: "asc" },
-    select: { id: true, title: true, badge: true, description: true, maxScore: true, levels: true },
+    select: { id: true, title: true, badge: true, description: true, indicators: true, maxScore: true, levels: true },
   });
 }
 
@@ -222,6 +222,8 @@ export interface StaffCriterion {
   title: string;
   badge: string | null;
   description: string | null;
+  /** Общий список индикаторов — показываем один раз над баллами. */
+  indicators: string | null;
   maxScore: number;
   levels: { score: number; text: string }[];
 }
@@ -406,8 +408,8 @@ export interface StaffApplicationResponse {
   canEdit: boolean;
   canAssign: boolean;
   scope: ListScope;
-  /** Сценарий собеса с ячейками — только на этапе INTERVIEW. */
-  guide: GuideBlock[];
+  /** Сценарий собеса с колонками мастеров — только на этапе INTERVIEW. */
+  guide: GuideView | null;
   prev: string | null;
   next: string | null;
 }

@@ -61,7 +61,7 @@ onMounted(async () => {
 
 <template>
   <main class="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
-    <span class="bg-lime grid size-14 place-items-center rounded-2xl font-display text-lg">ША</span>
+    <AppMark class="size-14 rounded-2xl text-lg" />
 
     <template v-if="outside">
       <p>Эта страница открывается из Telegram-бота.</p>

@@ -30,7 +30,7 @@ export interface DemoPerson {
 export const DEMO_STAFF: DemoPerson[] = [
   { key: "admin", firstName: "Демо", lastName: "Админ", about: "Тех.админ: все права, админка, люди, роли", role: "admin" },
   { key: "lead", firstName: "Полина", lastName: "Орлова", about: "Главный организатор: этапы, решения, ЦО, ведёт собеседования", role: "lead" },
-  { key: "katya", firstName: "Катя", lastName: "Белова", about: "Мастер отбора и эксперт ЦО", role: "master" },
+  { key: "katya", firstName: "Катя", lastName: "Белова", about: "Мастер отбора, эксперт ЦО, собеседует вместе с Полиной", role: "master" },
   { key: "ilya", firstName: "Илья", lastName: "Воронов", about: "Мастер отбора и эксперт ЦО", role: "master" },
 ];
 
@@ -278,7 +278,7 @@ export async function resetDemo(now = new Date()): Promise<{ staff: number; cand
     slots: [slot(-1, 16), slot(-1, 17), slot(-1, 18), slot(2, 16), slot(2, 17)],
     location: "Корпус 2, аудитория 410",
     capacity: 1,
-    interviewerIds: [staff.lead!],
+    interviewerIds: [staff.lead!, staff.katya!],
     createdById: staff.lead!,
   });
   const bookings: [string, { id: string } | undefined][] = [
@@ -291,7 +291,10 @@ export async function resetDemo(now = new Date()): Promise<{ staff: number; cand
     if (!booked) continue;
     await db.interviewBooking.create({ data: { slotId: booked.id, applicationId: app(key), createdAt: new Date(now.getTime() - 3 * DAY) } });
     const done = key !== "zhenya";
-    await review(app(key), "INTERVIEW", staff.lead!, done ? (key === "lyova" ? "low" : "high") : "none");
+    // Собеседуют вдвоём: у каждого своя оценка и своя колонка в сценарии.
+    for (const interviewer of [staff.lead!, staff.katya!]) {
+      await review(app(key), "INTERVIEW", interviewer, done ? (key === "lyova" ? "low" : "high") : "none");
+    }
   }
   void future2; // свободное время: Женя или кто-то ещё может перезаписаться
 

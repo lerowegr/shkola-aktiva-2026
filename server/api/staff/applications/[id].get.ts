@@ -47,7 +47,7 @@ export default defineEventHandler(async (event) => {
     canEdit: mayReview,
     canAssign: can(user, "applications.assign"),
     scope,
-    guide: stage === "INTERVIEW" ? await loadGuide(seasonId, id, user.id) : [],
+    guide: stage === "INTERVIEW" ? await loadGuide(seasonId, id, user.id) : null,
     ...around,
   };
 });

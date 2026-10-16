@@ -88,6 +88,7 @@ async function seedEvaluation(
         title: criterion.title,
         badge: criterion.badge ?? null,
         description: criterion.description ?? null,
+        indicators: criterion.indicators ?? null,
         maxScore: criterion.maxScore,
         levels: criterion.levels,
       })),

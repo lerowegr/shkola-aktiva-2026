@@ -6,21 +6,35 @@ import type { AuditContext } from "../applications/review-store";
 
 /**
  * Сценарий собеседования: блоки вопросов из таблицы, под каждым вопросом —
- * ячейки комментариев мастеров (своя редактируется, чужие читаются).
+ * колонки мастеров собеседования, слева направо в одном порядке у всех.
+ * Свою колонку мастер пишет, чужие видит и сразу замечает, что там
+ * появляется текст: страница опрашивает `loadGuideNotes` каждые пару секунд.
  * Кандидат этого не видит: гайд живёт только в кабинете организатора.
  */
-export interface GuideNote {
-  authorId: string;
-  authorName: string;
-  note: string;
+export interface GuideColumn {
+  id: string;
+  name: string;
   isMine: boolean;
+  /** Назначен на собеседование — колонка видна, даже пока пустая. */
+  assigned: boolean;
+}
+
+export interface GuideNoteRow {
+  questionId: string;
+  authorId: string;
+  note: string;
+  updatedAt: Date;
+}
+
+export interface GuideNotes {
+  columns: GuideColumn[];
+  notes: GuideNoteRow[];
 }
 
 export interface GuideItem {
   id: string;
   text: string;
   intro: boolean;
-  notes: GuideNote[];
 }
 
 export interface GuideBlock {
@@ -28,47 +42,64 @@ export interface GuideBlock {
   items: GuideItem[];
 }
 
-export async function loadGuide(seasonId: string, applicationId: string, viewerId: string): Promise<GuideBlock[]> {
-  const questions = await db.interviewQuestion.findMany({
-    where: { seasonId },
-    orderBy: { order: "asc" },
-    select: {
-      id: true,
-      block: true,
-      text: true,
-      intro: true,
-      notes: {
-        where: { applicationId },
-        select: {
-          note: true,
-          authorId: true,
-          author: { select: { firstName: true, lastName: true, telegramUsername: true, email: true } },
-        },
-      },
-    },
-  });
+export interface GuideView extends GuideNotes {
+  blocks: GuideBlock[];
+}
+
+const PERSON = { id: true, firstName: true, lastName: true, telegramUsername: true, email: true } as const;
+
+/** Колонки и заметки — то, что страница опрашивает, пока открыт сценарий. */
+export async function loadGuideNotes(applicationId: string, viewerId: string): Promise<GuideNotes> {
+  const [reviews, rows] = await Promise.all([
+    db.review.findMany({
+      where: { applicationId, stageKind: "INTERVIEW", releasedAt: null },
+      select: { reviewer: { select: PERSON } },
+    }),
+    db.interviewNote.findMany({
+      where: { applicationId },
+      select: { questionId: true, authorId: true, note: true, updatedAt: true, author: { select: PERSON } },
+    }),
+  ]);
+
+  const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "ru");
+  const assigned = reviews
+    .map(({ reviewer }) => ({ id: reviewer.id, name: displayName(reviewer), isMine: reviewer.id === viewerId, assigned: true }))
+    .sort(byName);
+  const known = new Set(assigned.map((column) => column.id));
+  const others = new Map<string, GuideColumn>();
+  for (const row of rows) {
+    if (known.has(row.authorId) || others.has(row.authorId)) continue;
+    others.set(row.authorId, { id: row.authorId, name: displayName(row.author), isMine: row.authorId === viewerId, assigned: false });
+  }
+  return {
+    columns: [...assigned, ...[...others.values()].sort(byName)],
+    notes: rows.map(({ questionId, authorId, note, updatedAt }) => ({ questionId, authorId, note, updatedAt })),
+  };
+}
+
+export async function loadGuide(seasonId: string, applicationId: string, viewerId: string): Promise<GuideView> {
+  const [questions, notes] = await Promise.all([
+    db.interviewQuestion.findMany({
+      where: { seasonId },
+      orderBy: { order: "asc" },
+      select: { id: true, block: true, text: true, intro: true },
+    }),
+    loadGuideNotes(applicationId, viewerId),
+  ]);
 
   const blocks: GuideBlock[] = [];
-  const byName = new Map<string, GuideBlock>();
+  const byBlock = new Map<string, GuideBlock>();
   for (const question of questions) {
-    const notes = question.notes
-      .map((item) => ({
-        authorId: item.authorId,
-        authorName: displayName(item.author),
-        note: item.note,
-        isMine: item.authorId === viewerId,
-      }))
-      .sort((a, b) => Number(b.isMine) - Number(a.isMine) || a.authorName.localeCompare(b.authorName, "ru"));
-    const item: GuideItem = { id: question.id, text: question.text, intro: question.intro, notes };
-    const existing = byName.get(question.block);
+    const item: GuideItem = { id: question.id, text: question.text, intro: question.intro };
+    const existing = byBlock.get(question.block);
     if (existing) existing.items.push(item);
     else {
       const block: GuideBlock = { block: question.block, items: [item] };
-      byName.set(question.block, block);
+      byBlock.set(question.block, block);
       blocks.push(block);
     }
   }
-  return blocks;
+  return { blocks, ...notes };
 }
 
 export const NOTE_MAX = 2000;

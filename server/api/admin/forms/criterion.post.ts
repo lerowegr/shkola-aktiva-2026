@@ -10,6 +10,7 @@ const schema = z.object({
   title: z.string().max(100),
   badge: z.string().max(40).nullable(),
   description: z.string().max(1000).nullable().default(null),
+  indicators: z.string().max(3000).nullable().default(null),
   maxScore: z.number().int(),
   levels: z.array(z.object({ score: z.number().int(), text: z.string().max(1500) })).max(11),
 });

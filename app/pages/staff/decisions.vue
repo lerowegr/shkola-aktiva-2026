@@ -93,12 +93,22 @@ watch(stage, () => {
     </div>
 
     <!-- Сводка и действия -->
-    <section class="bg-card border-line grid gap-4 rounded-3xl border p-5 lg:grid-cols-[1fr_auto]">
-      <dl class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div><dt class="text-ink-soft text-xs">Проходят</dt><dd class="font-display text-ok text-2xl">{{ counts.passed }}</dd></div>
-        <div><dt class="text-ink-soft text-xs">Не проходят</dt><dd class="font-display text-danger text-2xl">{{ counts.rejected }}</dd></div>
-        <div><dt class="text-ink-soft text-xs">Без решения</dt><dd class="font-display text-2xl">{{ counts.none }}</dd></div>
-        <div><dt class="text-ink-soft text-xs">Опубликовано</dt><dd class="font-display text-2xl">{{ counts.published }}</dd></div>
+    <section class="bg-card border-line grid items-center gap-4 rounded-3xl border p-4 sm:p-5 lg:grid-cols-[1fr_auto]">
+      <!-- Счётчики — плитками, число и подпись по центру плитки. -->
+      <dl class="grid grid-cols-2 content-center gap-2 sm:grid-cols-4">
+        <div
+          v-for="tile in [
+            { label: 'Проходят', value: counts.passed, tone: 'text-ok' },
+            { label: 'Не проходят', value: counts.rejected, tone: 'text-danger' },
+            { label: 'Без решения', value: counts.none, tone: '' },
+            { label: 'Опубликовано', value: counts.published, tone: '' },
+          ]"
+          :key="tile.label"
+          class="bg-paper flex flex-col-reverse items-center justify-center gap-1 rounded-2xl px-2 py-3 text-center"
+        >
+          <dt class="text-ink-soft text-xs">{{ tile.label }}</dt>
+          <dd class="font-display text-2xl leading-none" :class="tile.tone">{{ tile.value }}</dd>
+        </div>
       </dl>
 
       <div class="flex flex-col gap-2 sm:flex-row sm:items-end lg:flex-col lg:items-stretch">

@@ -416,21 +416,13 @@ v-for="field in [
       </div>
     </div>
 
-    <section v-if="stage === 'INTERVIEW' && (data?.guide ?? []).length > 0" class="flex flex-col gap-5">
-      <div class="flex flex-col gap-1">
-        <h2 class="font-display text-2xl">Сценарий собеседования</h2>
-        <p class="text-ink-soft text-sm">Вопросы из таблицы, под каждым — ячейки мастеров. Кандидат этого не видит.</p>
-      </div>
-      <section v-for="block in data?.guide ?? []" :key="block.block" class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-5">
-        <h3 class="font-display text-xl">{{ block.block }}</h3>
-        <StaffGuideItem
-          v-for="item in block.items"
-          :key="item.id"
-          :item="item"
-          :application-id="id"
-          :can-write="canReview"
-        />
-      </section>
-    </section>
+    <StaffGuide
+      v-if="stage === 'INTERVIEW' && data?.guide && data.guide.blocks.length > 0"
+      :key="id"
+      :guide="data.guide"
+      :application-id="id"
+      :can-write="canReview && (data?.canEdit ?? false)"
+      :my-id="session?.id ?? null"
+    />
   </main>
 </template>

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "~~/lib/db";
 import { resetDatabase } from "~~/lib/test/db";
 
-import { loadGuide, saveNote } from "./guide";
+import { loadGuide, loadGuideNotes, saveNote } from "./guide";
 import { DEFAULT_INTERVIEW_QUESTIONS } from "./questions";
 
 describe("сценарий собеседования", () => {
@@ -34,20 +34,31 @@ describe("сценарий собеседования", () => {
     expect(DEFAULT_INTERVIEW_QUESTIONS.some((item) => item.block === "Блиц")).toBe(true);
   });
 
-  it("ячейки: своя редактируется, чужая видна, пустая стирает", async () => {
+  it("колонки: назначенные мастера в одном порядке у обоих, пустая заметка стирает", async () => {
+    // «Я» назначена на собеседование, «Другой» нет, но уже написал.
+    await db.review.create({ data: { applicationId, stageKind: "INTERVIEW", reviewerId: me } });
     expect(await saveNote({ applicationId, questionId, authorId: me, note: "Отвечает бодро" })).toEqual({ ok: true });
     expect(await saveNote({ applicationId, questionId, authorId: other, note: "Согласен" })).toEqual({ ok: true });
 
-    const blocks = await loadGuide(seasonId, applicationId, me);
-    const notes = blocks[0]!.items[0]!.notes;
-    expect(notes.map((item) => [item.authorName, item.isMine])).toEqual([
-      ["Я", true],
-      ["Другой", false],
+    const mine = await loadGuide(seasonId, applicationId, me);
+    expect(mine.blocks[0]!.items[0]!.text).toBe("Сальто или мем?");
+    expect(mine.columns.map((column) => [column.name, column.isMine, column.assigned])).toEqual([
+      ["Я", true, true],
+      ["Другой", false, false],
     ]);
+    const theirs = await loadGuide(seasonId, applicationId, other);
+    expect(theirs.columns.map((column) => column.id)).toEqual([me, other]);
+    expect(theirs.notes.map((row) => [row.authorId, row.note]).sort()).toEqual(
+      [
+        [me, "Отвечает бодро"],
+        [other, "Согласен"],
+      ].sort(),
+    );
 
-    expect(await saveNote({ applicationId, questionId, authorId: me, note: "   " })).toEqual({ ok: true });
-    const after = await loadGuide(seasonId, applicationId, me);
-    expect(after[0]!.items[0]!.notes.map((item) => item.authorId)).toEqual([other]);
+    expect(await saveNote({ applicationId, questionId, authorId: other, note: "   " })).toEqual({ ok: true });
+    const after = await loadGuideNotes(applicationId, me);
+    expect(after.notes.map((row) => row.authorId)).toEqual([me]);
+    expect(after.columns.map((column) => column.id)).toEqual([me]);
   });
 
   it("чужой вопрос и чужая анкета отклоняются", async () => {

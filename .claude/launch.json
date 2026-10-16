@@ -1,6 +1,23 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "dev", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev"], "port": 3000 }
+    {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "dev-demo",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "DATABASE_URL='postgresql://egor@localhost:5432/sha_demo?schema=public' NUXT_PUBLIC_DEMO=true NUXT_PUBLIC_APP_URL=http://localhost:3002 npm run dev -- --port 3002"
+      ],
+      "port": 3002
+    }
   ]
 }
