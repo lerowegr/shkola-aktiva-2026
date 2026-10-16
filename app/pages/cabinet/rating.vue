@@ -52,14 +52,21 @@ watch(tab, (value) => {
 });
 
 const TABS = [{ key: "overall", label: "Общий" }, ...RATED_GAMES.map((game) => ({ key: game, label: GAMES[game].title }))] as const;
+
+// «Назад» — туда, откуда пришли: из игр — в игры, иначе — в кабинет.
+const back = ref({ to: "/cabinet", label: "Кабинет" });
+onMounted(() => {
+  const from = window.history.state?.back;
+  if (typeof from === "string" && from.startsWith("/cabinet/games")) back.value = { to: "/cabinet/games", label: "Все игры" };
+});
 </script>
 
 <template>
   <div>
     <AppHeader />
     <main class="mx-auto flex max-w-4xl flex-col gap-5 px-4 py-6">
-      <NuxtLink to="/cabinet/games" class="text-ink-soft hover:text-ink inline-flex items-center gap-1 self-start text-sm">
-        <ArrowLeft class="size-4" aria-hidden="true" /> Все игры
+      <NuxtLink :to="back.to" class="text-ink-soft hover:text-ink inline-flex items-center gap-1 self-start text-sm">
+        <ArrowLeft class="size-4" aria-hidden="true" /> {{ back.label }}
       </NuxtLink>
       <div class="flex flex-col gap-1">
         <h1 class="font-display text-3xl">Рейтинг</h1>

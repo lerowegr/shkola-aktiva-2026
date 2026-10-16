@@ -1,15 +1,9 @@
-import { z } from "zod";
-
-import { rankForStage } from "~~/lib/applications/decisions";
-import { EVALUATED_STAGES } from "~~/lib/applications/staff";
+import { rankFinal } from "~~/lib/applications/decisions";
 import { requireCurrentSeasonId } from "~~/server/utils/season";
 import { requirePermission } from "~~/server/utils/session";
 
-const query = z.object({ stage: z.enum(EVALUATED_STAGES).default("APPLICATION") });
-
-/** Рейтинг этапа с решениями — страница «Решения». */
+/** Рейтинг итогов отбора с решениями — страница «Итоги». */
 export default defineEventHandler(async (event) => {
   await requirePermission(event, "applications.decide");
-  const { stage } = query.parse(getQuery(event));
-  return { stage, rows: await rankForStage(await requireCurrentSeasonId(), stage) };
+  return { rows: await rankFinal(await requireCurrentSeasonId()) };
 });

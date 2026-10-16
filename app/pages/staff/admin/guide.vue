@@ -53,6 +53,7 @@ const remove = (id: string) => post("/api/admin/interview-guide/delete", { id })
 
 <template>
   <main class="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
+    <StaffAdminNav />
     <div class="flex items-center justify-between">
       <h1 class="font-display text-2xl">Сценарий собеса</h1>
       <div class="shrink-0">

@@ -25,11 +25,12 @@ onBeforeUnmount(() => observer?.disconnect());
     class="fixed inset-x-0 top-0 z-30 transition-[background-color,border-color,backdrop-filter] duration-300"
     :class="scrolled ? 'bg-paper/85 border-line border-b backdrop-blur-md' : 'border-b border-transparent'"
   >
-    <div class="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
-      <NuxtLink to="/" class="flex items-center gap-2" aria-label="Школа Актива, на главную">
+    <!-- Три колонки: разделы стоят ровно по центру, сколько бы их ни было. -->
+    <div class="mx-auto grid h-16 max-w-6xl grid-cols-[1fr_auto_1fr] items-center gap-4 px-4">
+      <NuxtLink to="/" class="flex items-center gap-2 justify-self-start" aria-label="Школа Актива, на главную">
         <img src="/brand/logo-sticker-short.webp" alt="" width="40" height="40" class="size-10 rounded-full">
       </NuxtLink>
-      <nav class="hidden items-center gap-1 lg:flex" aria-label="Разделы">
+      <nav class="col-start-2 hidden items-center justify-center gap-1 lg:flex" aria-label="Разделы">
         <a
           v-for="link in links"
           :key="link.href"
@@ -39,7 +40,7 @@ onBeforeUnmount(() => observer?.disconnect());
           {{ link.label }}
         </a>
       </nav>
-      <NuxtLink :to="cta.to" class="landing-button landing-button--primary min-h-10 px-4 text-sm">{{ cta.label }}</NuxtLink>
+      <NuxtLink :to="cta.to" class="landing-button landing-button--primary col-start-3 min-h-10 justify-self-end px-4 text-sm">{{ cta.label }}</NuxtLink>
     </div>
   </header>
 </template>

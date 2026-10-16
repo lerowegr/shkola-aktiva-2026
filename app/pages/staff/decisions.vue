@@ -1,29 +1,21 @@
 <script setup lang="ts">
 import { Check, Lock, Megaphone, X } from "lucide-vue-next";
 
-import type { RankRow } from "~~/lib/applications/decisions";
-import type { EvaluatedStage } from "~~/lib/applications/staff";
+import type { FinalPart, RankRow } from "~~/lib/applications/decisions";
 
 /**
- * «Решения»: кто проходит дальше. Рейтинг — по среднему итогу мастеров.
- * Отметки — черновик; кандидаты увидят результат только после
+ * «Итоги отбора»: кто проходит в Школу. Отсева между этапами нет — решение
+ * одно, в конце. Рейтинг — сумма средних баллов анкеты, ДЗ, ЦО и
+ * собеседования. Отметки — черновик; кандидаты увидят результат только после
  * «Опубликовать», и опубликованное уже не меняется.
  */
 definePageMeta({ layout: "staff" });
-useHead({ title: "Решения" });
+useHead({ title: "Итоги отбора" });
 
-const route = useRoute();
-const router = useRouter();
-const STAGES: { key: EvaluatedStage; label: string }[] = [
-  { key: "APPLICATION", label: "Анкета" },
-  { key: "HOMEWORK", label: "Домашнее задание" },
-  { key: "INTERVIEW", label: "Собеседование" },
-];
-const stage = computed<EvaluatedStage>(() =>
-  STAGES.some((item) => item.key === route.query.stage) ? (route.query.stage as EvaluatedStage) : "APPLICATION",
-);
+const PART_LABEL: Record<FinalPart, string> = { APPLICATION: "Анкета", HOMEWORK: "ДЗ", ASSESSMENT: "ЦО", INTERVIEW: "Собес" };
+const PART_STAGE: Record<FinalPart, string> = { APPLICATION: "", HOMEWORK: "&stage=HOMEWORK", ASSESSMENT: "", INTERVIEW: "&stage=INTERVIEW" };
 
-const { data, refresh } = await useFetch<{ rows: RankRow[] }>("/api/staff/decisions", { query: { stage } });
+const { data, refresh } = await useFetch<{ rows: RankRow[] }>("/api/staff/decisions");
 const rows = computed(() => data.value?.rows ?? []);
 
 const counts = computed(() => ({
@@ -39,7 +31,7 @@ async function decide(row: RankRow, outcome: "PASSED" | "REJECTED") {
   if (row.published) return;
   const next = row.decision === outcome ? null : outcome;
   row.decision = next;
-  const result = await setOne.submit({ applicationId: row.id, stage: stage.value, outcome: next });
+  const result = await setOne.submit({ applicationId: row.id, outcome: next });
   if (!result.ok) await refresh();
 }
 
@@ -47,49 +39,30 @@ const threshold = ref<number | null>(null);
 const bulk = useAction("/api/staff/decisions/bulk");
 async function applyThreshold() {
   if (threshold.value === null) return;
-  const result = await bulk.submit({ stage: stage.value, threshold: threshold.value });
+  const result = await bulk.submit({ threshold: threshold.value });
   if (result.ok) await refresh();
 }
 
 const confirming = ref(false);
 const publish = useAction("/api/staff/decisions/publish");
 async function doPublish() {
-  const result = await publish.submit({ stage: stage.value });
+  const result = await publish.submit({});
   confirming.value = false;
   if (result.ok) await refresh();
 }
 
-watch(stage, () => {
-  confirming.value = false;
-  threshold.value = null;
-  bulk.result.value = null;
-  publish.result.value = null;
-});
+const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? []);
 </script>
 
 <template>
   <main class="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8">
     <div class="flex flex-col gap-1">
-      <h1 class="font-display text-3xl">Решения</h1>
+      <h1 class="font-display text-3xl">Итоги отбора</h1>
       <p class="text-ink-soft max-w-2xl text-sm">
-        Кто проходит на следующий этап. Отметки — черновик: кандидаты увидят результат, только когда вы нажмёте
-        «Опубликовать». Опубликованное изменить нельзя.
+        Отсева между этапами нет: все, кто отправил анкету, проходят ДЗ, центр оценки и собеседование. Здесь — одно
+        решение в конце. Итог — сумма средних баллов этапов. Отметки — черновик: кандидаты увидят результат, только когда
+        вы нажмёте «Опубликовать». Опубликованное изменить нельзя.
       </p>
-    </div>
-
-    <div role="tablist" class="bg-card border-line flex max-w-full gap-1 self-start overflow-x-auto rounded-2xl border p-1">
-      <button
-        v-for="item in STAGES"
-        :key="item.key"
-        type="button"
-        role="tab"
-        :aria-selected="stage === item.key"
-        class="min-h-10 shrink-0 rounded-xl px-4 text-sm font-medium"
-        :class="stage === item.key ? 'bg-paper' : 'text-ink-soft'"
-        @click="router.replace({ query: { stage: item.key } })"
-      >
-        {{ item.label }}
-      </button>
     </div>
 
     <!-- Сводка и действия -->
@@ -114,7 +87,7 @@ watch(stage, () => {
       <div class="flex flex-col gap-2 sm:flex-row sm:items-end lg:flex-col lg:items-stretch">
         <form class="flex items-end gap-2" @submit.prevent="applyThreshold">
           <label class="flex flex-col gap-1 text-xs font-medium">
-            Проходят от балла
+            Проходят от итога
             <input
               v-model.number="threshold"
               type="number"
@@ -147,18 +120,24 @@ watch(stage, () => {
 
     <!-- Рейтинг -->
     <section class="bg-card border-line overflow-hidden rounded-3xl border">
-      <div class="text-ink-soft border-line hidden grid-cols-[40px_2fr_1.2fr_0.8fr_220px] gap-4 border-b px-4 py-2 text-xs font-semibold uppercase md:grid">
-        <span>#</span><span>Кандидат</span><span>Средний балл</span><span>Проверено</span><span>Решение</span>
+      <div
+        class="text-ink-soft border-line hidden gap-4 border-b px-4 py-2 text-xs font-semibold uppercase md:grid"
+        :style="{ gridTemplateColumns: `40px 2fr repeat(${parts.length}, minmax(0, 0.7fr)) 1fr 220px` }"
+      >
+        <span>#</span><span>Кандидат</span>
+        <span v-for="part in parts" :key="part" class="text-center">{{ PART_LABEL[part] }}</span>
+        <span>Итог</span><span>Решение</span>
       </div>
       <ol>
         <li
           v-for="(row, index) in rows"
           :key="row.id"
-          class="border-line grid grid-cols-[32px_1fr] items-center gap-x-3 gap-y-2 border-t px-4 py-3 first:border-t-0 md:grid-cols-[40px_2fr_1.2fr_0.8fr_220px] md:gap-4"
+          class="border-line rank-row grid grid-cols-[32px_1fr] items-center gap-x-3 gap-y-2 border-t px-4 py-3 first:border-t-0 md:gap-4"
+          :style="{ '--cols': `40px 2fr repeat(${parts.length}, minmax(0, 0.7fr)) 1fr 220px` }"
         >
           <span class="text-ink-soft text-sm">{{ index + 1 }}</span>
           <NuxtLink
-            :to="`/staff/applications/${row.id}?from=all${stage === 'APPLICATION' ? '' : `&stage=${stage}`}`"
+            :to="`/staff/applications/${row.id}?from=all`"
             class="flex min-w-0 items-center gap-3 hover:underline"
           >
             <StaffAvatar :seed="row.id" :text="row.initials" />
@@ -167,14 +146,26 @@ watch(stage, () => {
               <span v-if="row.telegramUsername" class="text-ink-soft block truncate text-xs">@{{ row.telegramUsername }}</span>
             </span>
           </NuxtLink>
+          <!-- Баллы этапов: на телефоне — строкой чипов, на компьютере — колонками. -->
+          <span class="col-start-2 flex flex-wrap gap-1.5 md:contents">
+            <NuxtLink
+              v-for="part in row.parts ?? []"
+              :key="part.stage"
+              :to="`/staff/applications/${row.id}?from=all${PART_STAGE[part.stage]}`"
+              class="bg-paper rounded-lg px-2 py-1 text-center text-xs hover:underline md:bg-transparent md:px-0 md:text-sm"
+              :title="`${PART_LABEL[part.stage]}: ${part.average ?? 'нет оценки'} из ${part.max}`"
+            >
+              <span class="text-ink-soft md:hidden">{{ PART_LABEL[part.stage] }} </span>
+              <b v-if="part.average !== null">{{ part.average }}</b><span v-else class="text-ink-soft">—</span>
+              <span class="text-ink-soft">/{{ part.max }}</span>
+            </NuxtLink>
+          </span>
           <span class="col-start-2 flex flex-col gap-1 md:col-start-auto">
-            <span class="text-sm"><b>{{ row.average ?? "—" }}</b><span class="text-ink-soft">/ {{ row.max }}</span></span>
+            <span class="text-sm"><b>{{ row.average ?? "—" }}</b><span class="text-ink-soft"> / {{ row.max }}</span></span>
+            <span class="text-ink-soft text-xs">проверено {{ row.reviewed }} из {{ row.reviewers }}</span>
             <span v-if="row.markers.length" class="flex flex-wrap gap-1">
               <span v-for="marker in row.markers" :key="marker" class="bg-brand-purple-soft/60 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-[#6a1a91]">{{ marker }}</span>
             </span>
-          </span>
-          <span class="text-ink-soft col-start-2 text-sm md:col-start-auto">
-            {{ row.reviewed }} из {{ row.reviewers }}
           </span>
           <div class="col-start-2 flex items-center gap-1.5 md:col-start-auto">
             <template v-if="row.published">
@@ -209,7 +200,15 @@ watch(stage, () => {
           </div>
         </li>
       </ol>
-      <p v-if="rows.length === 0" class="text-ink-soft p-8 text-center text-sm">На этом этапе пока некого оценивать.</p>
+      <p v-if="rows.length === 0" class="text-ink-soft p-8 text-center text-sm">Пока никто не отправил анкету.</p>
     </section>
   </main>
 </template>
+
+<style scoped>
+@media (min-width: 48rem) {
+  .rank-row {
+    grid-template-columns: var(--cols);
+  }
+}
+</style>

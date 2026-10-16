@@ -6,13 +6,12 @@ export const SEGMENTS = {
   candidates: "Все кандидаты",
   drafts: "Начали анкету, но не отправили",
   submitted: "Отправили анкету",
-  passed_application: "Прошли анкету",
-  rejected_application: "Не прошли анкету",
   homework_submitted: "Сдали домашнее задание",
-  passed_homework: "Прошли домашнее задание",
-  not_booked: "Прошли ДЗ, но не записались на собеседование",
+  in_assessment: "Распределены в группы центра оценки",
+  not_booked: "Отправили анкету, но не записались на собеседование",
   booked: "Записаны на собеседование",
   accepted: "Прошли отбор",
+  rejected: "Не прошли отбор",
   staff: "Организаторы",
 } as const;
 

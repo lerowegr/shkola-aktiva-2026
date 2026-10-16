@@ -1,19 +1,17 @@
 import { z } from "zod";
 
-import { setDecision } from "~~/lib/applications/decisions";
-import { EVALUATED_STAGES } from "~~/lib/applications/staff";
+import { FINAL_STAGE, setDecision } from "~~/lib/applications/decisions";
 import { requirePermission } from "~~/server/utils/session";
 
 const schema = z.object({
   applicationId: z.string().min(1),
-  stage: z.enum(EVALUATED_STAGES),
   outcome: z.enum(["PASSED", "REJECTED"]).nullable(),
 });
 
-/** Отметить, проходит ли кандидат дальше. До публикации — черновик. */
+/** Итог отбора кандидата: проходит в Школу или нет. До публикации — черновик. */
 export default defineAction(schema, async ({ body, event }) => {
   const actor = await requirePermission(event, "applications.decide");
-  const result = await setDecision(body.applicationId, body.stage, body.outcome, actor.id);
+  const result = await setDecision(body.applicationId, FINAL_STAGE, body.outcome, actor.id);
   if (!result.ok) return result;
 
   await audit(event, {
@@ -21,7 +19,7 @@ export default defineAction(schema, async ({ body, event }) => {
     action: "decision.set",
     entityType: "application",
     entityId: body.applicationId,
-    meta: { stage: body.stage, outcome: body.outcome },
+    meta: { stage: FINAL_STAGE, outcome: body.outcome },
   });
   return { ok: true };
 });

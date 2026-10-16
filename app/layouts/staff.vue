@@ -39,7 +39,7 @@ const tabs = computed(() => {
     },
     // Ведущим собеседования вкладка открыта заранее — нарезать слоты до старта этапа.
     { to: "/staff/interviews", label: "Собеседования", icon: Mic, show: true, locked: value.stages.INTERVIEW === "upcoming" && !value.can.interviews, badge: 0 },
-    { to: "/staff/decisions", label: "Решения", icon: Gavel, show: value.can.decide, locked: false, badge: 0 },
+    { to: "/staff/decisions", label: "Итоги", icon: Gavel, show: value.can.decide, locked: false, badge: 0 },
     { to: "/staff/dashboards", label: "Дашборды", icon: ChartColumn, show: value.can.dashboards, locked: false, badge: 0 },
     {
       to: "/staff/admin",
@@ -72,7 +72,9 @@ function active(to: string) {
 <template>
   <div class="min-h-dvh">
     <AppHeader>
-      <nav ref="tabsNav" class="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-2" aria-label="Разделы кабинета">
+      <!-- Вкладки по центру; не влезают — листаются, и левые не обрезаются (w-max + mx-auto). -->
+      <nav ref="tabsNav" class="mx-auto max-w-6xl overflow-x-auto px-2" aria-label="Разделы кабинета">
+        <div class="mx-auto flex w-max gap-1">
         <template v-for="tab in tabs" :key="tab.to">
           <span
             v-if="tab.locked"
@@ -100,6 +102,7 @@ function active(to: string) {
             </span>
           </NuxtLink>
         </template>
+        </div>
       </nav>
     </AppHeader>
 

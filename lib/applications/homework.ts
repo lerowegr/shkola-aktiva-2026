@@ -1,8 +1,6 @@
-import { db } from "~~/lib/db";
 import type { Prisma } from "~~/lib/generated/prisma/client";
 
 import type { AnswerValue } from "./form";
-import { candidateDecision } from "./decisions";
 
 /**
  * Домашнее задание — раздел анкеты.
@@ -14,17 +12,6 @@ import { candidateDecision } from "./decisions";
  * (Submission этапа HOMEWORK) — по ней работа попадает в «Оценку ДЗ», к
  * решениям и в рассылки, а мастер назначается на проверку ДЗ.
  */
-
-export interface HomeworkView {
-  /** Опубликованное решение по анкете (вместе с домашкой). */
-  admission: "PASSED" | "REJECTED" | null;
-}
-
-export async function loadHomework(userId: string): Promise<HomeworkView | null> {
-  const season = await db.season.findFirst({ where: { isCurrent: true }, select: { id: true } });
-  if (!season) return null;
-  return { admission: await candidateDecision(userId, season.id, "APPLICATION") };
-}
 
 /** Текст сдачи ДЗ из ответов раздела: «Задание — ссылка», по строке на задание. */
 export function homeworkText(

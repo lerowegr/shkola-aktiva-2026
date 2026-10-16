@@ -117,7 +117,15 @@ export function formatValue(format: QuestionFormat, raw: string): Formatted {
   }
 }
 
-/** Сколько не хватает до минимума — или null, если хватает. */
+/** Ссылка ведёт на Google Диск — его и советуем для ДЗ (другие тоже принимаем). */
+export function isGoogleDrive(value: string): boolean {
+  const url = normalizeUrl(value);
+  if (!url) return false;
+  const host = new URL(url).hostname.toLowerCase();
+  return host === "drive.google.com" || host === "docs.google.com";
+}
+
+/** Сколько не хватает до рекомендованного минимума — или null, если хватает. */
 export function shortBy(question: QuestionShape, value: string): number | null {
   if (!question.minLength) return null;
   const missing = question.minLength - value.trim().length;
@@ -244,13 +252,8 @@ export function submitProblems(
       }
     }
 
-    const missing = shortBy(question, value);
-    if (missing !== null) {
-      problems.push({
-        field: question.id,
-        message: `Напишите подробнее: ещё ${missing} ${plural(missing, "знак", "знака", "знаков")} (от ${question.minLength}).`,
-      });
-    }
+    // Минимум знаков — только совет (счётчик у поля): короткий ответ
+    // отправить можно, решает мастер отбора.
   }
 
   return problems;

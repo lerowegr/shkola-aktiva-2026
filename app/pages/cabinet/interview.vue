@@ -8,6 +8,8 @@ useHead({ title: "Собеседование" });
 
 const { data, refresh } = await useFetch<{ interview: CandidateInterview | null }>("/api/cabinet/interview");
 const iv = computed(() => data.value?.interview ?? null);
+// Время записи прошло — человек уже был на собеседовании, ждёт итогов.
+const past = computed(() => Boolean(iv.value?.booking && new Date(iv.value.booking.endsAt).getTime() < Date.now()));
 
 const days = computed(() => {
   const groups: { key: string; day: Date | string; slots: CandidateInterview["slots"] }[] = [];
@@ -37,7 +39,7 @@ async function cancel() {
   if (result.ok) await refresh();
 }
 
-const showSlots = computed(() => iv.value && iv.value.admission === "PASSED" && iv.value.state === "open" && (!iv.value.booking || choosing.value));
+const showSlots = computed(() => iv.value && iv.value.allowed && !past.value && iv.value.state === "open" && (!iv.value.booking || choosing.value));
 </script>
 
 <template>
@@ -58,19 +60,19 @@ const showSlots = computed(() => iv.value && iv.value.admission === "PASSED" && 
             {{
               iv.final === "PASSED"
                 ? "Поздравляем — вы прошли отбор. Подробности о старте пришлём в ближайшие дни."
-                : "В этот раз места не хватило. Спасибо, что прошли весь отбор, — будем рады видеть вас снова!"
+                : "Спасибо, что прошли весь отбор — анкету, центр оценки и собеседование 💛 В этот раз места в Школе Актива не хватило, и нам правда жаль 😔 Это не про то, что вы чего-то не умеете: мест мало, а сильных ребят много. Будем очень рады видеть вас в следующем наборе!"
             }}
           </p>
         </div>
 
-        <div v-else-if="iv.admission === null" class="bg-card border-line rounded-3xl border p-5">
-          <p class="font-semibold">Результаты домашнего задания ещё не объявлены</p>
-          <p class="text-ink-soft text-sm">Как только их опубликуют, здесь можно будет выбрать время собеседования.</p>
+        <div v-else-if="!iv.allowed" class="bg-card border-line rounded-3xl border p-5">
+          <p class="font-semibold">Сначала — анкета</p>
+          <p class="text-ink-soft text-sm">Запись на собеседование откроется, когда вы отправите анкету с домашним заданием.</p>
         </div>
 
-        <div v-else-if="iv.admission === 'REJECTED'" class="bg-card border-line rounded-3xl border p-5">
-          <p class="font-semibold">В этот раз дальше пройти не получилось</p>
-          <p class="text-ink-soft text-sm">Спасибо за домашнее задание. Приходите на следующий набор!</p>
+        <div v-else-if="past" class="bg-brand-green-soft rounded-3xl p-5">
+          <p class="font-semibold">Вы уже были на собеседовании ✨</p>
+          <p class="text-ink-soft text-sm">Спасибо! Ждите итогов отбора — они придут сюда и в Telegram.</p>
         </div>
 
         <template v-else>

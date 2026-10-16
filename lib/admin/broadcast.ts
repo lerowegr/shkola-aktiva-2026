@@ -6,7 +6,8 @@ import { notify } from "~~/lib/notifications/notify";
 
 /**
  * Рассылки по сегментам: «всем, кто не отправил анкету — до дедлайна
- * сутки», «прошедшим ДЗ, но не записавшимся на собеседование».
+ * сутки», «отправившим анкету, но не записавшимся на собеседование».
+ * Отсева между этапами нет — решение одно, итог отбора.
  *
  * Уходят уведомлением категории «Важное»: в колокольчик и во все каналы,
  * которые человек не выключил. Заблокированным — никогда.
@@ -15,8 +16,8 @@ import { SEGMENTS, type Segment } from "./segments";
 
 export { SEGMENTS, type Segment };
 
-function published(stage: "APPLICATION" | "HOMEWORK" | "INTERVIEW", outcome: "PASSED" | "REJECTED") {
-  return { decisions: { some: { stageKind: stage, outcome, publishedAt: { not: null } } } };
+function published(outcome: "PASSED" | "REJECTED") {
+  return { decisions: { some: { stageKind: "INTERVIEW" as const, outcome, publishedAt: { not: null } } } };
 }
 
 export async function segmentUserIds(seasonId: string, segment: Segment): Promise<string[]> {
@@ -39,13 +40,12 @@ export async function segmentUserIds(seasonId: string, segment: Segment): Promis
   const where = {
     drafts: { status: "DRAFT" as const },
     submitted: { status: "SUBMITTED" as const },
-    passed_application: published("APPLICATION", "PASSED"),
-    rejected_application: published("APPLICATION", "REJECTED"),
     homework_submitted: { submissions: { some: { stageKind: "HOMEWORK" as const, replacedAt: null } } },
-    passed_homework: published("HOMEWORK", "PASSED"),
-    not_booked: { ...published("HOMEWORK", "PASSED"), bookings: { none: { cancelledAt: null } } },
+    in_assessment: { assessment: { isNot: null } },
+    not_booked: { status: "SUBMITTED" as const, bookings: { none: { cancelledAt: null } } },
     booked: { bookings: { some: { cancelledAt: null } } },
-    accepted: published("INTERVIEW", "PASSED"),
+    accepted: published("PASSED"),
+    rejected: published("REJECTED"),
   }[segment];
 
   const applications = await db.application.findMany({

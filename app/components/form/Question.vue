@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FORMAT_EXAMPLE, formatValue, plural, type AnswerValue } from "~~/lib/applications/form";
+import { FORMAT_EXAMPLE, formatValue, isGoogleDrive, normalizeUrl, plural, type AnswerValue } from "~~/lib/applications/form";
 
 /**
  * Один вопрос анкеты в нужном виде: строка, развёрнутый ответ, выбор
@@ -7,7 +7,8 @@ import { FORMAT_EXAMPLE, formatValue, plural, type AnswerValue } from "~~/lib/ap
  *
  * У строки с форматом — своя клавиатура на телефоне и пример; уходя с поля,
  * верный ввод приводится к единому виду (vk.com/ivan → https://vk.ru/ivan).
- * У ответа с минимумом — счётчик «N из 200».
+ * У ответа с минимумом — счётчик «N из 200»: это совет, отправить можно и короче.
+ * У ссылки на ДЗ (`homework`) — пример и совет про Google Диск.
  */
 const props = defineProps<{
   number: number;
@@ -24,6 +25,8 @@ const props = defineProps<{
   };
   readonly?: boolean;
   error?: string | null;
+  /** Ссылка на домашнее задание: советуем Google Диск. */
+  homework?: boolean;
 }>();
 
 const model = defineModel<AnswerValue | undefined>();
@@ -68,7 +71,8 @@ const inputMode = computed(() =>
 );
 const placeholder = computed(() => {
   if (props.question.format) return `Например, ${FORMAT_EXAMPLE[props.question.format]}`;
-  return props.question.type === "URL" ? "vk.ru/…" : "Ваш ответ";
+  if (props.question.type === "URL") return props.homework ? "Например, https://drive.google.com/drive/folders/…" : "vk.ru/…";
+  return "Ваш ответ";
 });
 
 function tidy() {
@@ -83,7 +87,15 @@ const counter = computed(() => {
   const min = props.question.minLength;
   if (!min || props.readonly) return null;
   if (length.value >= min) return { done: true, text: `${length.value} ${plural(length.value, "знак", "знака", "знаков")} — достаточно` };
-  return { done: false, text: `${length.value} из ${min} — нужно развёрнуто` };
+  return { done: false, text: `${length.value} из ${min} — советуем ответить развёрнуто` };
+});
+
+// Ссылка на ДЗ не с Google Диска — не ошибка, а совет.
+const driveAdvice = computed(() => {
+  if (!props.homework || props.readonly || props.question.type !== "URL") return null;
+  const value = text.value.trim();
+  if (!value || !normalizeUrl(value) || isGoogleDrive(value)) return null;
+  return "Советуем Google Диск — так проверяющим проще открыть работу. Другой сервис тоже подойдёт: проверь, что доступ открыт по ссылке.";
 });
 
 const shown = computed(() => {
@@ -107,9 +119,11 @@ const shown = computed(() => {
           {{ question.label }}
           <span v-if="!question.required" class="text-ink-soft font-normal">— необязательно</span>
         </label>
-        <FormRichHelp v-if="question.help" :text="question.help" />
+        <FormRichHelp v-if="question.help && !homework" :text="question.help" />
       </div>
     </div>
+    <!-- Задания ДЗ — на всю ширину карточки: в колонке у номера им тесно. -->
+    <FormRichHelp v-if="question.help && homework" :text="question.help" />
 
     <p v-if="readonly" class="pl-10 whitespace-pre-line" :class="shown ? '' : 'text-ink-soft'">
       {{ shown || "Нет ответа" }}
@@ -170,6 +184,7 @@ const shown = computed(() => {
     <p v-if="counter && !readonly" class="text-sm sm:pl-10" :class="counter.done ? 'text-ok' : 'text-ink-soft'" aria-live="polite">
       {{ counter.text }}
     </p>
+    <p v-if="driveAdvice" class="bg-brand-yellow-soft rounded-2xl px-4 py-3 text-sm sm:ml-10" aria-live="polite">{{ driveAdvice }}</p>
     <p v-if="error" class="text-danger text-sm sm:pl-10">{{ error }}</p>
   </div>
 </template>

@@ -2,7 +2,6 @@
 import { BellRing, ChevronRight, MessageCircle, Smile, Trophy } from "lucide-vue-next";
 
 import type { CandidateApplication } from "~~/lib/applications/candidate";
-import type { HomeworkView } from "~~/lib/applications/homework";
 import type { CandidateAssessment } from "~~/lib/assessment/candidate";
 import type { DailyStatus } from "~~/lib/games/daily";
 import type { CandidateInterview } from "~~/lib/interviews/booking";
@@ -10,15 +9,53 @@ import type { CandidateInterview } from "~~/lib/interviews/booking";
 useHead({ title: "Кабинет" });
 
 const user = await useSession();
-const [{ data }, { data: application }, { data: homework }, { data: assessment }, { data: interview }, { data: daily }] = await Promise.all([
+const [{ data }, { data: application }, { data: assessment }, { data: interview }, { data: daily }] = await Promise.all([
   useFetch("/api/season"),
   useFetch("/api/cabinet/application"),
-  useFetch<{ homework: HomeworkView | null }>("/api/cabinet/homework"),
   useFetch<{ assessment: CandidateAssessment | null }>("/api/cabinet/assessment"),
   useFetch<{ interview: CandidateInterview | null }>("/api/cabinet/interview"),
   useFetch<DailyStatus>("/api/cabinet/daily"),
 ]);
 const app = computed(() => application.value?.data as CandidateApplication | null | undefined);
+const iv = computed(() => interview.value?.interview ?? null);
+const co = computed(() => assessment.value?.assessment ?? null);
+
+const HOUR = 60 * 60 * 1000;
+const coOver = computed(() => {
+  const startsAt = co.value?.place?.startsAt;
+  return Boolean((startsAt && new Date(startsAt).getTime() + 4 * HOUR < Date.now()) || (co.value?.place && co.value.state === "closed"));
+});
+const ivOver = computed(() => Boolean(iv.value?.booking && new Date(iv.value.booking.endsAt).getTime() < Date.now()));
+const moment = (value: string | Date) => `${mskFormat(value, "d MMMM")}, ${mskTime(value)}`;
+
+/** Где по каждому этапу сам кандидат — для ленты этапов. */
+const personal = computed(() => {
+  const result: Record<string, { label: string; tone: "done" | "now" | "wait"; to?: string }> = {};
+  const submitted = app.value?.application.status === "SUBMITTED";
+  const stage = app.value?.stage;
+  if (submitted) result.APPLICATION = { label: "Анкета отправлена", tone: "done", to: "/cabinet/application" };
+  else if (stage?.state === "open")
+    result.APPLICATION = { label: app.value?.application.id ? "Черновик — допишите" : "Заполните анкету", tone: "now", to: "/cabinet/application" };
+  else if (stage?.state === "closed") result.APPLICATION = { label: "Не отправлена", tone: "wait" };
+
+  if (submitted && co.value) {
+    if (coOver.value) result.ASSESSMENT = { label: "Пройден — ждём итогов", tone: "done" };
+    else if (co.value.place?.startsAt) result.ASSESSMENT = { label: `Ваша группа: ${moment(co.value.place.startsAt)}`, tone: "now" };
+    else if (co.value.state === "open") result.ASSESSMENT = { label: "Распределяем по группам", tone: "wait" };
+  }
+
+  if (iv.value?.allowed) {
+    if (ivOver.value || (iv.value.final && iv.value.booking)) result.INTERVIEW = { label: "Пройдено — ждём итогов", tone: "done", to: "/cabinet/interview" };
+    else if (iv.value.booking) result.INTERVIEW = { label: `Вы записаны: ${moment(iv.value.booking.startsAt)}`, tone: "now", to: "/cabinet/interview" };
+    else if (iv.value.state === "open") result.INTERVIEW = { label: "Идёт запись — выберите время", tone: "now", to: "/cabinet/interview" };
+    else if (iv.value.state === "closed") result.INTERVIEW = { label: "Запись закрыта", tone: "wait", to: "/cabinet/interview" };
+  }
+
+  if (iv.value?.final) result.RESULTS = { label: iv.value.final === "PASSED" ? "Вы в Школе! 🎉" : "Итоги объявлены", tone: "done", to: "/cabinet/interview" };
+  else if (submitted && (ivOver.value || data.value?.season?.stages.some((item) => item.kind === "RESULTS" && item.state !== "upcoming")))
+    result.RESULTS = { label: "Ждём итогов", tone: "wait" };
+  return result;
+});
 </script>
 
 <template>
@@ -35,13 +72,9 @@ const app = computed(() => application.value?.data as CandidateApplication | nul
         </p>
       </div>
 
-      <AppInterviewCard v-if="interview?.interview && (interview.interview.admission || interview.interview.final)" :iv="interview.interview" />
-      <AppAssessmentCard
-        v-if="assessment?.assessment && (assessment.assessment.place || assessment.assessment.state === 'open')"
-        :co="assessment.assessment"
-      />
-      <AppHomeworkCard v-if="homework?.homework && homework.homework.admission" :hw="homework.homework" />
-      <AppApplicationCard v-if="app" :app="app" :admission="homework?.homework?.admission ?? null" />
+      <AppInterviewCard v-if="iv && (iv.final || (iv.allowed && (iv.booking || iv.state !== 'upcoming')))" :iv="iv" />
+      <AppAssessmentCard v-if="co && (co.place || co.state === 'open')" :co="co" />
+      <AppApplicationCard v-if="app" :app="app" />
 
       <NuxtLink
         to="/cabinet/daily"
@@ -104,7 +137,7 @@ const app = computed(() => application.value?.data as CandidateApplication | nul
 
       <section v-if="data?.season" class="flex flex-col gap-3">
         <h2 class="font-display text-lg">Этапы отбора</h2>
-        <AppStageTimeline :stages="data.season.stages" />
+        <AppStageTimeline :stages="data.season.stages" :personal="personal" />
       </section>
 
       <UiButton v-if="user?.isStaff" href="/staff" variant="ghost">Перейти в кабинет организатора</UiButton>

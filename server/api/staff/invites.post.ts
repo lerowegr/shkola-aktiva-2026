@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { formatValue } from "~~/lib/applications/form";
 import { normalizeEmail } from "~~/lib/auth/email";
 import { createInvite } from "~~/lib/auth/invite";
 import { db } from "~~/lib/db";
@@ -11,6 +12,7 @@ const schema = z.object({
   firstName: z.string().trim().min(1, "Укажите имя.").max(60),
   lastName: z.string().trim().max(60).optional(),
   roleId: z.string().min(1, "Выберите роль."),
+  telegram: z.string().trim().max(64).optional(),
 });
 
 /**
@@ -36,12 +38,23 @@ export default defineAction(schema, async ({ body, event }) => {
 
   const email = normalizeEmail(body.email);
 
+  // Ник Telegram — по желанию: по нему первый вход через Telegram найдёт этот аккаунт.
+  let telegramUsername: string | null = null;
+  if (body.telegram) {
+    const formatted = formatValue("TELEGRAM", body.telegram);
+    if (!formatted.ok) return { ok: false, message: formatted.message };
+    telegramUsername = String(formatted.value).replace(/^@/, "");
+  }
+
   const user = await db.user.upsert({
     where: { email },
-    create: { email, firstName: body.firstName, lastName: body.lastName ?? null },
+    create: { email, firstName: body.firstName, lastName: body.lastName ?? null, telegramUsername },
     update: {},
-    select: { id: true, status: true },
+    select: { id: true, status: true, telegramId: true, telegramUsername: true },
   });
+  if (telegramUsername && !user.telegramId && !user.telegramUsername) {
+    await db.user.update({ where: { id: user.id }, data: { telegramUsername } });
+  }
 
   if (user.status === "BLOCKED") {
     return { ok: false, message: "Этот человек заблокирован. Сначала снимите блокировку." };
@@ -60,7 +73,7 @@ export default defineAction(schema, async ({ body, event }) => {
     action: "invite.create",
     entityType: "user",
     entityId: user.id,
-    meta: { roleId: role.id, roleName: role.name },
+    meta: { roleId: role.id, roleName: role.name, telegram: telegramUsername },
   });
 
   const appUrl = (process.env.NUXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");

@@ -42,7 +42,7 @@ interface SendResult {
 
 const props = defineProps<{
   questions: Question[];
-  sections: { title: string; description: string | null }[];
+  sections: { title: string; description: string | null; homework?: boolean }[];
   answers: Record<string, AnswerValue>;
   profile: Profile;
   saveState?: "idle" | "saving" | "saved" | "error";
@@ -218,6 +218,7 @@ const shown = (value: AnswerValue | undefined) => (Array.isArray(value) ? value.
         :number="item.number"
         :question="item.question"
         :error="errors[item.question.id]"
+        :homework="step.homework"
         :model-value="answers[item.question.id]"
         @update:model-value="setAnswer(item.question.id, $event)"
       />

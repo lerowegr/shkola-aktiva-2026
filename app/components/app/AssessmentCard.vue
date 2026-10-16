@@ -33,7 +33,7 @@ const fallback = computed(() =>
     </div>
 
     <p v-if="over" class="bg-card/80 rounded-2xl p-4 text-sm">
-      Центр оценки прошёл — спасибо! О следующем этапе сообщим здесь и в Telegram.
+      Вы уже были на центре оценки ✨ Спасибо! Дальше — собеседование, а итоги отбора объявим в конце.
     </p>
     <dl v-else-if="place" class="bg-card/80 grid gap-3 rounded-2xl p-4 text-sm sm:grid-cols-2">
       <div class="flex items-start gap-2.5">

@@ -21,12 +21,15 @@ const past = computed(() => Boolean(props.iv.booking && new Date(props.iv.bookin
       <span class="block text-sm">Поздравляем — вы прошли отбор.</span>
     </span>
   </NuxtLink>
-  <div v-else-if="iv.final === 'REJECTED'" class="bg-card border-line rounded-3xl border p-5">
-    <p class="font-semibold">Итоги отбора</p>
-    <p class="text-ink-soft text-sm">В этот раз места не хватило. Спасибо, что прошли весь отбор!</p>
-  </div>
+  <NuxtLink v-else-if="iv.final === 'REJECTED'" to="/cabinet/interview" class="bg-card border-line flex items-start gap-4 rounded-3xl border p-5">
+    <span class="bg-paper grid size-12 shrink-0 place-items-center rounded-2xl text-2xl" aria-hidden="true">😔</span>
+    <span class="flex-1">
+      <span class="block font-semibold">Итоги отбора</span>
+      <span class="text-ink-soft block text-sm">Спасибо, что прошли весь отбор — анкету, центр оценки и собеседование 💛 В этот раз места в Школе Актива не хватило, и нам правда жаль 😔 Это не про то, что вы чего-то не умеете: мест мало, а сильных ребят много. Будем очень рады видеть вас в следующем наборе!</span>
+    </span>
+  </NuxtLink>
   <NuxtLink
-    v-else-if="iv.admission === 'PASSED'"
+    v-else-if="iv.allowed"
     to="/cabinet/interview"
     class="group flex items-center gap-4 rounded-3xl p-5 transition"
     :class="iv.booking ? 'bg-ink text-paper' : 'bg-accent text-accent-ink hover:brightness-110'"
@@ -37,10 +40,10 @@ const past = computed(() => Boolean(props.iv.booking && new Date(props.iv.bookin
     </span>
     <span class="min-w-0 flex-1">
       <span class="block font-semibold">
-        {{ past ? "Собеседование прошло" : iv.booking ? "Вы записаны на собеседование" : "Вы прошли на собеседование!" }}
+        {{ past ? "Вы уже были на собеседовании" : iv.booking ? "Вы записаны на собеседование" : "Собеседование: выберите время" }}
       </span>
       <span class="block text-sm opacity-80">
-        <template v-if="past">Спасибо! Итоги отбора придут сюда и в Telegram.</template>
+        <template v-if="past">Спасибо! Ждите итогов — они придут сюда и в Telegram.</template>
         <template v-else-if="iv.booking">
           <span class="first-letter:uppercase">{{ mskDay(iv.booking.startsAt) }}</span>, {{ mskTime(iv.booking.startsAt) }} · {{ iv.booking.location }}
         </template>

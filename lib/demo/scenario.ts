@@ -38,9 +38,9 @@ export const DEMO_CANDIDATES: DemoPerson[] = [
   { key: "masha", firstName: "Маша", lastName: "Новикова", about: "Только зарегистрировалась — экран знакомства" },
   { key: "anya", firstName: "Аня", lastName: "Смирнова", about: "Заполняет анкету — черновик" },
   { key: "boris", firstName: "Борис", lastName: "Козлов", about: "Отправил анкету — ждёт проверки" },
-  { key: "vika", firstName: "Вика", lastName: "Морозова", about: "Анкета и ДЗ оценены, решение ещё не объявлено" },
-  { key: "gleb", firstName: "Глеб", lastName: "Волков", about: "Не прошёл анкету" },
-  { key: "dasha", firstName: "Даша", lastName: "Лебедева", about: "Прошла анкету, в группе ЦО — место и время" },
+  { key: "vika", firstName: "Вика", lastName: "Морозова", about: "Анкета и ДЗ оценены, ждёт центра оценки" },
+  { key: "gleb", firstName: "Глеб", lastName: "Волков", about: "Слабая анкета — но идёт дальше: отсева между этапами нет" },
+  { key: "dasha", firstName: "Даша", lastName: "Лебедева", about: "Отправила анкету, в группе ЦО — место и время" },
   { key: "egor", firstName: "Егор", lastName: "Соколов", about: "Прошёл ЦО, эксперты его оценили" },
   { key: "zhenya", firstName: "Женя", lastName: "Попова", about: "Записана на собеседование" },
   { key: "igor", firstName: "Игорь", lastName: "Кузнецов", about: "Собеседование прошло, итог не объявлен" },
@@ -223,18 +223,7 @@ export async function resetDemo(now = new Date()): Promise<{ staff: number; cand
     await review(app(person.key), "HOMEWORK", master(index), level);
   }
 
-  // Решения по анкете и ДЗ: опубликованы всем, кроме Вики и Бориса.
-  const passed = ["dasha", "egor", "zhenya", "igor", "kira", "lyova"];
-  await setDecision(app("gleb"), "APPLICATION", "REJECTED", staff.lead!);
-  for (const key of passed) {
-    await setDecision(app(key), "APPLICATION", "PASSED", staff.lead!);
-    // Допуск к собеседованию (решение этапа ДЗ) — после ЦО: Даша идёт на ЦО,
-    // Егор его прошёл и ждёт, остальные уже записаны или прошли собеседование.
-    if (!["dasha", "egor"].includes(key)) await setDecision(app(key), "HOMEWORK", "PASSED", staff.lead!);
-  }
-  await publishDecisions(seasonId, "APPLICATION");
-  await publishDecisions(seasonId, "HOMEWORK");
-  await setDecision(app("vika"), "APPLICATION", "PASSED", staff.lead!);
+  // Решений по анкете и ДЗ нет: отсева между этапами нет, итог — один, в конце.
 
   // Центр оценки: две группы, место сообщено. Время — ровные часы по Москве.
   const at = (offsetDays: number, hour: number) => {

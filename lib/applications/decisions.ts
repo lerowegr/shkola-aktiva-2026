@@ -6,7 +6,12 @@ import { reviewSummary } from "./review";
 import { fullName, initials, type EvaluatedStage } from "./staff";
 
 /**
- * Решения по этапам: кто проходит дальше.
+ * Решения отбора.
+ *
+ * Отсева между этапами нет: каждый, кто отправил анкету, проходит ДЗ, центр
+ * оценки и собеседование. Решение одно — «Итоги отбора» в конце; хранится
+ * оно как решение этапа INTERVIEW (`FINAL_STAGE`), а рейтинг итогов
+ * (`rankFinal`) складывает средние баллы всех этапов.
  *
  * Решение — черновик, пока его не опубликовали. Публикуется весь этап
  * одной кнопкой, и только тогда кандидаты видят результат и получают
@@ -17,6 +22,19 @@ import { fullName, initials, type EvaluatedStage } from "./staff";
  * забрать это обратно молча нельзя. Если ошиблись, разговор с кандидатом
  * ведут люди, а не кнопка.
  */
+
+/** Этап, решение которого — итог отбора. Других решений кандидат не получает. */
+export const FINAL_STAGE = "INTERVIEW" satisfies EvaluatedStage;
+
+/** Этапы, баллы которых складываются в итог. */
+export const FINAL_PARTS = ["APPLICATION", "HOMEWORK", "ASSESSMENT", "INTERVIEW"] as const;
+export type FinalPart = (typeof FINAL_PARTS)[number];
+
+export interface RankPart {
+  stage: FinalPart;
+  average: number | null;
+  max: number;
+}
 
 export interface RankRow {
   id: string;
@@ -32,6 +50,8 @@ export interface RankRow {
   markers: string[];
   decision: DecisionOutcome | null;
   published: boolean;
+  /** Итоги отбора: средний балл каждого этапа. */
+  parts?: RankPart[];
 }
 
 /** Кто попадает в рейтинг этапа — те же правила, что у списков мастера. */
@@ -88,6 +108,77 @@ export async function rankForStage(seasonId: string, stage: EvaluatedStage): Pro
   return rows.sort(
     (a, b) => (b.average ?? -1) - (a.average ?? -1) || a.name.localeCompare(b.name, "ru"),
   );
+}
+
+const round = (value: number) => Math.round(value * 10) / 10;
+
+/**
+ * Рейтинг итогов: все отправившие анкету, средний балл каждого этапа и их
+ * сумма. Этап без оценок в сумму не входит — у такого кандидата «—» в
+ * колонке, а итог считается по остальным.
+ */
+export async function rankFinal(seasonId: string): Promise<RankRow[]> {
+  const [criteria, applications] = await Promise.all([
+    db.criterion.findMany({
+      where: { seasonId, stageKind: { in: [...FINAL_PARTS] } },
+      select: { id: true, maxScore: true, stageKind: true },
+    }),
+    db.application.findMany({
+      where: { seasonId, status: "SUBMITTED" },
+      select: {
+        id: true,
+        lastName: true,
+        firstName: true,
+        middleName: true,
+        user: { select: { telegramUsername: true } },
+        reviews: {
+          where: { stageKind: { in: [...FINAL_PARTS] } },
+          select: {
+            stageKind: true,
+            scores: { select: { criterionId: true, score: true } },
+            markers: { where: { note: { not: "" } }, select: { marker: { select: { title: true } } } },
+          },
+        },
+        decisions: { where: { stageKind: FINAL_STAGE }, select: { outcome: true, publishedAt: true } },
+      },
+    }),
+  ]);
+
+  const criteriaOf = (stage: FinalPart) => criteria.filter((criterion) => criterion.stageKind === stage);
+  const maxOf = (stage: FinalPart) => criteriaOf(stage).reduce((sum, criterion) => sum + criterion.maxScore, 0);
+
+  const rows = applications.map((application): RankRow => {
+    let reviewed = 0;
+    let reviewers = 0;
+    const parts = FINAL_PARTS.filter((stage) => maxOf(stage) > 0).map((stage): RankPart => {
+      const summaries = application.reviews
+        .filter((review) => review.stageKind === stage)
+        .map((review) => reviewSummary(criteriaOf(stage), review.scores));
+      reviewers += summaries.length;
+      reviewed += summaries.filter((summary) => summary.status === "done").length;
+      const totals = summaries.map((summary) => summary.total).filter((total): total is number => total !== null);
+      return { stage, average: totals.length ? round(totals.reduce((a, b) => a + b, 0) / totals.length) : null, max: maxOf(stage) };
+    });
+    const scored = parts.filter((part) => part.average !== null);
+    const decision = application.decisions[0] ?? null;
+
+    return {
+      id: application.id,
+      name: fullName(application),
+      initials: initials(application),
+      telegramUsername: application.user.telegramUsername,
+      average: scored.length ? round(scored.reduce((sum, part) => sum + part.average!, 0)) : null,
+      max: parts.reduce((sum, part) => sum + part.max, 0),
+      reviewed,
+      reviewers,
+      markers: [...new Set(application.reviews.flatMap((review) => review.markers.map((item) => item.marker.title)))],
+      decision: decision?.outcome ?? null,
+      published: decision?.publishedAt != null,
+      parts,
+    };
+  });
+
+  return rows.sort((a, b) => (b.average ?? -1) - (a.average ?? -1) || a.name.localeCompare(b.name, "ru"));
 }
 
 export type DecisionResult = { ok: true } | { ok: false; message: string };
@@ -150,7 +241,7 @@ const MESSAGES: Record<EvaluatedStage, Record<DecisionOutcome, { title: string; 
     },
     REJECTED: {
       title: "Итоги отбора",
-      body: "В этот раз места не хватило. Спасибо, что прошли весь отбор, — будем рады видеть вас снова!",
+      body: "Спасибо, что прошли весь отбор — анкету, центр оценки и собеседование 💛 В этот раз места в Школе Актива не хватило, и нам правда жаль 😔 Это не про то, что вы чего-то не умеете: мест мало, а сильных ребят много. Будем очень рады видеть вас в следующем наборе!",
     },
   },
 };

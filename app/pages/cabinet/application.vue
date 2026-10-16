@@ -25,6 +25,8 @@ watch(
 );
 
 const editable = computed(() => app.value?.editable ?? false);
+// Отправленная анкета — сначала «вы уже заполнили», ответы — по кнопке.
+const showAnswers = ref(false);
 const autosave = useAutosave();
 
 function saveAnswer(questionId: string, value: AnswerValue | undefined) {
@@ -97,14 +99,23 @@ function day(value: string | Date | null) {
         <!-- Состояние анкеты -->
         <div
           v-if="app.application.status === 'SUBMITTED'"
-          class="bg-brand-green-soft flex items-start gap-3 rounded-3xl p-5"
+          class="bg-brand-green-soft flex flex-col gap-4 rounded-3xl p-5 sm:p-6"
         >
-          <CheckCircle2 class="text-ok size-6 shrink-0" aria-hidden="true" />
-          <div>
-            <p class="font-semibold">Анкета отправлена {{ day(app.application.submittedAt) }}</p>
-            <p class="text-ink-soft text-sm">
-              Её уже читает мастер отбора. О следующем шаге сообщим здесь и в Telegram.
-            </p>
+          <div class="flex items-start gap-3">
+            <CheckCircle2 class="text-ok size-7 shrink-0" aria-hidden="true" />
+            <div class="flex flex-col gap-1">
+              <p class="font-display text-xl">Вы уже заполнили анкету ✨</p>
+              <p class="text-ink-soft text-sm">
+                Анкета и домашнее задание отправлены {{ day(app.application.submittedAt) }}. Изменить их уже нельзя — и не
+                нужно. Дальше — центр оценки и собеседование: приглашения придут сюда и в Telegram. Ждите!
+              </p>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <UiButton href="/cabinet" class="w-auto px-5 text-sm">В кабинет</UiButton>
+            <UiButton variant="ghost" class="w-auto px-5 text-sm" @click="showAnswers = !showAnswers">
+              {{ showAnswers ? "Скрыть мои ответы" : "Посмотреть мои ответы" }}
+            </UiButton>
           </div>
         </div>
         <div v-else-if="app.stage.state === 'upcoming'" class="bg-brand-yellow-soft rounded-3xl p-5">
@@ -136,7 +147,7 @@ function day(value: string | Date | null) {
           @profile="saveProfile"
         />
 
-        <template v-else>
+        <template v-else-if="app.application.status !== 'SUBMITTED' || showAnswers">
           <section class="bg-card border-line grid gap-3 rounded-3xl border p-4 sm:grid-cols-2 sm:p-5">
             <p class="flex flex-col">
               <span class="text-ink-soft text-sm">ФИО</span>

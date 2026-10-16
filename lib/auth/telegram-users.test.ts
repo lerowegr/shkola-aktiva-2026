@@ -31,6 +31,22 @@ describe("upsertTelegramUser", () => {
     expect(row.firstName).toBe("Алина Олеговна");
     expect(row.telegramUsername).toBe("alina_new");
   });
+
+  it("организатор, приглашённый с ником, входит в свой аккаунт, а не новым кандидатом", async () => {
+    const role = await db.role.create({ data: { name: "М", slug: "m", permissions: [] } });
+    const invited = await db.user.create({
+      data: { email: "a@x.ru", firstName: "Алина", telegramUsername: "Alina_SM", roles: { create: { roleId: role.id } } },
+    });
+    const user = await upsertTelegramUser(alina);
+    expect(user.id).toBe(invited.id);
+    expect(await db.user.count()).toBe(1);
+  });
+
+  it("ник без приглашения организатора никого не захватывает", async () => {
+    const candidate = await db.user.create({ data: { firstName: "Тёзка", telegramUsername: "alina_sm" } });
+    const user = await upsertTelegramUser(alina);
+    expect(user.id).not.toBe(candidate.id);
+  });
 });
 
 describe("confirmLoginCode", () => {

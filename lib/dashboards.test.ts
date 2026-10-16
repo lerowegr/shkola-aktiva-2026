@@ -20,10 +20,10 @@ describe("дашборды", () => {
     await db.application.create({ data: { seasonId, userId: draft.id } });
     const sent = await db.user.create({ data: {} });
     const application = await db.application.create({ data: { seasonId, userId: sent.id, status: "SUBMITTED" } });
-    await db.stageDecision.create({ data: { applicationId: application.id, stageKind: "APPLICATION", outcome: "PASSED", publishedAt: new Date() } });
+    await db.stageDecision.create({ data: { applicationId: application.id, stageKind: "INTERVIEW", outcome: "PASSED", publishedAt: new Date() } });
 
     const steps = Object.fromEntries((await funnel(seasonId)).map((step) => [step.key, step.count]));
-    expect(steps).toMatchObject({ registered: 3, started: 2, submitted: 1, passed_application: 1, homework: 0 });
+    expect(steps).toMatchObject({ registered: 3, started: 2, submitted: 1, homework: 0, assessment: 0, accepted: 1 });
   });
 
   it("дни — по Москве: 23:30 UTC — это уже следующий московский день", async () => {

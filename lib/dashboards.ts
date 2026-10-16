@@ -24,13 +24,13 @@ export interface FunnelStep {
 export async function funnel(seasonId: string): Promise<FunnelStep[]> {
   const count = (where: object) => db.application.count({ where: { seasonId, ...where } });
 
-  const [registered, started, submitted, passedApp, homework, passedHw, booked, accepted] = await Promise.all([
+  // Отсева между этапами нет: воронка — кто дошёл до какого шага.
+  const [registered, started, submitted, homework, assessment, booked, accepted] = await Promise.all([
     db.user.count({ where: { isOwner: false, roles: { none: {} } } }),
     count({}),
     count({ status: "SUBMITTED" }),
-    count(published("APPLICATION", "PASSED")),
     count({ submissions: { some: { stageKind: "HOMEWORK", replacedAt: null } } }),
-    count(published("HOMEWORK", "PASSED")),
+    count({ assessment: { isNot: null } }),
     count({ bookings: { some: { cancelledAt: null } } }),
     count(published("INTERVIEW", "PASSED")),
   ]);
@@ -39,9 +39,8 @@ export async function funnel(seasonId: string): Promise<FunnelStep[]> {
     { key: "registered", label: "Вошли на сайт", count: registered },
     { key: "started", label: "Начали анкету", count: started },
     { key: "submitted", label: "Отправили анкету", count: submitted },
-    { key: "passed_application", label: "Прошли анкету", count: passedApp },
     { key: "homework", label: "Сдали ДЗ", count: homework },
-    { key: "passed_homework", label: "Прошли ДЗ", count: passedHw },
+    { key: "assessment", label: "В группах ЦО", count: assessment },
     { key: "booked", label: "Записались на собеседование", count: booked },
     { key: "accepted", label: "Прошли отбор", count: accepted },
   ];

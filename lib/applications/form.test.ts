@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatValue, isEmptyAnswer, normalizeAnswer, stepProblems, submitProblems, type QuestionShape } from "./form";
+import { formatValue, isEmptyAnswer, isGoogleDrive, normalizeAnswer, shortBy, stepProblems, submitProblems, type QuestionShape } from "./form";
 
 function q(overrides: Partial<QuestionShape> = {}): QuestionShape {
   return {
@@ -159,11 +159,19 @@ describe("форматы и минимум в анкете", () => {
     expect(submitProblems([vk], { q1: "t.me/ivan" }, profile)[0]?.field).toBe("q1");
   });
 
-  it("развёрнутый ответ короче минимума — сколько осталось", () => {
+  it("минимум знаков — только совет: короткий ответ отправить можно", () => {
     const long = q({ type: "LONG_TEXT", minLength: 200, label: "Опыт" });
-    const [problem] = submitProblems([long], { q1: "а".repeat(150) }, profile);
-    expect(problem?.message).toContain("ещё 50 знаков");
-    expect(submitProblems([long], { q1: "а".repeat(200) }, profile)).toEqual([]);
+    expect(shortBy(long, "аа")).toBe(198);
+    expect(submitProblems([long], { q1: "аа" }, profile)).toEqual([]);
+    expect(shortBy(long, "а".repeat(200))).toBeNull();
+  });
+
+  it("Google Диск узнаём по ссылке, другие сервисы — не ошибка", () => {
+    expect(isGoogleDrive("https://drive.google.com/drive/folders/abc")).toBe(true);
+    expect(isGoogleDrive("docs.google.com/document/d/1")).toBe(true);
+    expect(isGoogleDrive("disk.yandex.ru/d/abc")).toBe(false);
+    const link = q({ type: "URL", label: "Папка" });
+    expect(submitProblems([link], { q1: "disk.yandex.ru/d/abc" }, profile)).toEqual([]);
   });
 
   it("студенческий — обязательный и только цифры", () => {

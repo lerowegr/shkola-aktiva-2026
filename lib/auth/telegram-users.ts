@@ -13,10 +13,15 @@ import type { TelegramWebAppUser } from "./telegram-init-data";
  *
  * upsert по уникальному telegramId, а не «найти, потом создать»: два
  * одновременных входа (бот и Mini App) иначе завели бы двух людей.
+ *
+ * Организатора приглашают с ником Telegram: при первом входе через
+ * Telegram с этим ником аккаунт приглашения получает его telegramId, а не
+ * появляется новый кандидат. Ник подтверждает сам Telegram при входе.
  */
 export async function upsertTelegramUser(
   tg: TelegramWebAppUser,
 ): Promise<{ id: string; status: "ACTIVE" | "BLOCKED" }> {
+  if (tg.username) await claimInvitedStaff(tg.id, tg.username);
   return db.user.upsert({
     where: { telegramId: tg.id },
     create: {
@@ -28,6 +33,21 @@ export async function upsertTelegramUser(
     update: { telegramUsername: tg.username },
     select: { id: true, status: true },
   });
+}
+
+/** Привязать Telegram к организатору, приглашённому с этим ником. */
+async function claimInvitedStaff(telegramId: string, username: string) {
+  if (await db.user.findUnique({ where: { telegramId }, select: { id: true } })) return;
+  const invited = await db.user.findFirst({
+    where: { telegramId: null, telegramUsername: { equals: username, mode: "insensitive" }, roles: { some: {} } },
+    select: { id: true },
+  });
+  if (!invited) return;
+  try {
+    await db.user.updateMany({ where: { id: invited.id, telegramId: null }, data: { telegramId } });
+  } catch {
+    // Одновременный вход уже завёл этот Telegram — остаётся обычный upsert.
+  }
 }
 
 export type ConfirmResult = { ok: true; userId: string } | { ok: false; reason: "stale" | "blocked" };

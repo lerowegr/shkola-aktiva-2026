@@ -40,14 +40,15 @@ async function context(userId: string) {
   const stage = season.stages[0];
   const application = await db.application.findUnique({
     where: { seasonId_userId: { seasonId: season.id, userId } },
-    select: { id: true, lastName: true, firstName: true, middleName: true },
+    select: { id: true, lastName: true, firstName: true, middleName: true, status: true },
   });
   return { season, stage, application };
 }
 
 export interface CandidateInterview {
   state: StageState;
-  admission: "PASSED" | "REJECTED" | null;
+  /** Отсева между этапами нет: записаться может каждый, кто отправил анкету. */
+  allowed: boolean;
   final: "PASSED" | "REJECTED" | null;
   booking: { slotId: string; startsAt: Date; endsAt: Date; location: string; canChange: boolean } | null;
   slots: { id: string; startsAt: Date; endsAt: Date; location: string }[];
@@ -57,10 +58,8 @@ export async function loadInterview(userId: string, now = new Date()): Promise<C
   const ctx = await context(userId);
   if (!ctx?.stage) return null;
 
-  const [admission, final] = await Promise.all([
-    candidateDecision(userId, ctx.season.id, "HOMEWORK"),
-    candidateDecision(userId, ctx.season.id, "INTERVIEW"),
-  ]);
+  const allowed = ctx.application?.status === "SUBMITTED";
+  const final = await candidateDecision(userId, ctx.season.id, "INTERVIEW");
   const state = stageState(ctx.stage, now);
 
   const booking = ctx.application
@@ -72,7 +71,7 @@ export async function loadInterview(userId: string, now = new Date()): Promise<C
 
   // Свободные слоты показываем только тем, кто может записаться.
   const slots =
-    admission === "PASSED" && state === "open"
+    allowed && state === "open"
       ? (
           await db.interviewSlot.findMany({
             where: { seasonId: ctx.season.id, startsAt: { gt: new Date(now.getTime() + BOOK_BEFORE_MS) } },
@@ -93,7 +92,7 @@ export async function loadInterview(userId: string, now = new Date()): Promise<C
 
   return {
     state,
-    admission,
+    allowed,
     final,
     booking: booking
       ? { ...booking.slot, slotId: booking.slot.id, canChange: booking.slot.startsAt.getTime() - now.getTime() >= CHANGE_BEFORE_MS }
@@ -127,8 +126,8 @@ async function syncReviews(tx: Parameters<Parameters<typeof db.$transaction>[0]>
 export async function book(userId: string, slotId: string, now = new Date()): Promise<BookingResult> {
   const ctx = await context(userId);
   if (!ctx?.stage || !ctx.application) return { ok: false, message: "Анкета не найдена." };
-  if ((await candidateDecision(userId, ctx.season.id, "HOMEWORK")) !== "PASSED") {
-    return { ok: false, message: "На собеседование записываются те, кто прошёл домашнее задание." };
+  if (ctx.application.status !== "SUBMITTED") {
+    return { ok: false, message: "Сначала отправьте анкету — после этого откроется запись на собеседование." };
   }
   if (stageState(ctx.stage, now) !== "open") return { ok: false, message: "Запись на собеседования сейчас закрыта." };
 

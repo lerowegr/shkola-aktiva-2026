@@ -5,7 +5,7 @@ import type { CandidateApplication } from "~~/lib/applications/candidate";
 import { isEmptyAnswer } from "~~/lib/applications/form";
 
 /** Карточка анкеты в кабинете: где кандидат сейчас и что делать дальше. */
-const props = defineProps<{ app: CandidateApplication; admission?: "PASSED" | "REJECTED" | null }>();
+const props = defineProps<{ app: CandidateApplication }>();
 const Link = resolveComponent("NuxtLink");
 
 const answered = computed(
@@ -18,10 +18,12 @@ const view = computed(() => {
   const day = (value: Date | string | null) => (value ? mskFormat(value, "d MMMM") : "");
 
   if (application.status === "SUBMITTED") {
-    const text = props.admission
-      ? `Отправлена ${day(application.submittedAt)}. Анкета проверена, результаты объявлены.`
-      : `${day(application.submittedAt)} — её уже читает мастер отбора.`;
-    return { tone: "done", title: props.admission ? "Анкета проверена" : "Анкета отправлена", text, action: "Посмотреть ответы" };
+    return {
+      tone: "done",
+      title: "Анкета отправлена",
+      text: `Вы уже заполнили анкету и домашнее задание (${day(application.submittedAt)}). Следующие этапы — в ленте ниже.`,
+      action: "Посмотреть ответы",
+    };
   }
   if (stage.state === "upcoming") {
     return { tone: "wait", title: "Анкета скоро откроется", text: stage.opensAt ? `Приём начнётся ${day(stage.opensAt)}.` : "Дату открытия объявим.", action: null };

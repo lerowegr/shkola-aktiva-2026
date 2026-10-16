@@ -2,7 +2,7 @@
 import { Copy, UserPlus } from "lucide-vue-next";
 
 /**
- * Пригласить организатора: имя, почта, роль → личная ссылка.
+ * Пригласить организатора: имя, почта, Telegram (по желанию), роль → личная ссылка.
  * Ссылку пригласивший пересылает сам — в личку, не в общий чат.
  */
 const emit = defineEmits<{ invited: [] }>();
@@ -11,6 +11,7 @@ const { data } = await useFetch("/api/staff/roles");
 const firstName = ref("");
 const lastName = ref("");
 const email = ref("");
+const telegram = ref("");
 const roleId = ref("");
 const invite = useAction("/api/staff/invites");
 const copied = ref(false);
@@ -30,6 +31,7 @@ async function submit() {
     firstName: firstName.value,
     lastName: lastName.value || undefined,
     email: email.value,
+    telegram: telegram.value || undefined,
     roleId: roleId.value,
   });
   if (result.ok) emit("invited");
@@ -53,7 +55,16 @@ async function copy() {
       <UiInput v-model="firstName" label="Имя" autocomplete="off" />
       <UiInput v-model="lastName" label="Фамилия" autocomplete="off" />
     </div>
-    <UiInput v-model="email" label="Почта" type="email" inputmode="email" autocomplete="off" />
+    <div class="grid gap-4 sm:grid-cols-2">
+      <UiInput v-model="email" label="Почта" type="email" inputmode="email" autocomplete="off" />
+      <UiInput
+        v-model="telegram"
+        label="Telegram — по желанию"
+        placeholder="@ivan_petrov"
+        autocomplete="off"
+        hint="Войдёт через Telegram с этим ником — попадёт в свой аккаунт организатора."
+      />
+    </div>
 
     <UiSelect v-model="roleId" label="Роль">
       <option v-for="role in data?.roles ?? []" :key="role.id" :value="role.id">{{ role.name }}</option>

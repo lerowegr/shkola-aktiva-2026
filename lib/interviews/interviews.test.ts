@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { publishDecisions, setDecision } from "~~/lib/applications/decisions";
 import { db } from "~~/lib/db";
 import { resetDatabase } from "~~/lib/test/db";
 
@@ -58,15 +57,12 @@ describe("запись на собеседование", () => {
     ilya = await db.user.create({ data: { firstName: "Илья" } });
   });
 
-  async function candidate(name: string, passed: boolean) {
+  // Отсева между этапами нет: записаться может каждый, кто отправил анкету.
+  async function candidate(name: string, submitted: boolean) {
     const user = await db.user.create({ data: { firstName: name } });
     const application = await db.application.create({
-      data: { seasonId, userId: user.id, status: "SUBMITTED", lastName: name, firstName: "И" },
+      data: { seasonId, userId: user.id, status: submitted ? "SUBMITTED" : "DRAFT", lastName: name, firstName: "И" },
     });
-    if (passed) {
-      await setDecision(application.id, "HOMEWORK", "PASSED", katya.id);
-      await publishDecisions(seasonId, "HOMEWORK");
-    }
     return { user, application };
   }
 
@@ -82,7 +78,7 @@ describe("запись на собеседование", () => {
     return created[0]!;
   }
 
-  it("без прохода ДЗ записаться нельзя", async () => {
+  it("без отправленной анкеты записаться нельзя", async () => {
     const { user } = await candidate("Алина", false);
     const s = await slot("2026-10-20T10:00:00", [katya.id]);
     expect(await book(user.id, s.id, NOW)).toMatchObject({ ok: false });

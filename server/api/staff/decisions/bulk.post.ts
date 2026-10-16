@@ -1,12 +1,10 @@
 import { z } from "zod";
 
-import { rankForStage, setDecision } from "~~/lib/applications/decisions";
-import { EVALUATED_STAGES } from "~~/lib/applications/staff";
+import { FINAL_STAGE, rankFinal, setDecision } from "~~/lib/applications/decisions";
 import { requireCurrentSeasonId } from "~~/server/utils/season";
 import { requirePermission } from "~~/server/utils/session";
 
 const schema = z.object({
-  stage: z.enum(EVALUATED_STAGES),
   threshold: z.number().min(0).max(1000),
 });
 
@@ -16,14 +14,14 @@ const schema = z.object({
  */
 export default defineAction(schema, async ({ body, event }) => {
   const actor = await requirePermission(event, "applications.decide");
-  const rows = await rankForStage(await requireCurrentSeasonId(), body.stage);
+  const rows = await rankFinal(await requireCurrentSeasonId());
 
   let passed = 0;
   let rejected = 0;
   for (const row of rows) {
     if (row.published || row.average === null) continue;
     const outcome = row.average >= body.threshold ? "PASSED" : "REJECTED";
-    const result = await setDecision(row.id, body.stage, outcome, actor.id);
+    const result = await setDecision(row.id, FINAL_STAGE, outcome, actor.id);
     if (result.ok) {
       if (outcome === "PASSED") passed++;
       else rejected++;
@@ -33,7 +31,7 @@ export default defineAction(schema, async ({ body, event }) => {
   await audit(event, {
     actorId: actor.id,
     action: "decision.bulk",
-    meta: { stage: body.stage, threshold: body.threshold, passed, rejected },
+    meta: { stage: FINAL_STAGE, threshold: body.threshold, passed, rejected },
   });
 
   return { ok: true, message: `Проходят: ${passed}, не проходят: ${rejected}. Это ещё черновик — опубликуйте, когда будете готовы.` };
