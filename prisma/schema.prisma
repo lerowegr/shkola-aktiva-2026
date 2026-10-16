@@ -108,20 +108,23 @@ model User {
   /// У кандидата, пришедшего из Telegram, почты может не быть.
   email           String?   @unique
   emailVerifiedAt DateTime?
+  /// Логин для входа по паролю у тех, кто зарегистрировался сам: латиница,
+  /// цифры, «_» и «.», в нижнем регистре. Организаторы входят почтой.
+  login           String?   @unique
 
   telegramId       String? @unique
   /// Короткое имя в Telegram без собачки: её добавляет интерфейс.
   telegramUsername String?
 
-  firstName  String?
-  lastName   String?
+  firstName   String?
+  lastName    String?
   /// Знакомство при первом входе (кабинет /cabinet/welcome): подставляется
   /// в анкету отбора и выгрузки.
-  middleName String?
-  course     String?
-  faculty    String?
-  studentId  String?
-  phone      String?
+  middleName  String?
+  course      String?
+  faculty     String?
+  studentId   String?
+  phone       String?
   /// Когда человек прошёл знакомство. Пусто — кабинет закрыт.
   onboardedAt DateTime?
 
@@ -316,19 +319,19 @@ model Season {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  stages           Stage[]
-  threads          MessageThread[]
-  slots            InterviewSlot[]
-  questions        FormQuestion[]
-  sections         FormSection[]
-  applications     Application[]
-  criteria         Criterion[]
-  markers          Marker[]
-  quizQuestions    QuizQuestion[]
-  assessmentGroups AssessmentGroup[]
-  siteContent      SiteContent?
-  siteImages       SiteImage[]
-  quizAttempts     QuizAttempt[]
+  stages             Stage[]
+  threads            MessageThread[]
+  slots              InterviewSlot[]
+  questions          FormQuestion[]
+  sections           FormSection[]
+  applications       Application[]
+  criteria           Criterion[]
+  markers            Marker[]
+  quizQuestions      QuizQuestion[]
+  assessmentGroups   AssessmentGroup[]
+  siteContent        SiteContent?
+  siteImages         SiteImage[]
+  quizAttempts       QuizAttempt[]
   interviewQuestions InterviewQuestion[]
 
   @@map("seasons")
@@ -436,15 +439,15 @@ model Application {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  season      Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  answers     Answer[]
-  reviews     Review[]
-  decisions   StageDecision[]
-  submissions Submission[]
-  bookings    InterviewBooking[]
+  season         Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  answers        Answer[]
+  reviews        Review[]
+  decisions      StageDecision[]
+  submissions    Submission[]
+  bookings       InterviewBooking[]
   interviewNotes InterviewNote[]
-  assessment  AssessmentMember?
+  assessment     AssessmentMember?
 
   @@unique([seasonId, userId])
   @@index([seasonId, status])
@@ -677,15 +680,15 @@ model InterviewBooking {
 /// Вопрос сценария собеседования: блок + текст. Заполняются из таблицы
 /// «Портрет участника» (лист «вопросы собеса»), правятся через сид.
 model InterviewQuestion {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   seasonId String
   order    Int
   /// Название блока: характеристика, «Блиц», «Отводка».
-  block String
+  block    String
   /// Текст вопроса. У вводной — текст сценария.
-  text String
+  text     String
   /// Вводная читается, остальное — с ячейками для комментариев.
-  intro Boolean @default(false)
+  intro    Boolean @default(false)
 
   season Season          @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   notes  InterviewNote[]

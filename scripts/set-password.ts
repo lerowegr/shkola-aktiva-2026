@@ -12,6 +12,7 @@
 import { randomInt } from "node:crypto";
 
 import { normalizeEmail } from "../lib/auth/email";
+import { loginKind, normalizeLogin } from "../lib/auth/login";
 import { hashPassword } from "../lib/auth/password";
 import { db } from "../lib/db";
 
@@ -21,14 +22,17 @@ const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
 async function main() {
   const raw = process.argv[2];
   if (!raw) {
-    console.error("Укажите почту: npm run user:password -- ivan@mail.ru");
+    console.error("Укажите почту или логин: npm run user:password -- ivan@mail.ru");
     process.exit(1);
   }
-  const email = normalizeEmail(raw);
+  const email = loginKind(raw) === "email" ? normalizeEmail(raw) : normalizeLogin(raw);
 
-  const user = await db.user.findUnique({ where: { email }, select: { id: true, status: true } });
+  const user = await db.user.findUnique({
+    where: loginKind(raw) === "email" ? { email } : { login: email },
+    select: { id: true, status: true },
+  });
   if (!user) {
-    console.error(`Человека с почтой ${email} нет. Владельца создаёт сид (OWNER_EMAIL), организаторов — приглашение.`);
+    console.error(`Нет человека с почтой или логином ${email}. Владельца создаёт сид (OWNER_EMAIL), организаторов — приглашение.`);
     process.exit(1);
   }
   if (user.status !== "ACTIVE") {

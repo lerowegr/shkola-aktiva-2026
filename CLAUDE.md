@@ -35,14 +35,15 @@ grammY · zod 4 · Tailwind 4 · Vitest. Без Auth.js: сессии свои, 
 | `npm run db:migrate -- --name имя` | Миграция, генерация клиента и накат на тестовую базу `sha_test` |
 | `npm run db:seed` | Роли, сезон, этапы, анкета, критерии, маркеры, владелец из `OWNER_EMAIL` (повторять можно) |
 | `npm run db:demo` | Демо-кандидаты с отправленными анкетами и второй мастер (`@demo.local`), только не на проде |
-| `npm run share` | Сайт по временной ссылке Cloudflare с этого компьютера: сборка, туннель, сервер с тестовым входом. Ctrl+C — остановить |
-| `npm run user:password -- почта` | Новый случайный пароль человеку, печатается один раз |
-| `npm run db:preview-accounts` | Тестовые входы `admin` и `kandidat` с новыми паролями в `.preview-accounts.txt`; блок на /login виден при `NUXT_PUBLIC_PREVIEW_LOGINS=true` |
+| `npm run share` | Сайт по временной ссылке Cloudflare с этого компьютера: сборка, туннель, сервер. Ctrl+C — остановить |
+| `npm run user:password -- почта` | Новый случайный пароль человеку (почта или логин), печатается один раз |
 | `npm run bot` | Бот (нужен `TELEGRAM_BOT_TOKEN`) |
 | пуш в `main` | Автодеплой: проверки → образы на GitHub → сервер (`docs/deploy.md`) |
 
-**Вход — только через Telegram или по паролю** (кода на почту нет). Пароль
-организатор задаёт по приглашению; владельцу и в аварийных случаях —
+**Вход — только через Telegram или по паролю** (кода на почту и демо-входов
+нет). Кандидат может зарегистрироваться сам логином и паролем (`User.login`,
+`lib/auth/login.ts`, `/api/auth/register`); организатор входит почтой и
+задаёт пароль по приглашению; владельцу и в аварийных случаях —
 `npm run user:password -- почта` (на сервере — через `dc.sh run --rm migrate`).
 Без `TELEGRAM_BOT_TOKEN` и VAPID-ключей доставки в Telegram и пуши
 помечаются пропущенными — сайт работает. PWA в разработке выключен;
@@ -168,7 +169,7 @@ prisma/             схема, миграции, сид
   раньше, чем ребёнок получил данные, — нули и расхождение гидрации.
 - **Клиентский код импортирует из `lib/` только чистые модули** (без
   `lib/db`): `form`, `review`, `password-rules`, `permissions`,
-  `admin/segments`, `site/content`, `site/landing`, `games/rules`, `games/sha-test`, `assessment/rules`, `profile/onboarding` и типы (`import type` — можно любые). Значение из модуля,
+  `admin/segments`, `site/content`, `site/landing`, `games/rules`, `games/sha-test`, `assessment/rules`, `profile/onboarding`, `auth/login` и типы (`import type` — можно любые). Значение из модуля,
   который тянет базу, утащит Prisma в браузерную сборку.
 - **`$fetch` в setup страницы на сервере идёт без куки посетителя** — и
   получает отказ. Для первой загрузки — `useFetch`; если нужен ручной

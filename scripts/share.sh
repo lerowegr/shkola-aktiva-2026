@@ -5,8 +5,8 @@
 #   npm run share
 #
 # Собирает сайт, поднимает туннель Cloudflare (адрес *.trycloudflare.com,
-# аккаунт не нужен) и запускает сервер с этим адресом и тестовым входом
-# admin / kandidat. Пароли — в .preview-accounts.txt.
+# аккаунт не нужен) и запускает сервер с этим адресом. Войти — по паролю
+# или зарегистрироваться логином на /login.
 #
 # Ссылка живёт, пока работает эта команда и компьютер не спит (сон на время
 # работы запрещён, но закрытая крышка всё равно усыпит). Каждый запуск —
@@ -48,11 +48,6 @@ if [ "${SKIP_BUILD:-}" != "1" ]; then
 fi
 [ -f .output/server/index.mjs ] || fail "Нет собранного сайта. Запустите без SKIP_BUILD=1."
 
-if [ ! -f .preview-accounts.txt ]; then
-  echo "→ Создаю тестовые входы…"
-  npm run --silent db:preview-accounts
-fi
-
 echo "→ Поднимаю туннель Cloudflare…"
 TUNNEL_LOG="$(mktemp)"
 cloudflared tunnel --no-autoupdate --url "http://localhost:$PORT" >"$TUNNEL_LOG" 2>&1 &
@@ -69,7 +64,7 @@ done
 
 # Адрес туннеля — адрес сайта: по нему проверяется, что запрос пришёл со
 # своей страницы, и решается, какой будет кука сессии.
-PORT="$PORT" NUXT_PUBLIC_APP_URL="$URL" NUXT_PUBLIC_PREVIEW_LOGINS=true \
+PORT="$PORT" NUXT_PUBLIC_APP_URL="$URL" \
   node --env-file=.env .output/server/index.mjs &
 SERVER_PID=$!
 
@@ -84,10 +79,7 @@ done
 cat <<INFO
 
   ✔ Сайт открыт: $URL
-    Вход:        $URL/login → «Тестовый вход»
-    Логины:      admin (организатор), kandidat (кандидат)
-    Пароли:      в файле .preview-accounts.txt
-                 новые пароли: npm run db:preview-accounts
+    Вход:        $URL/login — по паролю или «Регистрация»
 
   Ссылка работает, пока открыто это окно. Остановить — Ctrl+C.
 

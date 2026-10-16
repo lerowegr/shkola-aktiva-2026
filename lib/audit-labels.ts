@@ -6,6 +6,7 @@
 export const AUDIT_LABELS: Record<string, string> = {
   "auth.email_login": "Вход по коду на почту (прежний способ)",
   "auth.password_login": "Вход по паролю",
+  "auth.register": "Регистрация по логину и паролю",
   "auth.telegram_login": "Вход через Telegram",
   "auth.telegram_miniapp": "Вход из Mini App",
   "invite.create": "Приглашение организатора",

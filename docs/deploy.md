@@ -45,11 +45,11 @@
 ./deploy/apply.sh "$(sed -n 's/^IMAGE_TAG=//p' .deployed.prev)"   # откат
 ```
 
-Тестовые входы `admin` / `kandidat` (новые пароли — в
-`/root/sha-site/preview-accounts.txt`):
+Новый пароль человеку (владельцу или организатору без приглашения),
+печатается один раз:
 
 ```bash
-./deploy/dc.sh run --rm -v /root/sha-site:/out migrate sh -c 'npx tsx scripts/preview-accounts.ts && cp .preview-accounts.txt /out/preview-accounts.txt'
+./deploy/dc.sh run --rm -T migrate npx tsx scripts/set-password.ts почта
 ```
 
 Копии базы и файлов — каждую ночь в 06:30 МСК в том `sha-site_backups`,

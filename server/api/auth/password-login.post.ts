@@ -1,7 +1,8 @@
 import { z } from "zod";
 
 import { verifyPassword } from "~~/lib/auth/password";
-import { loginToEmail } from "~~/lib/auth/preview-login";
+import { normalizeEmail } from "~~/lib/auth/email";
+import { loginKind, normalizeLogin } from "~~/lib/auth/login";
 import { checkThrottle, clearMisses, forgetOldAttempts, recordMiss } from "~~/lib/auth/throttle";
 import { db } from "~~/lib/db";
 import { startSession } from "~~/server/utils/session";
@@ -23,18 +24,20 @@ const schema = z.object({
 });
 
 /**
- * Вход организатора по паролю.
+ * Вход по паролю: организатор — почтой, кандидат — логином, который
+ * придумал при регистрации. Что ввели — понятно по «@».
  *
  * Ответ на неверный пароль, на незнакомый адрес и на адрес без пароля
  * одинаков намеренно. У кандидатов, вошедших через Telegram, пароля нет,
  * и отдельный текст «пароль не задан» превратил бы эту форму в способ
  * узнать, кто подавался в Школу Актива.
  */
-const MISS = "Почта или пароль не подходят. Если вы ещё не задавали пароль — откройте ссылку-приглашение.";
+const MISS = "Логин или пароль не подходят. Организаторам пароль задаётся по ссылке-приглашению.";
 
 export default defineAction(schema, async ({ body, event }) => {
-  // На превью вместо почты можно ввести короткий логин (см. preview-login).
-  const email = loginToEmail(body.email, useRuntimeConfig(event).public.previewLogins === true);
+  const kind = loginKind(body.email);
+  // Ключ лимита попыток — то, что ввели: почта или логин.
+  const email = kind === "email" ? normalizeEmail(body.email) : `login:${normalizeLogin(body.email)}`;
   const ip =
     getRequestHeader(event, "x-forwarded-for")?.split(",")[0]?.trim() ?? getRequestIP(event) ?? null;
 
@@ -48,7 +51,7 @@ export default defineAction(schema, async ({ body, event }) => {
   }
 
   const user = await db.user.findUnique({
-    where: { email },
+    where: kind === "email" ? { email } : { login: normalizeLogin(body.email) },
     select: { id: true, passwordHash: true, status: true },
   });
 
@@ -63,7 +66,7 @@ export default defineAction(schema, async ({ body, event }) => {
     if (after.left === 0) {
       return {
         ok: false,
-        message: "Почта или пароль не подходят, и попытки закончились. Подождите 15 минут или войдите через Telegram.",
+        message: "Логин или пароль не подходят, и попытки закончились. Подождите 15 минут или войдите через Telegram.",
       };
     }
 
