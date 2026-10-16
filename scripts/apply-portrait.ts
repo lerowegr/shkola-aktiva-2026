@@ -9,6 +9,8 @@
  * с тем же названием и максимумом; остальное правится в админке руками.
  *
  *   npx tsx scripts/apply-portrait.ts --dry-run   — только показать, что будет
+ *   --keep-questions — вопросы анкеты не трогать (приём уже открыт: у кого-то
+ *   анкета открыта в браузере, новые id вопросов сломали бы автосохранение)
  *   npx tsx scripts/apply-portrait.ts
  */
 import {
@@ -30,6 +32,7 @@ import type { Prisma } from "../lib/generated/prisma/client";
 import { DEFAULT_INTERVIEW_QUESTIONS } from "../lib/interviews/questions";
 
 const dry = process.argv.includes("--dry-run");
+const keepQuestions = process.argv.includes("--keep-questions");
 
 const STAGES = [
   ["APPLICATION", "Анкета", DEFAULT_APPLICATION_CRITERIA, DEFAULT_APPLICATION_MARKERS],
@@ -98,7 +101,9 @@ async function main() {
   }
 
   const answers = await db.answer.count({ where: { application: { seasonId: season.id } } });
-  if (answers > 0) {
+  if (keepQuestions) {
+    console.log("· Вопросы анкеты: не трогаем (--keep-questions).");
+  } else if (answers > 0) {
     console.log(`· Вопросы анкеты: пропуск — уже есть ответы (${answers}). Правьте в админке.`);
   } else {
     console.log(`· Вопросы анкеты: ${DEFAULT_APPLICATION_QUESTIONS.length} в ${DEFAULT_APPLICATION_SECTIONS.length} разделах`);
