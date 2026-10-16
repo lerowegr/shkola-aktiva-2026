@@ -130,7 +130,8 @@ function time(date: Date) {
       </div>
 
       <DashCard title="Проверка" hint="Сколько проверил каждый мастер и как его средний итог отличается от общего.">
-        <div role="tablist" class="bg-paper border-line flex max-w-full gap-1 self-start overflow-x-auto rounded-2xl border p-1">
+        <!-- Вкладки этапов переносятся на новую строку, а не прячутся за прокруткой. -->
+        <div role="tablist" class="bg-paper border-line flex max-w-full flex-wrap gap-1 self-start rounded-2xl border p-1">
           <button
             v-for="item in STAGES"
             :key="item.key"

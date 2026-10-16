@@ -16,3 +16,9 @@ export function avatarTone(seed: string): string {
   for (const char of seed) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   return TONES[hash % TONES.length]!;
 }
+
+/** Две буквы для кружка: «Катя Белова» → «КБ», «@ivan_p» → «I». */
+export function initialsOf(name: string): string {
+  const words = name.replace(/^@/, "").split(/[\s@.]+/).filter(Boolean);
+  return ((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase() || "?";
+}

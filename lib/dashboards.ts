@@ -86,6 +86,7 @@ export async function daily(seasonId: string, days = 30, now = new Date()): Prom
 export interface ReviewerStats {
   id: string;
   name: string;
+  avatar: string | null;
   assigned: number;
   done: number;
   /** Средний итог по полностью проверенным; null — проверенных нет. */
@@ -107,7 +108,7 @@ export async function stageStats(seasonId: string, stage: Evaluated): Promise<St
       where: { stageKind: stage, application: { seasonId, status: "SUBMITTED" } },
       select: {
         reviewerId: true,
-        reviewer: { select: { firstName: true, lastName: true, telegramUsername: true, email: true } },
+        reviewer: { select: { firstName: true, lastName: true, telegramUsername: true, email: true, avatarKey: true } },
         scores: { select: { criterionId: true, score: true } },
       },
     }),
@@ -121,7 +122,11 @@ export async function stageStats(seasonId: string, stage: Evaluated): Promise<St
     const summary = reviewSummary(criteria, review.scores);
     const row =
       byReviewer.get(review.reviewerId) ??
-      { id: review.reviewerId, name: displayName(review.reviewer), assigned: 0, done: 0, average: null, totals: [] };
+      {
+        id: review.reviewerId,
+        name: displayName(review.reviewer),
+        avatar: review.reviewer.avatarKey ? `/api/avatars/${review.reviewer.avatarKey}` : null,
+        assigned: 0, done: 0, average: null, totals: [] };
     row.assigned++;
     if (summary.status === "done" && summary.total !== null) {
       row.done++;

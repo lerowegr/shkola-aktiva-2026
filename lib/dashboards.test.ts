@@ -46,7 +46,7 @@ describe("дашборды", () => {
     }
 
     const stats = await stageStats(seasonId, "APPLICATION");
-    expect(stats.reviewers).toEqual([{ id: katya.id, name: "Катя", assigned: 3, done: 2, average: 3 }]);
+    expect(stats.reviewers).toEqual([{ id: katya.id, name: "Катя", avatar: null, assigned: 3, done: 2, average: 3 }]);
     expect(stats.histogram).toEqual([0, 0, 1, 0, 1]);
     expect(stats.overall).toBe(3);
   });

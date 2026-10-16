@@ -4,8 +4,8 @@ import { BellRing, KeyRound, Mail, Send, ShieldCheck, UserRound } from "lucide-v
 import type { ActionResult } from "~/composables/useAction";
 
 /**
- * Личный кабинет организатора: как меня зовут, как я вхожу (почта,
- * Telegram, пароль), мои роли и моя работа в сезоне.
+ * Личный кабинет организатора: аватарка, как меня зовут, как я вхожу
+ * (почта, Telegram, пароль), мои роли и моя работа в сезоне.
  */
 definePageMeta({ layout: "staff" });
 useHead({ title: "Мой кабинет" });
@@ -25,6 +25,34 @@ interface Me {
 }
 
 const { data, refresh } = await useFetch<Me>("/api/staff/me");
+const session = await useSession();
+
+// Аватарка — та же, что у кандидатов: видна в шапке, в «Людях» и на дашборде.
+const uploading = ref(false);
+const avatarProblem = ref<string | null>(null);
+async function uploadAvatar(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  avatarProblem.value = null;
+  uploading.value = true;
+  const body = new FormData();
+  body.append("file", file);
+  const result = await $fetch<{ ok: boolean; message?: string }>("/api/cabinet/profile/avatar", {
+    method: "POST",
+    body,
+    ignoreResponseError: true,
+  }).catch(() => ({ ok: false, message: "Нет связи с сайтом. Проверьте интернет." }));
+  uploading.value = false;
+  input.value = "";
+  if (!result.ok) avatarProblem.value = result.message ?? "Не получилось загрузить фото.";
+  else await refreshSession();
+}
+const removeAvatar = useAction("/api/cabinet/profile/avatar-delete");
+async function dropAvatar() {
+  const result = await removeAvatar.submit({});
+  if (result.ok) await refreshSession();
+}
 
 const STAGE = { APPLICATION: "Анкеты", HOMEWORK: "Домашние задания", ASSESSMENT: "Центр оценки", INTERVIEW: "Собеседования" } as const;
 
@@ -62,8 +90,9 @@ onBeforeUnmount(() => document.removeEventListener("visibilitychange", onVisible
 <template>
   <main v-if="data" class="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-8">
     <div class="flex items-center gap-4">
-      <span class="bg-brand-green-soft grid size-16 shrink-0 place-items-center rounded-2xl">
-        <UserRound class="size-8" aria-hidden="true" />
+      <span class="bg-brand-green-soft grid size-16 shrink-0 place-items-center overflow-hidden rounded-2xl">
+        <img v-if="session?.avatar" :src="session.avatar" alt="" class="size-full object-cover">
+        <UserRound v-else class="size-8" aria-hidden="true" />
       </span>
       <div class="flex min-w-0 flex-col gap-1">
         <h1 class="font-display truncate text-3xl">{{ [data.firstName, data.lastName].filter(Boolean).join(" ") || "Мой кабинет" }}</h1>
@@ -80,6 +109,22 @@ onBeforeUnmount(() => document.removeEventListener("visibilitychange", onVisible
         </div>
       </div>
     </div>
+
+    <!-- Аватарка -->
+    <section class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5">
+      <h2 class="font-display text-xl">Аватарка</h2>
+      <p class="text-ink-soft text-sm">Фото до 5 МБ — обрежем в квадрат сами. Его видят организаторы в шапке, «Людях» и на дашборде.</p>
+      <div class="flex flex-wrap gap-2">
+        <label class="bg-accent text-accent-ink inline-flex min-h-11 cursor-pointer items-center justify-center rounded-2xl px-5 text-sm font-semibold">
+          {{ uploading ? "Грузим…" : session?.avatar ? "Сменить фото" : "Выбрать фото" }}
+          <input type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" :disabled="uploading" @change="uploadAvatar">
+        </label>
+        <div v-if="session?.avatar" class="shrink-0">
+          <UiButton variant="ghost" :pending="removeAvatar.pending.value" @click="dropAvatar">Убрать</UiButton>
+        </div>
+      </div>
+      <UiNotice :message="avatarProblem" />
+    </section>
 
     <!-- Как меня зовут -->
     <section class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-5">

@@ -19,10 +19,13 @@ const user = await useSession();
         <NuxtLink
           :to="user.isStaff ? '/staff/me' : '/cabinet/profile'"
           :aria-label="user.isStaff ? 'Мой кабинет' : 'Мой профиль'"
-          class="min-w-0 rounded-lg px-2 py-1 text-right transition hover:bg-white/10"
+          class="flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-1 text-right transition hover:bg-white/10"
         >
-          <p class="truncate text-sm font-semibold">{{ user.name }}</p>
-          <p class="text-paper/60 text-xs">{{ user.isStaff ? "Организатор · мой кабинет" : "Кандидат · профиль" }}</p>
+          <span class="min-w-0">
+            <p class="truncate text-sm font-semibold">{{ user.name }}</p>
+            <p class="text-paper/60 text-xs">{{ user.isStaff ? "Организатор · мой кабинет" : "Кандидат · профиль" }}</p>
+          </span>
+          <img v-if="user.avatar" :src="user.avatar" alt="" class="size-9 shrink-0 rounded-full object-cover">
         </NuxtLink>
         <button
           type="button"

@@ -19,10 +19,6 @@ interface ThreadDetail {
 
 const props = defineProps<{ id: string }>();
 
-function initialsOf(name: string) {
-  const words = name.split(/\s+/).filter(Boolean);
-  return ((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase() || "?";
-}
 const emit = defineEmits<{ back: []; read: [] }>();
 
 // Без await: компонент появляется после первой отрисовки страницы, и

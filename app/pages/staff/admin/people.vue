@@ -94,10 +94,6 @@ async function copy(text: string) {
 
 const APP = { none: "без анкеты", draft: "анкета: черновик", submitted: "анкета отправлена" } as const;
 
-function initialsOf(name: string) {
-  const words = name.replace(/^@/, "").split(/[\s@.]+/).filter(Boolean);
-  return ((words[0]?.[0] ?? "") + (words[1]?.[0] ?? "")).toUpperCase() || "?";
-}
 </script>
 
 <template>
@@ -152,7 +148,7 @@ function initialsOf(name: string) {
               :aria-expanded="open === person.id"
               @click="open = open === person.id ? null : person.id"
             >
-              <StaffAvatar :seed="person.id" :text="initialsOf(person.name)" />
+              <StaffAvatar :seed="person.id" :text="initialsOf(person.name)" :src="person.avatar" />
               <span class="min-w-0 flex-1">
                 <span class="block truncate text-sm font-semibold" :class="person.blocked && 'line-through opacity-60'">{{ person.name }}</span>
                 <span class="text-ink-soft block truncate text-xs">

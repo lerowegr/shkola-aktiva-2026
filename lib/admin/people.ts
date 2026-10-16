@@ -18,6 +18,7 @@ export interface PersonRow {
   nickname: string | null;
   email: string | null;
   telegramUsername: string | null;
+  avatar: string | null;
   blocked: boolean;
   isOwner: boolean;
   hasPassword: boolean;
@@ -60,6 +61,7 @@ export async function searchPeople(params: {
       email: true,
       telegramUsername: true,
       telegramId: true,
+      avatarKey: true,
       status: true,
       isOwner: true,
       passwordHash: true,
@@ -74,6 +76,7 @@ export async function searchPeople(params: {
     nickname: person.nickname,
     email: person.email,
     telegramUsername: person.telegramUsername,
+    avatar: person.avatarKey ? `/api/avatars/${person.avatarKey}` : null,
     blocked: person.status === "BLOCKED",
     isOwner: person.isOwner,
     hasPassword: person.passwordHash !== null,

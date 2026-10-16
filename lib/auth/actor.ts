@@ -17,6 +17,8 @@ export interface CurrentUser extends Actor {
   name: string;
   telegramUsername: string | null;
   hasTelegram: boolean;
+  /** Своя аватарка (/api/avatars/…) — в шапке и у организаторов в списках. */
+  avatar: string | null;
   status: "ACTIVE" | "BLOCKED";
   /** Есть хоть одно право или владелец — значит, пускаем в кабинет организатора. */
   isStaff: boolean;
@@ -54,6 +56,7 @@ export async function loadUser(userId: string | null | undefined): Promise<Curre
       isOwner: true,
       onboardedAt: true,
       mustChangePassword: true,
+      avatarKey: true,
       roles: { select: { role: { select: { permissions: true } } } },
     },
   });
@@ -70,6 +73,7 @@ export async function loadUser(userId: string | null | undefined): Promise<Curre
     name: displayName(user),
     telegramUsername: user.telegramUsername,
     hasTelegram: user.telegramId !== null,
+    avatar: user.avatarKey ? `/api/avatars/${user.avatarKey}` : null,
     status: user.status,
 
     isOwner: user.isOwner,

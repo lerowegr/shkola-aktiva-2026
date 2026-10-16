@@ -51,7 +51,10 @@ function hint(row: ReviewerStats): string {
       :key="row.id"
       class="border-line grid gap-x-4 gap-y-2 border-t py-3 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1.2fr)] sm:items-center"
     >
-      <p class="truncate text-sm font-medium">{{ row.name }}</p>
+      <p class="flex min-w-0 items-center gap-2 text-sm font-medium">
+        <StaffAvatar :seed="row.id" :text="initialsOf(row.name)" :src="row.avatar" />
+        <span class="truncate">{{ row.name }}</span>
+      </p>
 
       <div class="flex items-center gap-3">
         <div class="bg-accent/15 h-2 flex-1 overflow-hidden rounded-full">
