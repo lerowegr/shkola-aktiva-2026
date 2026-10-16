@@ -137,5 +137,5 @@ jobs:
           # с compose.yml и скриптами деплоя этой версии.
           {
             printf '%s\n%s\n%s\n' "$GITHUB_SHA" "$GITHUB_ACTOR" "$REGISTRY_TOKEN"
-            tar -czf - compose.yml deploy/apply.sh deploy/dc.sh deploy/quick-tunnel.sh docker/backup.sh
+            tar -czf - compose.yml deploy/apply.sh deploy/dc.sh deploy/quick-tunnel.sh docker/backup.sh deploy/compose.demo.yml deploy/demo.sh
           } | ssh -i ~/.ssh/deploy -o BatchMode=yes -o StrictHostKeyChecking=yes "root@$HOST"

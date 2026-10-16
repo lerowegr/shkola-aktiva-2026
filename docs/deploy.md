@@ -86,3 +86,19 @@
    закрытую — в секрет `DEPLOY_SSH_KEY`. `DEPLOY_HOST` — IP сервера,
    `DEPLOY_KNOWN_HOSTS` — вывод `ssh-keyscan -t ed25519 <IP>`.
 4. «Run workflow» — первый деплой сам накатит схему и сид.
+
+## Демо-копия
+
+https://demo.schoolofactivity.ru — тот же код, своя база (`/root/sha-demo`,
+compose-проект `sha-demo`, `deploy/compose.demo.yml`, подсеть 10.204.0.0/24).
+Включена `NUXT_PUBLIC_DEMO=true`: на /login — «Войти как…» (организаторы и
+кандидаты на разных этапах, без паролей), сверху полоса «Демо-версия» с
+кнопкой «Сбросить демо». Ни бота, ни пушей, ни копий — уведомления остаются
+в колокольчике. Сценарий — `lib/demo/scenario.ts`.
+
+- Обновляется каждым выкатом той же версией (`deploy/demo.sh up` из
+  `apply.sh`; сбой демо боевой выкат не валит).
+- Пересоздать демо-отбор: `/root/sha-site/deploy/demo.sh reset`.
+- Настройки — `/root/sha-demo/.env.demo` (chmod 600).
+- nginx: блоки `demo.schoolofactivity.ru` в конце `/root/infra/nginx.conf`,
+  сертификат — `/root/infra/certs/sha-demo/` (acme.sh продлевает сам).

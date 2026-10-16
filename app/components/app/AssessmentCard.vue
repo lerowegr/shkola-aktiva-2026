@@ -11,6 +11,8 @@ import { placeLine } from "~~/lib/assessment/rules";
 const props = defineProps<{ co: CandidateAssessment }>();
 
 const place = computed(() => props.co.place);
+// Время ЦО прошло — дальше ждём решения, а не идём в аудиторию.
+const over = computed(() => Boolean(place.value?.startsAt && new Date(place.value.startsAt).getTime() + 4 * 60 * 60 * 1000 < Date.now()));
 const fallback = computed(() =>
   place.value
     ? "Очный групповой этап: задания в команде вместе с другими кандидатами."
@@ -30,7 +32,10 @@ const fallback = computed(() =>
       </div>
     </div>
 
-    <dl v-if="place" class="bg-card/80 grid gap-3 rounded-2xl p-4 text-sm sm:grid-cols-2">
+    <p v-if="over" class="bg-card/80 rounded-2xl p-4 text-sm">
+      Центр оценки прошёл — спасибо! О следующем этапе сообщим здесь и в Telegram.
+    </p>
+    <dl v-else-if="place" class="bg-card/80 grid gap-3 rounded-2xl p-4 text-sm sm:grid-cols-2">
       <div class="flex items-start gap-2.5">
         <MapPin class="text-ink-soft mt-0.5 size-4 shrink-0" aria-hidden="true" />
         <div>

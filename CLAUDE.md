@@ -220,6 +220,10 @@ prisma/             схема, миграции, сид
   ДЗ не показываем. Портрет участника (критерии, маркеры, вопросы, задания) —
   `lib/applications/portrait.ts` из таблиц организаторов; на сайт его
   переносит `scripts/apply-portrait.ts`, пока нет оценок и ответов.
+- **Демо-копия** (`NUXT_PUBLIC_DEMO=true`, demo.schoolofactivity.ru, своя база):
+  вход «как…» и сброс — `server/api/demo/*` под `requireDemo` (на боевом 404),
+  сценарий отбора — `lib/demo/scenario.ts` (люди @demo.local). Новый экран или
+  этап — подумать, кем из демо-людей его показать.
 - **Знакомство** (`/cabinet/welcome`): кандидат без `User.onboardedAt` в кабинет не
   попадает (`needsProfile` в сессии, `auth.global.ts`), а анкету, тест, ДЗ и
   запись сервер не принимает (`requireProfile`). Поля — ФИО, курс 1/2, факультет,

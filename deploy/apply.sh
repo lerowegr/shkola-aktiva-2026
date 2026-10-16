@@ -82,6 +82,11 @@ if [ ${#profiles[@]} -gt 0 ]; then
   fi
 fi
 
+# Демо-копия (demo.schoolofactivity.ru) — той же версией. Её сбой боевой
+# выкат не валит: демо — витрина, а не сайт.
+say "Демо-копия"
+./deploy/demo.sh up || echo "Демо не обновилось — боевой сайт работает, разберитесь отдельно." >&2
+
 # Старые образы сайта — прочь, кроме текущего и прошлого (для отката).
 docker image ls --format '{{.Repository}}:{{.Tag}}' \
   | grep -E '^ghcr\.io/lerowegr/shkola-aktiva-2026(-tools)?:' \

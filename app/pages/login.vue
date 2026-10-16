@@ -49,6 +49,8 @@ watch(door, () => (passwordLogin.result.value = null));
 
     <h1 class="font-display text-3xl">Вход</h1>
 
+    <AppDemoLogin @signed-in="signedIn" />
+
     <div role="tablist" class="bg-line/60 grid grid-cols-2 gap-1 rounded-2xl p-1">
       <button
         v-for="tab in [

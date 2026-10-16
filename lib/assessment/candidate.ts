@@ -1,3 +1,4 @@
+import { candidateDecision } from "~~/lib/applications/decisions";
 import { db } from "~~/lib/db";
 import { stageState, type StageState } from "~~/lib/stages";
 
@@ -37,6 +38,15 @@ export async function loadCandidateAssessment(userId: string): Promise<Candidate
   });
   const stage = application?.season.stages[0];
   if (!application || !stage) return null;
+
+  // ЦО — для прошедших анкету и до решения о собеседовании: не прошедшему
+  // анкету и тем, кто уже идёт дальше, карточка ни к чему.
+  const season = await db.season.findFirstOrThrow({ where: { isCurrent: true }, select: { id: true } });
+  const [admission, next] = await Promise.all([
+    candidateDecision(userId, season.id, "APPLICATION"),
+    candidateDecision(userId, season.id, "HOMEWORK"),
+  ]);
+  if (admission !== "PASSED" || next !== null) return null;
 
   const group = application.assessment?.group ?? null;
   return {

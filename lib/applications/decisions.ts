@@ -125,8 +125,8 @@ export async function setDecision(
 const MESSAGES: Record<EvaluatedStage, Record<DecisionOutcome, { title: string; body: string }>> = {
   APPLICATION: {
     PASSED: {
-      title: "Вы прошли на домашнее задание!",
-      body: "Анкета понравилась организаторам. Задание и дедлайн — в кабинете.",
+      title: "Анкета и домашнее задание приняты!",
+      body: "Вы проходите дальше — следующий этап отбора. Подробности — в кабинете.",
     },
     REJECTED: {
       title: "Результаты анкеты",

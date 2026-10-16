@@ -28,7 +28,7 @@ read -r TOKEN
 [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "Неверный коммит" >&2; exit 2; }
 [[ "$ACTOR" =~ ^[A-Za-z0-9-]{1,39}$ ]] || { echo "Неверный логин GitHub" >&2; exit 2; }
 
-FILES=(compose.yml deploy/apply.sh deploy/dc.sh deploy/quick-tunnel.sh docker/backup.sh)
+FILES=(compose.yml deploy/apply.sh deploy/dc.sh deploy/quick-tunnel.sh docker/backup.sh deploy/compose.demo.yml deploy/demo.sh)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 tar -xzf - -C "$tmp" "${FILES[@]}"

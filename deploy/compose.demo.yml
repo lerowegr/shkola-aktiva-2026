@@ -1,0 +1,70 @@
+# Демо-копия сайта: demo.schoolofactivity.ru (/root/sha-demo).
+#
+# Тот же образ, что у боевого (IMAGE_TAG из /root/sha-site/.deployed), своя
+# база, свои файлы. Ни бота, ни копий, ни пушей: уведомления остаются в
+# колокольчике. NUXT_PUBLIC_DEMO=true включает вход «как…» и сброс демо.
+#
+#   /root/sha-site/deploy/demo.sh up       — поднять или обновить
+#   /root/sha-site/deploy/demo.sh reset    — пересоздать демо-отбор
+
+name: sha-demo
+
+x-tools-image: &tools ghcr.io/lerowegr/shkola-aktiva-2026-tools:${IMAGE_TAG:-latest}
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sha
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте пароль базы в /root/sha-demo/.env.demo}
+      POSTGRES_DB: sha
+      POSTGRES_INITDB_ARGS: "--locale-provider=icu --icu-locale=ru-RU --encoding=UTF8 --locale=C.UTF-8"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sha -d sha"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    image: *tools
+    command: npx prisma migrate deploy
+    restart: "no"
+    env_file: /root/sha-demo/.env.demo
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    image: ghcr.io/lerowegr/shkola-aktiva-2026:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: /root/sha-demo/.env.demo
+    environment:
+      UPLOADS_DIR: /data/uploads
+    volumes:
+      - uploads:/data/uploads
+    networks:
+      default:
+      edge:
+        aliases: [sha-demo-app]
+    mem_limit: 512m
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:
+  uploads:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 10.204.0.0/24
+  edge:
+    name: arkadium_shared
+    external: true

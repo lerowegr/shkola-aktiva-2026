@@ -4,7 +4,9 @@ import { ArrowRight, CalendarCheck, Mic, Trophy } from "lucide-vue-next";
 import type { CandidateInterview } from "~~/lib/interviews/booking";
 
 /** Собеседование и итог отбора — в кабинете кандидата. */
-defineProps<{ iv: CandidateInterview }>();
+const props = defineProps<{ iv: CandidateInterview }>();
+// Время собеседования прошло, итогов ещё нет — не «записаны», а «ждём итогов».
+const past = computed(() => Boolean(props.iv.booking && new Date(props.iv.booking.endsAt).getTime() < Date.now()));
 </script>
 
 <template>
@@ -34,9 +36,12 @@ defineProps<{ iv: CandidateInterview }>();
       <Mic v-else class="size-6" aria-hidden="true" />
     </span>
     <span class="min-w-0 flex-1">
-      <span class="block font-semibold">{{ iv.booking ? "Вы записаны на собеседование" : "Вы прошли на собеседование!" }}</span>
+      <span class="block font-semibold">
+        {{ past ? "Собеседование прошло" : iv.booking ? "Вы записаны на собеседование" : "Вы прошли на собеседование!" }}
+      </span>
       <span class="block text-sm opacity-80">
-        <template v-if="iv.booking">
+        <template v-if="past">Спасибо! Итоги отбора придут сюда и в Telegram.</template>
+        <template v-else-if="iv.booking">
           <span class="first-letter:uppercase">{{ mskDay(iv.booking.startsAt) }}</span>, {{ mskTime(iv.booking.startsAt) }} · {{ iv.booking.location }}
         </template>
         <template v-else-if="iv.state === 'open'">Выберите удобное время — слоты разбирают быстро.</template>
