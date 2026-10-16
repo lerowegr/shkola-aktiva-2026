@@ -43,6 +43,7 @@ export interface DefaultCriterion {
   badge?: string;
   description?: string;
   indicators?: string;
+  examples?: string;
   maxScore: number;
   levels: { score: number; text: string }[];
 }

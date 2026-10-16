@@ -28,8 +28,8 @@ describe("сценарий собеседования", () => {
     ).id;
   });
 
-  it("вопросы из таблицы: 13 штук, вводная первая", () => {
-    expect(DEFAULT_INTERVIEW_QUESTIONS).toHaveLength(13);
+  it("вопросы из таблицы: все 26 строк, вводная первая", () => {
+    expect(DEFAULT_INTERVIEW_QUESTIONS).toHaveLength(26);
     expect(DEFAULT_INTERVIEW_QUESTIONS[0]).toMatchObject({ block: "Вводная часть", intro: true });
     expect(DEFAULT_INTERVIEW_QUESTIONS.some((item) => item.block === "Блиц")).toBe(true);
   });

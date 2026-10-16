@@ -26,7 +26,7 @@ interface Editor {
     format: Format | null;
     answers: number;
   }[];
-  criteria: { id: string; stageKind: Stage; title: string; badge: string | null; description: string | null; indicators: string | null; maxScore: number; levels: { score: number; text: string }[]; scores: number }[];
+  criteria: { id: string; stageKind: Stage; title: string; badge: string | null; description: string | null; indicators: string | null; examples: string | null; maxScore: number; levels: { score: number; text: string }[]; scores: number }[];
   markers: { id: string; stageKind: Stage; title: string; example: string | null; notes: number }[];
 }
 

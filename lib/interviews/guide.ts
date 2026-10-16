@@ -87,17 +87,14 @@ export async function loadGuide(seasonId: string, applicationId: string, viewerI
     loadGuideNotes(applicationId, viewerId),
   ]);
 
+  // Блоки — подряд идущими вопросами, как в таблице: один блок может
+  // встретиться дважды («Ответственность» до и после смешанного блока).
   const blocks: GuideBlock[] = [];
-  const byBlock = new Map<string, GuideBlock>();
   for (const question of questions) {
     const item: GuideItem = { id: question.id, text: question.text, intro: question.intro };
-    const existing = byBlock.get(question.block);
-    if (existing) existing.items.push(item);
-    else {
-      const block: GuideBlock = { block: question.block, items: [item] };
-      byBlock.set(question.block, block);
-      blocks.push(block);
-    }
+    const last = blocks.at(-1);
+    if (last?.block === question.block) last.items.push(item);
+    else blocks.push({ block: question.block, items: [item] });
   }
   return { blocks, ...notes };
 }

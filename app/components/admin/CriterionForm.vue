@@ -6,6 +6,7 @@ interface Criterion {
   badge: string | null;
   description?: string | null;
   indicators?: string | null;
+  examples?: string | null;
   maxScore: number;
   levels: { score: number; text: string }[];
 }
@@ -18,6 +19,7 @@ const form = reactive({
   badge: props.criterion?.badge ?? "",
   description: props.criterion?.description ?? "",
   indicators: props.criterion?.indicators ?? "",
+  examples: props.criterion?.examples ?? "",
   maxScore: props.criterion?.maxScore ?? 4,
   texts: {} as Record<number, string>,
 });
@@ -32,6 +34,7 @@ async function submit() {
     badge: form.badge || null,
     description: form.description || null,
     indicators: form.indicators || null,
+    examples: form.examples || null,
     maxScore: form.maxScore,
     levels: Array.from({ length: form.maxScore + 1 }, (_, score) => ({ score, text: form.texts[score] ?? "" })),
   });
@@ -56,6 +59,10 @@ async function submit() {
     <label class="flex flex-col gap-1.5 text-sm font-medium">
       Индикаторы — общий список, по строке на пункт; эксперт видит его один раз над баллами
       <textarea v-model="form.indicators" rows="3" maxlength="3000" placeholder="1) Кандидат…&#10;2) Кандидат…" class="border-line bg-card field-sizing-content min-h-12 rounded-2xl border px-4 py-3 text-sm font-normal" />
+    </label>
+    <label class="flex flex-col gap-1.5 text-sm font-medium">
+      Примерные вопросы или наполнение ответа — эксперт откроет их под спойлером
+      <textarea v-model="form.examples" rows="3" maxlength="5000" class="border-line bg-card field-sizing-content min-h-12 rounded-2xl border px-4 py-3 text-sm font-normal" />
     </label>
     <fieldset class="flex flex-col gap-2">
       <legend class="mb-1 text-sm font-medium">Что значит балл — коротко, со ссылкой на индикаторы; можно не для каждого</legend>

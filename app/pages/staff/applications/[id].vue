@@ -15,6 +15,8 @@ const from = computed(() => (route.query.from === "all" ? "all" : "mine"));
 const stage = computed(() =>
   route.query.stage === "HOMEWORK" || route.query.stage === "INTERVIEW" ? route.query.stage : "APPLICATION",
 );
+// ДЗ и собеседование — одной колонкой: сначала работа и сценарий, критерии внизу.
+const stacked = computed(() => stage.value !== "APPLICATION");
 
 const { data, refresh } = await useFetch<StaffApplicationResponse>(() => `/api/staff/applications/${id.value}`, {
   query: { from, stage },
@@ -150,7 +152,9 @@ async function pass() {
       </div>
     </div>
 
-    <div class="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
+    <!-- Анкета — две колонки: ответы и оценка рядом. ДЗ и собеседование — одной
+         колонкой: работа, сценарий собеса, а критерии в самом низу. -->
+    <div class="items-start gap-5" :class="stacked ? 'flex flex-col' : 'grid lg:grid-cols-[minmax(0,1fr)_400px]'">
       <!-- Слева: работа этапа и/или ответы анкеты -->
       <div class="flex min-w-0 flex-col gap-5">
         <template v-if="card.stage !== 'APPLICATION'">
@@ -310,9 +314,17 @@ v-for="field in [
         </template>
       </div>
 
+      <StaffGuide
+        v-if="stage === 'INTERVIEW' && data?.guide && data.guide.blocks.length > 0"
+        :key="id"
+        :guide="data.guide"
+        :application-id="id"
+        :can-write="canReview && (data?.canEdit ?? false)"
+        :my-id="session?.id ?? null"
+      />
+
       <!-- Оценка -->
-      <div class="flex flex-col gap-3 lg:sticky lg:top-4">
-        <div v-if="card.reviews.length > 1" class="bg-card border-line flex gap-1 overflow-x-auto rounded-2xl border p-1">
+      <div class="flex w-full flex-col gap-3" :class="!stacked && 'lg:sticky lg:top-4'">        <div v-if="card.reviews.length > 1" class="bg-card border-line flex gap-1 overflow-x-auto rounded-2xl border p-1">
           <button
             v-for="(item, index) in card.reviews"
             :key="item.id"
@@ -416,13 +428,5 @@ v-for="field in [
       </div>
     </div>
 
-    <StaffGuide
-      v-if="stage === 'INTERVIEW' && data?.guide && data.guide.blocks.length > 0"
-      :key="id"
-      :guide="data.guide"
-      :application-id="id"
-      :can-write="canReview && (data?.canEdit ?? false)"
-      :my-id="session?.id ?? null"
-    />
   </main>
 </template>

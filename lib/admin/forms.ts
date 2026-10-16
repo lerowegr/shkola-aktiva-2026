@@ -69,6 +69,7 @@ export async function loadEditor(seasonId: string) {
         badge: true,
         description: true,
         indicators: true,
+        examples: true,
         maxScore: true,
         levels: true,
         _count: { select: { scores: true } },
@@ -318,6 +319,7 @@ export interface CriterionInput {
   badge: string | null;
   description?: string | null;
   indicators?: string | null;
+  examples?: string | null;
   maxScore: number;
   levels: { score: number; text: string }[];
 }
@@ -338,7 +340,9 @@ export async function saveCriterion(seasonId: string, input: CriterionInput): Pr
   if (description && description.length > 1000) return { ok: false, message: "Описание — до 1000 знаков." };
   const indicators = input.indicators?.trim() || null;
   if (indicators && indicators.length > 3000) return { ok: false, message: "Индикаторы — до 3000 знаков." };
-  const data = { title, badge: input.badge?.trim() || null, description, indicators, maxScore: input.maxScore, levels };
+  const examples = input.examples?.trim() || null;
+  if (examples && examples.length > 5000) return { ok: false, message: "Примеры — до 5000 знаков." };
+  const data = { title, badge: input.badge?.trim() || null, description, indicators, examples, maxScore: input.maxScore, levels };
 
   if (input.id) {
     const top = await db.reviewScore.aggregate({ where: { criterionId: input.id }, _max: { score: true } });

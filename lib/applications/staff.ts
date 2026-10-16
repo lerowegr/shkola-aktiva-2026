@@ -50,7 +50,7 @@ export async function criteriaFor(seasonId: string, stage: StageKind) {
   return db.criterion.findMany({
     where: { seasonId, stageKind: stage },
     orderBy: { order: "asc" },
-    select: { id: true, title: true, badge: true, description: true, indicators: true, maxScore: true, levels: true },
+    select: { id: true, title: true, badge: true, description: true, indicators: true, examples: true, maxScore: true, levels: true },
   });
 }
 
@@ -224,6 +224,8 @@ export interface StaffCriterion {
   description: string | null;
   /** Общий список индикаторов — показываем один раз над баллами. */
   indicators: string | null;
+  /** Примерные вопросы или примерное наполнение — под спойлером. */
+  examples: string | null;
   maxScore: number;
   levels: { score: number; text: string }[];
 }

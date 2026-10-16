@@ -126,6 +126,12 @@ function when(date: Date) {
         </div>
         <p v-if="criterion.description" class="text-ink-soft -mt-1 text-xs leading-relaxed">{{ criterion.description }}</p>
         <p v-if="criterion.indicators" class="bg-paper text-ink rounded-xl px-3 py-2 text-xs leading-relaxed whitespace-pre-line">{{ criterion.indicators }}</p>
+        <details v-if="criterion.examples" class="group text-xs">
+          <summary class="text-accent cursor-pointer font-semibold select-none">
+            {{ card.stage === "APPLICATION" ? "Примерное наполнение ответа" : "Примерные вопросы" }}
+          </summary>
+          <p class="text-ink-soft mt-1.5 leading-relaxed whitespace-pre-line">{{ criterion.examples }}</p>
+        </details>
 
         <div
           role="radiogroup"

@@ -1,7 +1,7 @@
 /**
  * Перенести портрет участника ША'26 (lib/applications/portrait.ts) на сайт:
  * критерии и маркеры анкеты, ДЗ, ЦО и собеседования, вопросы и разделы
- * анкеты вместе с домашним заданием.
+ * анкеты вместе с домашним заданием, сценарий собеседования.
  *
  * Безопасно для живых данных: этап заменяется, только пока по нему нет ни
  * одного балла и маркера; анкета — только пока нет ни одного ответа. Иначе
@@ -26,6 +26,8 @@ import {
   type DefaultMarker,
 } from "../lib/applications/defaults";
 import { db } from "../lib/db";
+import type { Prisma } from "../lib/generated/prisma/client";
+import { DEFAULT_INTERVIEW_QUESTIONS } from "../lib/interviews/questions";
 
 const dry = process.argv.includes("--dry-run");
 
@@ -49,13 +51,24 @@ async function main() {
       // Баллы уже стоят — структуру не трогаем, обновляем только тексты
       // критериев с тем же названием и тем же максимумом: баллы не теряют смысла.
       const existing = await db.criterion.findMany({ where: { seasonId: season.id, stageKind }, select: { id: true, title: true, maxScore: true } });
-      const updates = existing.flatMap((row) => {
+      const updates: Prisma.PrismaPromise<unknown>[] = existing.flatMap((row) => {
         const source = criteria.find((criterion) => criterion.title === row.title && criterion.maxScore === row.maxScore);
         return source
-          ? [db.criterion.update({ where: { id: row.id }, data: { description: source.description ?? null, indicators: source.indicators ?? null, levels: source.levels } })]
+          ? [
+              db.criterion.update({
+                where: { id: row.id },
+                data: { description: source.description ?? null, indicators: source.indicators ?? null, examples: source.examples ?? null, levels: source.levels },
+              }),
+            ]
           : [];
       });
-      console.log(`· ${label}: уже стоят баллы (${scores}) и маркеры (${notes}) — обновлены только тексты ${updates.length} из ${existing.length} критериев.`);
+      // Тексты маркеров с тем же названием — тоже.
+      const markerRows = await db.marker.findMany({ where: { seasonId: season.id, stageKind }, select: { id: true, title: true } });
+      for (const row of markerRows) {
+        const source = markers.find((marker) => marker.title === row.title);
+        if (source) updates.push(db.marker.update({ where: { id: row.id }, data: { example: source.example } }));
+      }
+      console.log(`· ${label}: уже стоят баллы (${scores}) и маркеры (${notes}) — обновлены только тексты критериев и маркеров (${updates.length}).`);
       if (!dry) await db.$transaction(updates);
       continue;
     }
@@ -73,6 +86,7 @@ async function main() {
           badge: criterion.badge ?? null,
           description: criterion.description ?? null,
           indicators: criterion.indicators ?? null,
+          examples: criterion.examples ?? null,
           maxScore: criterion.maxScore,
           levels: criterion.levels,
         })),
@@ -116,6 +130,28 @@ async function main() {
             maxLength: question.maxLength ?? null,
             minLength: question.minLength ?? null,
             format: question.format ?? null,
+          })),
+        }),
+      ]);
+    }
+  }
+
+  // Сценарий собеседования: заменяем целиком, пока мастера ничего в нём не написали.
+  const guideNotes = await db.interviewNote.count({ where: { question: { seasonId: season.id } } });
+  if (guideNotes > 0) {
+    console.log(`· Сценарий собеса: пропуск — уже есть заметки мастеров (${guideNotes}). Правьте в админке.`);
+  } else {
+    console.log(`· Сценарий собеса: ${DEFAULT_INTERVIEW_QUESTIONS.length} вопросов`);
+    if (!dry) {
+      await db.$transaction([
+        db.interviewQuestion.deleteMany({ where: { seasonId: season.id } }),
+        db.interviewQuestion.createMany({
+          data: DEFAULT_INTERVIEW_QUESTIONS.map((question, index) => ({
+            seasonId: season.id,
+            order: index + 1,
+            block: question.block,
+            text: question.text,
+            intro: question.intro ?? false,
           })),
         }),
       ]);
