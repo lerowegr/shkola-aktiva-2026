@@ -6,6 +6,8 @@
     "dev": "nuxt dev",
     "build": "nuxt build",
     "preview": "nuxt preview",
+    "loadtest": "node tools/loadtest/server.mjs",
+    "loadtest:local": "sh tools/loadtest/local.sh",
     "postinstall": "nuxt prepare && prisma generate",
     "typecheck": "nuxt typecheck && tsc -p tsconfig.scripts.json",
     "lint": "eslint .",

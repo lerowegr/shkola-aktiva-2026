@@ -35,3 +35,6 @@ npm-debug.log*
 # рабочие таблицы организаторов
 *.xlsx
 /.owner-password.txt
+
+# нагрузочный стенд: токены тестовых сессий
+/tools/loadtest/tokens-*.json

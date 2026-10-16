@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Нагрузочный стенд ША</title>
+<style>
+  :root { --ink:#1d1d1b; --soft:#6b6b66; --line:#e6e4dd; --paper:#f7f6f1; --card:#fff; --accent:#2f5bff; --orange:#f08a24; --ok:#1f8a3b; --danger:#d40000; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:var(--paper); }
+  main { max-width:1180px; margin:0 auto; padding:24px 16px 64px; display:grid; gap:16px; }
+  h1 { margin:0; font-size:26px; } h2 { margin:0 0 10px; font-size:17px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:18px; }
+  .row { display:flex; flex-wrap:wrap; gap:12px; align-items:end; }
+  label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--soft); }
+  input, select { font:inherit; color:var(--ink); border:1px solid var(--line); border-radius:12px; padding:9px 12px; background:var(--paper); min-width:0; }
+  input[type=number] { width:120px; } input[type=range] { width:220px; padding:0; }
+  button { font:inherit; font-weight:600; border:0; border-radius:12px; padding:10px 18px; cursor:pointer; }
+  .primary { background:var(--accent); color:#fff; } .danger { background:var(--danger); color:#fff; } .ghost { background:var(--paper); border:1px solid var(--line); }
+  button:disabled { opacity:.45; cursor:default; }
+  .muted { color:var(--soft); font-size:13px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; }
+  .tile { background:var(--paper); border-radius:14px; padding:12px; text-align:center; }
+  .tile b { display:block; font-size:24px; font-variant-numeric:tabular-nums; } .tile span { font-size:12px; color:var(--soft); }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; }
+  svg { width:100%; height:180px; display:block; }
+  .legend { display:flex; gap:14px; font-size:12px; color:var(--soft); margin-top:6px; }
+  .legend i { display:inline-block; width:12px; height:3px; border-radius:2px; vertical-align:middle; margin-right:5px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; font-variant-numeric:tabular-nums; }
+  th, td { text-align:left; padding:6px 8px; border-top:1px solid var(--line); } th { color:var(--soft); font-weight:500; border-top:0; }
+  td.num, th.num { text-align:right; }
+  .notice { border-radius:12px; padding:10px 14px; font-size:14px; } .notice.ok { background:#e5f6e8; } .notice.bad { background:#fde8e8; color:var(--danger); }
+  .live { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--ok); margin-right:6px; animation:p 1s infinite; }
+  @keyframes p { 50% { opacity:.3; } }
+  pre { margin:0; font:12px/1.5 ui-monospace, monospace; white-space:pre-wrap; color:var(--soft); max-height:180px; overflow:auto; }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Нагрузочный стенд Школы Актива</h1>
+    <p class="muted">Работает только на этом компьютере. Тестовые люди — @loadtest.local, после теста их нужно убрать. Пик по плану: 1000 регистраций в минуту ≈ 17 в секунду, 20 организаторов.</p>
+  </div>
+
+  <section class="card">
+    <h2>1. Цель и тестовые люди</h2>
+    <div class="row">
+      <label>Куда
+        <select id="target"></select>
+      </label>
+      <label>Кандидатов завести
+        <input id="seedCount" type="number" min="1" max="30000" value="1200">
+      </label>
+      <label>Организаторов
+        <input id="seedStaff" type="number" min="0" max="50" value="20">
+      </label>
+      <button class="ghost" id="seed">Завести</button>
+      <button class="ghost" id="clean">Убрать тестовых людей</button>
+    </div>
+    <p class="muted" id="tokens"></p>
+    <div id="seedNotice"></div>
+  </section>
+
+  <section class="card">
+    <h2>2. Нагрузка</h2>
+    <div class="row">
+      <label>Регистраций в секунду: <b id="rateOut"></b>
+        <input id="rate" type="range" min="0.5" max="50" step="0.5" value="5">
+      </label>
+      <label>Длительность, секунд
+        <input id="duration" type="number" min="5" max="600" value="60">
+      </label>
+      <label>Организаторов одновременно
+        <input id="staff" type="number" min="0" max="50" value="20">
+      </label>
+      <label style="flex-direction:row;align-items:center;gap:8px">
+        <input id="submit" type="checkbox"> отправлять анкету (только локальная копия)
+      </label>
+      <button class="primary" id="start">Старт</button>
+      <button class="danger" id="stop" disabled>Стоп</button>
+    </div>
+    <p class="muted" id="plan"></p>
+    <div id="runNotice"></div>
+  </section>
+
+  <section class="card">
+    <h2 id="status">Ожидание</h2>
+    <div class="tiles">
+      <div class="tile"><b id="tRps">0</b><span>запросов в секунду</span></div>
+      <div class="tile"><b id="tP50">—</b><span>медиана ответа, мс</span></div>
+      <div class="tile"><b id="tP95">—</b><span>95% ответов быстрее, мс</span></div>
+      <div class="tile"><b id="tErr">0%</b><span>ошибок</span></div>
+      <div class="tile"><b id="tFlows">0 / 0</b><span>регистраций завершено / начато</span></div>
+      <div class="tile"><b id="tInflight">0</b><span>в процессе</span></div>
+    </div>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Запросы в секунду</h2>
+      <svg id="cRps" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+      <div class="legend"><span><i style="background:var(--accent)"></i>все</span><span><i style="background:var(--danger)"></i>ошибки</span></div>
+    </section>
+    <section class="card">
+      <h2>Время ответа, мс</h2>
+      <svg id="cLat" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+      <div class="legend"><span><i style="background:var(--accent)"></i>медиана</span><span><i style="background:var(--orange)"></i>95%</span></div>
+    </section>
+    <section class="card">
+      <h2>Сервер <span class="muted" id="serverWho"></span></h2>
+      <svg id="cSrv" viewBox="0 0 600 180" preserveAspectRatio="none"></svg>
+      <div class="legend"><span><i style="background:var(--accent)"></i>процессор, %</span><span><i style="background:var(--orange)"></i>память, %</span><span><i style="background:var(--ink)"></i>загрузка на ядро, %</span></div>
+      <p class="muted" id="serverNow"></p>
+    </section>
+    <section class="card">
+      <h2>Контейнеры сайта</h2>
+      <table><thead><tr><th>Контейнер</th><th class="num">Процессор</th><th class="num">Память</th></tr></thead><tbody id="containers"></tbody></table>
+      <p class="muted" id="noContainers"></p>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>По шагам</h2>
+    <table><thead><tr><th>Шаг</th><th class="num">Запросов</th><th class="num">Ошибок</th><th class="num">Медиана, мс</th><th class="num">95%, мс</th><th>Ответы</th></tr></thead><tbody id="endpoints"></tbody></table>
+  </section>
+
+  <section class="card">
+    <h2>Журнал</h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let snap = null;
+
+async function post(path, body) {
+  const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  return response.json();
+}
+function notice(el, result) {
+  el.innerHTML = result ? `<p class="notice ${result.ok ? "ok" : "bad"}">${escapeHtml(result.message ?? (result.ok ? "Готово." : "Не получилось."))}</p>` : "";
+}
+function escapeHtml(text) { return String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+
+function plan() {
+  const rate = Number($("rate").value), duration = Number($("duration").value);
+  $("rateOut").textContent = `${rate} (≈ ${Math.round(rate * 60)} в минуту)`;
+  const need = Math.ceil(rate * duration);
+  const t = snap?.targets?.[$("target").value];
+  $("plan").textContent = `Понадобится тестовых кандидатов: ${need}. Заведено: ${t?.tokens ?? 0}.`;
+  $("submit").disabled = !t?.submit;
+  if (!t?.submit) $("submit").checked = false;
+}
+
+function chart(svg, series, lines, maxHint) {
+  const w = 600, h = 180, pad = 22;
+  const n = Math.max(2, series.length);
+  const max = Math.max(maxHint ?? 1, ...series.flatMap((p) => lines.map((l) => p[l.key] ?? 0))) * 1.1;
+  const x = (i) => pad + ((w - pad - 4) * i) / (n - 1);
+  const y = (v) => h - 16 - ((h - 26) * v) / max;
+  let out = "";
+  for (let i = 0; i <= 3; i++) {
+    const v = (max * i) / 3;
+    out += `<line x1="${pad}" x2="${w}" y1="${y(v)}" y2="${y(v)}" stroke="#e6e4dd" stroke-width="1"/><text x="0" y="${y(v) + 4}" font-size="10" fill="#6b6b66">${Math.round(v)}</text>`;
+  }
+  for (const l of lines) {
+    const points = series.map((p, i) => `${x(i)},${y(p[l.key] ?? 0)}`).join(" ");
+    out += `<polyline points="${points}" fill="none" stroke="${l.color}" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
+  }
+  svg.innerHTML = out;
+}
+
+function render() {
+  if (!snap) return;
+  const select = $("target");
+  if (!select.options.length) {
+    for (const [key, t] of Object.entries(snap.targets)) select.add(new Option(`${t.label} — ${t.url}`, key));
+    select.value = snap.target;
+  }
+  const t = snap.targets[select.value];
+  $("tokens").textContent = `Заведено для «${t.label}»: кандидатов ${t.tokens}, организаторов ${t.staff}.`;
+  plan();
+
+  $("start").disabled = snap.running;
+  $("stop").disabled = !snap.running;
+  select.disabled = snap.running;
+  $("status").innerHTML = snap.running
+    ? `<span class="live"></span>Идёт: ${snap.targets[snap.target].label}, ${snap.config.rate}/с, ${Math.floor(snap.elapsed)} из ${snap.config.duration} с`
+    : snap.reason ? `Остановлен (${escapeHtml(snap.reason)}) через ${Math.round(snap.elapsed)} с` : "Ожидание";
+  $("tRps").textContent = snap.now.rps.toFixed(1);
+  $("tP50").textContent = snap.now.p50 ? Math.round(snap.now.p50) : "—";
+  $("tP95").textContent = snap.now.p95 ? Math.round(snap.now.p95) : "—";
+  $("tErr").textContent = `${(snap.now.errorRate * 100).toFixed(1)}%`;
+  $("tFlows").textContent = `${snap.finished} / ${snap.launched}`;
+  $("tInflight").textContent = snap.inflight;
+
+  chart($("cRps"), snap.series, [{ key: "rps", color: "#2f5bff" }, { key: "err", color: "#d40000" }], 5);
+  chart($("cLat"), snap.series, [{ key: "p50", color: "#2f5bff" }, { key: "p95", color: "#f08a24" }], 200);
+  const srv = snap.serverSeries.map((p) => ({ cpu: p.cpu, mem: p.mem * 100, load: p.load * 100 }));
+  chart($("cSrv"), srv, [{ key: "cpu", color: "#2f5bff" }, { key: "mem", color: "#f08a24" }, { key: "load", color: "#1d1d1b" }], 100);
+
+  const s = snap.server;
+  $("serverWho").textContent = snap.watching ? `· ${snap.targets[snap.watching].label}` : "";
+  $("serverNow").textContent = s
+    ? `Сейчас: процессор ${s.cpu.toFixed(0)}% (${s.cores} ядер), память ${(s.mem / 2 ** 30).toFixed(1)} из ${(s.memTotal / 2 ** 30).toFixed(1)} ГБ, загрузка ${s.load.toFixed(2)}.`
+    : "Подключаемся к серверу…";
+  $("containers").innerHTML = (s?.containers ?? []).map((c) => `<tr><td>${escapeHtml(c.name)}</td><td class="num">${c.cpu.toFixed(1)}%</td><td class="num">${escapeHtml(c.mem)}</td></tr>`).join("");
+  $("noContainers").textContent = s && !s.containers.length ? "Для локальной копии — общая нагрузка этого компьютера." : "";
+
+  $("endpoints").innerHTML = snap.endpoints
+    .map((e) => `<tr><td>${escapeHtml(e.name)}</td><td class="num">${e.count}</td><td class="num" style="color:${e.errors ? "#d40000" : "inherit"}">${e.errors}</td><td class="num">${Math.round(e.p50)}</td><td class="num">${Math.round(e.p95)}</td><td class="muted">${Object.entries(e.statuses).map(([k, v]) => `${k}×${v}`).join(" ")}</td></tr>`)
+    .join("");
+  $("log").textContent = snap.log.join("\n");
+}
+
+async function poll() {
+  try {
+    const target = $("target").value || "";
+    snap = await (await fetch(`/state${target ? `?target=${target}` : ""}`)).json();
+    render();
+  } catch { /* стенд перезапускается */ }
+  setTimeout(poll, 1000);
+}
+
+$("rate").addEventListener("input", plan);
+$("duration").addEventListener("input", plan);
+$("target").addEventListener("change", () => { $("seedNotice").innerHTML = ""; plan(); });
+
+$("seed").addEventListener("click", async () => {
+  const button = $("seed"); button.disabled = true; button.textContent = "Заводим…";
+  notice($("seedNotice"), await post("/seed", { target: $("target").value, candidates: Number($("seedCount").value), staff: Number($("seedStaff").value) }));
+  button.disabled = false; button.textContent = "Завести";
+});
+$("clean").addEventListener("click", async () => {
+  if (!confirm("Удалить всех тестовых людей @loadtest.local на выбранной цели?")) return;
+  const button = $("clean"); button.disabled = true;
+  notice($("seedNotice"), await post("/clean", { target: $("target").value }));
+  button.disabled = false;
+});
+$("start").addEventListener("click", async () => {
+  const target = $("target").value;
+  const rate = Number($("rate").value), duration = Number($("duration").value);
+  if (target === "prod" && !confirm(`Нагрузка на боевой сайт: ${rate} регистраций в секунду, ${duration} с. Живые люди в это время тоже пользуются сайтом. Запускаем?`)) return;
+  notice($("runNotice"), null);
+  const result = await post("/start", { target, rate, duration, staff: Number($("staff").value), submit: $("submit").checked });
+  if (!result.ok) notice($("runNotice"), result);
+});
+$("stop").addEventListener("click", () => post("/stop", {}));
+poll();
+</script>
+</body>
+</html>
