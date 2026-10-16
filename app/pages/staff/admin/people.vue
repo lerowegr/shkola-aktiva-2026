@@ -82,6 +82,10 @@ function grantRole(person: PersonRow, event: Event) {
 const revokeRole = (person: PersonRow, roleId: string) => call("/api/admin/people/revoke", { userId: person.id, roleId }, person.id);
 const block = (person: PersonRow) => call("/api/admin/people/block", { userId: person.id, blocked: !person.blocked }, person.id);
 const invite = (person: PersonRow) => call("/api/admin/people/invite", { userId: person.id }, person.id);
+// Ник Telegram организатора: войдёт через Telegram или Mini App — сразу в свой аккаунт.
+const tgDraft = ref<Record<string, string>>({});
+const saveTelegram = (person: PersonRow) =>
+  call("/api/admin/people/telegram", { id: person.id, telegram: tgDraft.value[person.id] ?? person.telegramUsername ?? "" }, person.id);
 const resetNick = (person: PersonRow) => call("/api/admin/people/reset-nick", { id: person.id }, person.id);
 
 async function copy(text: string) {
@@ -196,6 +200,28 @@ function initialsOf(name: string) {
                   {{ person.hasPassword ? "пароль задан" : "пароля нет" }} · {{ person.hasTelegram ? "Telegram привязан" : "без Telegram" }}
                 </span>
               </div>
+
+              <form
+                v-if="person.roles.length > 0 && !person.hasTelegram"
+                class="flex flex-col gap-1.5"
+                @submit.prevent="saveTelegram(person)"
+              >
+                <label :for="`tg-${person.id}`" class="text-ink-soft text-xs">
+                  Telegram для входа — войдёт через Telegram или Mini App сразу в свой аккаунт
+                </label>
+                <div class="flex gap-2">
+                  <input
+                    :id="`tg-${person.id}`"
+                    :value="tgDraft[person.id] ?? (person.telegramUsername ? `@${person.telegramUsername}` : '')"
+                    placeholder="@ivan_petrov"
+                    autocomplete="off"
+                    autocapitalize="off"
+                    class="border-line bg-card focus:border-accent min-h-10 min-w-0 flex-1 rounded-xl border px-3 text-sm outline-none"
+                    @input="tgDraft[person.id] = ($event.target as HTMLInputElement).value"
+                  >
+                  <button type="submit" class="bg-ink text-paper rounded-xl px-4 text-sm font-semibold">Сохранить</button>
+                </div>
+              </form>
 
               <div class="flex flex-wrap gap-2">
                 <button
