@@ -165,7 +165,7 @@ export function createBot(token: string): Bot {
     if (result.reply) await ctx.reply(result.reply);
   });
 
-  // PDF в личку — сдача домашнего задания (если этап открыт и человек допущен).
+  // PDF в личку — домашнее задание к анкете (пока анкета черновик и приём открыт).
   bot.on("message:document", async (ctx) => {
     if (ctx.chat.type !== "private") return;
     const document = ctx.message.document;

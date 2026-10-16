@@ -33,8 +33,8 @@ const view = computed(() => {
     tone: "todo",
     title: started.value ? "Анкета — черновик" : "Заполните анкету",
     text: started.value
-      ? `Отвечено ${answered.value} из ${props.app.questions.length}.${stage.closesAt ? ` Отправить до ${day(stage.closesAt)}.` : ""}`
-      : `${props.app.questions.length} вопросов, около 20 минут. Ответы сохраняются сами.`,
+      ? `Отвечено ${answered.value} из ${props.app.questions.length}, в конце — домашнее задание.${stage.closesAt ? ` Отправить до ${day(stage.closesAt)}.` : ""}`
+      : `${props.app.questions.length} вопросов и домашнее задание. Ответы сохраняются сами.`,
     action: started.value ? "Продолжить" : "Начать",
   };
 });

@@ -3,16 +3,22 @@ import { Check, Lock } from "lucide-vue-next";
 
 import type { StageState } from "~~/lib/stages";
 
-/** Этапы отбора лентой: что прошло, что идёт, что впереди и когда. */
-defineProps<{
+/**
+ * Этапы отбора лентой: что прошло, что идёт, что впереди и когда.
+ * Домашнее задание — часть анкеты, отдельным этапом его не показываем.
+ */
+const props = defineProps<{
   stages: {
     id: string;
+    kind?: string;
     title: string;
     state: StageState;
     opensAt: string | Date | null;
     closesAt: string | Date | null;
   }[];
 }>();
+
+const shown = computed(() => props.stages.filter((stage) => stage.kind !== "HOMEWORK"));
 
 const STATE_LABEL: Record<StageState, string> = {
   upcoming: "Скоро",
@@ -31,7 +37,7 @@ function when(opensAt: string | Date | null, closesAt: string | Date | null): st
 <template>
   <ol class="flex flex-col gap-3">
     <li
-      v-for="(stage, index) in stages"
+      v-for="(stage, index) in shown"
       :key="stage.id"
       class="border-line bg-card flex items-center gap-4 rounded-2xl border p-4"
       :class="stage.state === 'open' && 'border-accent ring-accent/15 ring-4'"

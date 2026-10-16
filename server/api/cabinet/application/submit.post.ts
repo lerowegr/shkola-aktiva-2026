@@ -1,7 +1,8 @@
 import { z } from "zod";
 
-import { assignApplication } from "~~/lib/applications/assign";
+import { assignApplication, assignFollowUp } from "~~/lib/applications/assign";
 import { applicationQuestions } from "~~/lib/applications/candidate";
+import { hasHomework } from "~~/lib/applications/homework";
 import { notifyAssigned, notifySubmitted } from "~~/lib/applications/notifications";
 import { formatValue, normalizeUrl, submitProblems } from "~~/lib/applications/form";
 import { db } from "~~/lib/db";
@@ -12,8 +13,10 @@ import { requireProfile } from "~~/server/utils/session";
 /**
  * Отправить анкету.
  *
+ * Домашнее задание — часть анкеты: без него анкета не уходит.
+ *
  * После отправки анкета только для чтения и сразу уходит мастеру с
- * наименьшей нагрузкой. Если мастеров ещё нет, она подождёт: главный
+ * наименьшей нагрузкой; домашка — тому же мастеру на проверку ДЗ. Если мастеров ещё нет, она подождёт: главный
  * организатор раздаст её кнопкой «Распределить».
  */
 export default defineAction(z.object({}), async ({ event }) => {
@@ -50,6 +53,9 @@ export default defineAction(z.object({}), async ({ event }) => {
     ...Object.fromEntries(application.answers.map((answer) => [answer.questionId, answer.value])),
   };
   const problems = submitProblems(questions, answers, profile);
+  if (!(await hasHomework(application.id))) {
+    problems.push({ field: "homework", message: "Прикрепите домашнее задание — без него анкета не отправится." });
+  }
 
   if (problems.length > 0) {
     return {
@@ -113,9 +119,12 @@ export default defineAction(z.object({}), async ({ event }) => {
   });
 
   const review = await assignApplication(application.id, "APPLICATION", null);
+  // Домашка ушла вместе с анкетой — сразу на проверку, тому же мастеру.
+  const homeworkReview = await assignFollowUp(application.id, "HOMEWORK");
 
   await notifySubmitted(application.id, user.id);
   if (review) await notifyAssigned([review.id]);
+  if (homeworkReview) await notifyAssigned([homeworkReview.id], "HOMEWORK");
 
   return { ok: true, message: "Анкета отправлена!" };
 });

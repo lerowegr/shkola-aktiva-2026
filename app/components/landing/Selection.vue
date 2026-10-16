@@ -64,7 +64,7 @@ onBeforeUnmount(() => cleanup());
 
     <ol class="mt-12 flex flex-col gap-6">
       <li
-        v-for="(stage, index) in props.stages"
+        v-for="(stage, index) in props.stages.filter((item) => item.kind !== 'HOMEWORK')"
         :key="stage.id"
         class="sticky"
         :style="{ top: `calc(5rem + ${index * 1.25}rem)` }"

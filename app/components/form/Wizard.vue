@@ -14,6 +14,11 @@ import { stepProblems, type AnswerValue, type SubmitProblem } from "~~/lib/appli
  *
  * Сохранять и отправлять умеет родитель: кабинет — на сервер, предпросмотр
  * организатора — никуда.
+ *
+ * Дополнительный шаг (extraStep) — после разделов, до проверки: так в анкету
+ * встроено домашнее задание. Его содержимое рисует родитель в слоте #extra,
+ * строку на странице проверки — в #extra-summary; «Далее» пускает дальше,
+ * только когда extraStep.done.
  */
 interface Question {
   id: string;
@@ -50,6 +55,7 @@ const props = defineProps<{
   sending?: boolean;
   /** Дождаться автосохранения — перед проверкой шага. */
   flush: () => Promise<void>;
+  extraStep?: { title: string; description: string | null; done: boolean; problem: string } | null;
   send: () => Promise<SendResult>;
 }>();
 const emit = defineEmits<{ answer: [id: string, value: AnswerValue | undefined]; profile: [field: ProfileField, value: string] }>();
@@ -71,22 +77,48 @@ const steps = computed(() => {
       const fields = [...(index === 0 ? PROFILE_FIELDS.map((field) => field.key) : []), ...questions.map((q) => q.id)];
       return { ...section, items, fields, withProfile: index === 0 };
     })
-    .filter((step) => step.items.length > 0 || step.withProfile);
+    .filter((step) => step.items.length > 0 || step.withProfile)
+    .map((step) => ({ ...step, extra: false }));
 });
-const total = computed(() => steps.value.length);
+// Разделы плюс дополнительный шаг (домашка) — в одном списке.
+const allSteps = computed(() =>
+  props.extraStep
+    ? [
+        ...steps.value,
+        {
+          title: props.extraStep.title,
+          description: props.extraStep.description,
+          items: [],
+          fields: ["homework"],
+          withProfile: false,
+          extra: true,
+        },
+      ]
+    : steps.value,
+);
+const total = computed(() => allSteps.value.length);
 
 const route = useRoute();
 const router = useRouter();
 const errors = ref<Record<string, string>>({});
+// Домашку прикрепили — ошибка шага уходит сама.
+watch(
+  () => props.extraStep?.done,
+  (done) => {
+    if (done && errors.value.homework) errors.value = Object.fromEntries(Object.entries(errors.value).filter(([key]) => key !== "homework"));
+  },
+);
 
-function problemsOf(index: number) {
-  const step = steps.value[index];
-  return step ? stepProblems(props.questions, props.answers, props.profile, step.fields) : [];
+function problemsOf(index: number): SubmitProblem[] {
+  const step = allSteps.value[index];
+  if (!step) return [];
+  if (step.extra) return props.extraStep?.done ? [] : [{ field: "homework", message: props.extraStep?.problem ?? "Заполните этот шаг." }];
+  return stepProblems(props.questions, props.answers, props.profile, step.fields);
 }
 
 // Без шага в адресе — первый незаполненный раздел, всё заполнено — проверка.
 function firstOpenStep() {
-  const open = steps.value.findIndex((_, index) => problemsOf(index).length > 0);
+  const open = allSteps.value.findIndex((_, index) => problemsOf(index).length > 0);
   return open === -1 ? total.value : open;
 }
 
@@ -102,7 +134,7 @@ onMounted(() => {
   if (!route.query.step) router.replace({ query: { ...route.query, step: String(initial + 1) } });
 });
 const reviewing = computed(() => current.value >= total.value);
-const step = computed(() => steps.value[current.value]);
+const step = computed(() => allSteps.value[current.value]);
 
 async function go(index: number) {
   errors.value = {};
@@ -115,7 +147,7 @@ function showProblems(problems: SubmitProblem[]) {
   const first = problems[0];
   if (!first) return;
   nextTick(() => {
-    const target = document.getElementById(first.field in props.profile ? `p-${first.field}` : `q-${first.field}`);
+    const target = document.getElementById(first.field === "homework" ? "wizard-extra" : first.field in props.profile ? `p-${first.field}` : `q-${first.field}`);
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
   });
 }
@@ -147,7 +179,7 @@ const confirming = ref(false);
 const sendProblem = ref<string | null>(null);
 
 // Раздел, где что-то не так, — для ссылки «Исправить» на странице проверки.
-const brokenSteps = computed(() => steps.value.map((_, index) => problemsOf(index).length > 0));
+const brokenSteps = computed(() => allSteps.value.map((_, index) => problemsOf(index).length > 0));
 
 async function submit() {
   sendProblem.value = null;
@@ -157,10 +189,10 @@ async function submit() {
   if (result.ok) return;
   sendProblem.value = result.message ?? "Не получилось отправить. Попробуйте ещё раз.";
   const field = result.problems?.[0]?.field;
-  const index = field ? steps.value.findIndex((item) => item.fields.includes(field)) : -1;
+  const index = field ? allSteps.value.findIndex((item) => item.fields.includes(field)) : -1;
   if (index !== -1) {
     await go(index);
-    showProblems(result.problems!.filter((problem) => steps.value[index]!.fields.includes(problem.field)));
+    showProblems(result.problems!.filter((problem) => allSteps.value[index]!.fields.includes(problem.field)));
   }
 }
 
@@ -212,6 +244,11 @@ const shown = (value: AnswerValue | undefined) => (Array.isArray(value) ? value.
         </div>
       </div>
 
+      <div v-if="step.extra" id="wizard-extra" class="flex flex-col gap-2">
+        <slot name="extra" />
+        <p v-if="errors.homework" class="text-danger text-sm" role="alert">{{ errors.homework }}</p>
+      </div>
+
       <FormQuestion
         v-for="item in step.items"
         :key="item.question.id"
@@ -240,7 +277,7 @@ const shown = (value: AnswerValue | undefined) => (Array.isArray(value) ? value.
       </div>
 
       <article
-        v-for="(item, index) in steps"
+        v-for="(item, index) in allSteps"
         :key="item.title"
         class="bg-card flex flex-col gap-3 rounded-3xl border p-4 sm:p-5"
         :class="brokenSteps[index] ? 'border-danger' : 'border-line'"
@@ -262,6 +299,7 @@ const shown = (value: AnswerValue | undefined) => (Array.isArray(value) ? value.
               <dd>{{ profile.studentId || "—" }}</dd>
             </div>
           </template>
+          <slot v-if="item.extra" name="extra-summary" />
           <div v-for="entry in item.items" :key="entry.question.id">
             <dt class="text-ink-soft">{{ entry.number }}. {{ entry.question.label }}</dt>
             <dd class="whitespace-pre-line break-words">{{ shown(answers[entry.question.id]) }}</dd>

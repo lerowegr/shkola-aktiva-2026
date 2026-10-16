@@ -3,11 +3,28 @@ import { CheckCircle2 } from "lucide-vue-next";
 
 import type { ActionResult } from "~/composables/useAction";
 import type { CandidateApplication } from "~~/lib/applications/candidate";
+import type { HomeworkView } from "~~/lib/applications/homework";
 import type { AnswerValue } from "~~/lib/applications/form";
 
 useHead({ title: "Анкета" });
 
-const { data, refresh } = await useFetch("/api/cabinet/application");
+const [{ data, refresh }, { data: homework, refresh: refreshHomework }] = await Promise.all([
+  useFetch("/api/cabinet/application"),
+  useFetch<{ homework: HomeworkView | null }>("/api/cabinet/homework"),
+]);
+const hw = computed(() => homework.value?.homework ?? null);
+const hwCurrent = computed(() => hw.value?.submissions.find((item) => item.current) ?? null);
+// Домашнее задание — последний шаг анкеты: без него анкета не уходит.
+const extraStep = computed(() =>
+  hw.value
+    ? {
+        title: "Домашнее задание",
+        description: "Часть анкеты: прикрепите работу — PDF или ответ текстом. Без неё анкета не отправится.",
+        done: Boolean(hwCurrent.value),
+        problem: "Прикрепите домашнее задание — без него анкета не отправится.",
+      }
+    : null,
+);
 const app = computed(() => data.value?.data as CandidateApplication | null | undefined);
 
 // Локальная копия ответов: поля меняются сразу, сервер догоняет автосохранением.
@@ -68,7 +85,7 @@ const submit = useAction("/api/cabinet/application/submit");
 async function send() {
   const result = await submit.submit({});
   if (result.ok) {
-    await refresh();
+    await Promise.all([refresh(), refreshHomework()]);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   return result as { ok: boolean; message?: string; problems?: { field: string; message: string }[] };
@@ -132,9 +149,23 @@ function day(value: string | Date | null) {
           :sending="submit.pending.value"
           :flush="autosave.flush"
           :send="send"
+          :extra-step="extraStep"
           @answer="saveAnswer"
           @profile="saveProfile"
-        />
+        >
+          <template #extra>
+            <AppHomeworkStep v-if="hw" :hw="hw" @changed="refreshHomework" />
+          </template>
+          <template #extra-summary>
+            <div>
+              <dt class="text-ink-soft">Работа</dt>
+              <dd>
+                <template v-if="hwCurrent">{{ hwCurrent.file?.filename ?? "ответ текстом" }}{{ hwCurrent.file && hwCurrent.text ? " + комментарий" : "" }}</template>
+                <span v-else class="text-danger">не прикреплена</span>
+              </dd>
+            </div>
+          </template>
+        </FormWizard>
 
         <template v-else>
           <section class="bg-card border-line grid gap-3 rounded-3xl border p-4 sm:grid-cols-2 sm:p-5">
@@ -157,6 +188,10 @@ function day(value: string | Date | null) {
               readonly
               :model-value="answers[item.question.id]"
             />
+          </section>
+          <section v-if="hw && (hw.submissions.length || hw.task)" class="flex flex-col gap-3">
+            <h2 class="font-display text-lg">Домашнее задание</h2>
+            <AppHomeworkStep :hw="hw" />
           </section>
         </template>
       </template>

@@ -136,7 +136,8 @@ const MODES = [
           class="border-line bg-paper rounded-2xl border px-4 py-3 text-base font-normal"
         />
         <span v-if="stage.kind === 'HOMEWORK'" class="text-ink-soft text-xs font-normal">
-          Кандидаты видят задание только после того, как прошли этап анкеты.
+          Домашнее задание — часть анкеты: кандидат видит задание последним шагом анкеты и сдаёт его вместе с ней.
+          Даты этого этапа на кандидатов не влияют — сдать можно, пока открыт приём анкет.
         </span>
         <span v-else-if="stage.kind === 'ASSESSMENT'" class="text-ink-soft text-xs font-normal">
           Кандидаты видят это в кабинете. Корпус, аудитория и время у каждой группы свои — их задают и рассылают в

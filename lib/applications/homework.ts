@@ -1,28 +1,29 @@
 import { db } from "~~/lib/db";
-import { notify } from "~~/lib/notifications/notify";
 import { stageState, type StageState } from "~~/lib/stages";
 import { savePdf } from "~~/lib/uploads";
 
-import { assignFollowUp } from "./assign";
+import { draftFor } from "./candidate";
 import { candidateDecision } from "./decisions";
-import { notifyAssigned } from "./notifications";
 
 /**
- * Домашнее задание глазами кандидата и его сдача.
+ * Домашнее задание — часть анкеты.
  *
- * Сдать может только тот, кто прошёл анкету (решение опубликовано), и
- * только пока этап открыт. Пересдать можно до дедлайна: новая версия
- * становится текущей, старая остаётся в истории — мастер видит обе.
+ * Задание показывается последним шагом анкеты, сдаётся PDF и/или текстом,
+ * пока анкета — черновик и приём анкет открыт. Без сданного ДЗ анкета не
+ * отправляется. После отправки анкеты домашка, как и ответы, не меняется.
+ * Новая версия до отправки заменяет прежнюю, старая остаётся в истории.
+ *
+ * Проверка ДЗ — отдельная оценка (этап HOMEWORK): мастер назначается при
+ * отправке анкеты (submit.post.ts). Текст задания — описание этапа
+ * «Домашнее задание» в «Этапах».
  */
 export const HOMEWORK_TEXT_MAX = 2000;
 
 export interface HomeworkView {
+  /** Состояние приёма анкет: домашка сдаётся вместе с ней. */
   state: StageState;
-  opensAt: Date | null;
   closesAt: Date | null;
   task: string | null;
-  /** Решение по анкете: проходит ли человек на ДЗ. null — ещё не объявлено. */
-  admission: "PASSED" | "REJECTED" | null;
   submissions: {
     id: string;
     submittedAt: Date;
@@ -30,7 +31,12 @@ export interface HomeworkView {
     file: { id: string; filename: string; size: number } | null;
     current: boolean;
   }[];
+  /** Можно сдать или заменить: анкета — черновик, приём открыт. */
   canSubmit: boolean;
+  /** Анкета отправлена — домашка ушла вместе с ней. */
+  sent: boolean;
+  /** Опубликованное решение по анкете (вместе с домашкой). */
+  admission: "PASSED" | "REJECTED" | null;
 }
 
 export async function loadHomework(userId: string): Promise<HomeworkView | null> {
@@ -38,41 +44,42 @@ export async function loadHomework(userId: string): Promise<HomeworkView | null>
     where: { isCurrent: true },
     select: {
       id: true,
-      stages: { where: { kind: "HOMEWORK" }, select: { mode: true, opensAt: true, closesAt: true, description: true } },
+      stages: {
+        where: { kind: { in: ["APPLICATION", "HOMEWORK"] } },
+        select: { kind: true, mode: true, opensAt: true, closesAt: true, description: true },
+      },
     },
   });
-  const stage = season?.stages[0];
-  if (!season || !stage) return null;
+  const applicationStage = season?.stages.find((stage) => stage.kind === "APPLICATION");
+  const homeworkStage = season?.stages.find((stage) => stage.kind === "HOMEWORK");
+  if (!season || !applicationStage) return null;
 
-  const [admission, application] = await Promise.all([
-    candidateDecision(userId, season.id, "APPLICATION"),
-    db.application.findUnique({
-      where: { seasonId_userId: { seasonId: season.id, userId } },
-      select: {
-        submissions: {
-          where: { stageKind: "HOMEWORK" },
-          orderBy: { submittedAt: "desc" },
-          select: {
-            id: true,
-            submittedAt: true,
-            text: true,
-            replacedAt: true,
-            upload: { select: { id: true, filename: true, size: true } },
-          },
+  const admission = await candidateDecision(userId, season.id, "APPLICATION");
+  const application = await db.application.findUnique({
+    where: { seasonId_userId: { seasonId: season.id, userId } },
+    select: {
+      status: true,
+      submissions: {
+        where: { stageKind: "HOMEWORK" },
+        orderBy: { submittedAt: "desc" },
+        select: {
+          id: true,
+          submittedAt: true,
+          text: true,
+          replacedAt: true,
+          upload: { select: { id: true, filename: true, size: true } },
         },
       },
-    }),
-  ]);
+    },
+  });
 
-  const state = stageState(stage);
+  const state = stageState(applicationStage);
+  const sent = application?.status === "SUBMITTED";
 
   return {
     state,
-    opensAt: stage.opensAt,
-    closesAt: stage.closesAt,
-    // Текст задания — только допущенным: остальным он ни к чему.
-    task: admission === "PASSED" ? stage.description : null,
-    admission,
+    closesAt: applicationStage.closesAt,
+    task: homeworkStage?.description?.trim() || null,
     submissions: (application?.submissions ?? []).map((item) => ({
       id: item.id,
       submittedAt: item.submittedAt,
@@ -80,7 +87,9 @@ export async function loadHomework(userId: string): Promise<HomeworkView | null>
       file: item.upload,
       current: item.replacedAt === null,
     })),
-    canSubmit: admission === "PASSED" && state === "open",
+    canSubmit: !sent && state === "open",
+    sent,
+    admission,
   };
 }
 
@@ -93,24 +102,20 @@ export async function submitHomework(params: {
   via: "SITE" | "TELEGRAM";
 }): Promise<SubmitResult> {
   const view = await loadHomework(params.userId);
-  if (!view) return { ok: false, message: "Этап домашнего задания ещё не заведён." };
-  if (view.admission !== "PASSED") {
-    return { ok: false, message: "Домашнее задание сдают те, кто прошёл этап анкеты." };
-  }
-  if (view.state === "upcoming") return { ok: false, message: "Приём домашних заданий ещё не открыт." };
-  if (view.state === "closed") return { ok: false, message: "Приём домашних заданий уже закрыт." };
+  if (!view) return { ok: false, message: "Отбор ещё не заведён." };
+  if (view.sent) return { ok: false, message: "Анкета уже отправлена — домашнее задание ушло вместе с ней и больше не меняется." };
+  if (view.state === "upcoming") return { ok: false, message: "Приём анкет ещё не открыт — домашку сдают вместе с анкетой." };
+  if (view.state === "closed") return { ok: false, message: "Приём анкет закрыт — сдать домашнее задание уже нельзя." };
 
   const text = params.text?.trim() || null;
   if (!params.file && !text) return { ok: false, message: "Прикрепите PDF или напишите ответ." };
   if (text && text.length > HOMEWORK_TEXT_MAX) {
-    return { ok: false, message: `Комментарий не длиннее ${HOMEWORK_TEXT_MAX} знаков.` };
+    return { ok: false, message: `Ответ не длиннее ${HOMEWORK_TEXT_MAX} знаков.` };
   }
 
-  const application = await db.application.findFirst({
-    where: { userId: params.userId, season: { isCurrent: true } },
-    select: { id: true },
-  });
-  if (!application) return { ok: false, message: "Анкета не найдена." };
+  const season = await db.season.findFirstOrThrow({ where: { isCurrent: true }, select: { id: true } });
+  const application = await draftFor(params.userId, season.id);
+  if (application.status !== "DRAFT") return { ok: false, message: "Анкета уже отправлена — домашнее задание больше не меняется." };
 
   let uploadId: string | null = null;
   if (params.file) {
@@ -120,31 +125,26 @@ export async function submitHomework(params: {
   }
 
   const now = new Date();
-  const submission = await db.$transaction(async (tx) => {
+  await db.$transaction(async (tx) => {
     await tx.submission.updateMany({
       where: { applicationId: application.id, stageKind: "HOMEWORK", replacedAt: null },
       data: { replacedAt: now },
     });
-    return tx.submission.create({
+    await tx.submission.create({
       data: { applicationId: application.id, stageKind: "HOMEWORK", uploadId, text, via: params.via, submittedAt: now },
-      select: { id: true },
     });
   });
 
   const resubmission = view.submissions.length > 0;
-  const review = await assignFollowUp(application.id, "HOMEWORK");
-  if (review && !resubmission) await notifyAssigned([review.id], "HOMEWORK");
+  return {
+    ok: true,
+    message: resubmission
+      ? "Новая версия прикреплена. Осталось отправить анкету."
+      : "Домашнее задание прикреплено. Осталось отправить анкету.",
+  };
+}
 
-  await notify([
-    {
-      userId: params.userId,
-      category: "SELECTION",
-      title: resubmission ? "Новая версия домашнего задания получена" : "Домашнее задание получено",
-      body: "Его уже проверяет мастер отбора. Пересдать можно до дедлайна.",
-      url: "/cabinet/homework",
-      key: `submission:${submission.id}`,
-    },
-  ]);
-
-  return { ok: true, message: resubmission ? "Новая версия сдана — проверят её." : "Домашнее задание сдано!" };
+/** Есть ли у черновика сданная домашка — без неё анкета не уходит. */
+export async function hasHomework(applicationId: string): Promise<boolean> {
+  return (await db.submission.count({ where: { applicationId, stageKind: "HOMEWORK", replacedAt: null } })) > 0;
 }

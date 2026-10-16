@@ -55,7 +55,8 @@ export default defineEventHandler(async (event) => {
     messages,
     stages: {
       APPLICATION: state("APPLICATION"),
-      HOMEWORK: state("HOMEWORK"),
+      // ДЗ сдают вместе с анкетой — проверка открывается вместе с ней.
+      HOMEWORK: state("APPLICATION"),
       ASSESSMENT: state("ASSESSMENT"),
       INTERVIEW: state("INTERVIEW"),
     },
