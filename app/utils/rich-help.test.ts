@@ -36,3 +36,14 @@ describe("linkParts", () => {
     ]);
   });
 });
+
+describe("заголовки", () => {
+  it("строка «# …» — заголовок между абзацами", () => {
+    expect(parseHelp("# Задание 1\n\nТекст\n\n# Задание 2\nЕщё")).toEqual([
+      { kind: "heading", text: "Задание 1" },
+      { kind: "text", text: "Текст" },
+      { kind: "heading", text: "Задание 2" },
+      { kind: "text", text: "Ещё" },
+    ]);
+  });
+});

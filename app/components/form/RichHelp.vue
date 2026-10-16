@@ -24,7 +24,8 @@ const bubbles = (messages: { author: string; text: string }[]) =>
 <template>
   <div class="flex flex-col gap-3 text-sm">
     <template v-for="(block, index) in blocks" :key="index">
-      <p v-if="block.kind === 'text'" class="text-ink-soft whitespace-pre-line">{{ block.text }}</p>
+      <h4 v-if="block.kind === 'heading'" class="font-display text-ink mt-2 text-lg first:mt-0">{{ block.text }}</h4>
+      <p v-else-if="block.kind === 'text'" class="text-ink-soft whitespace-pre-line">{{ block.text }}</p>
 
       <figure v-else class="border-line overflow-hidden rounded-3xl border bg-[#dfe9f2]" aria-label="Переписка">
         <figcaption v-if="block.messages[0]?.author" class="bg-card border-line flex items-center gap-3 border-b px-4 py-2.5">

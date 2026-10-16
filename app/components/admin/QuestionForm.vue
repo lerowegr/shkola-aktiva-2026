@@ -94,7 +94,7 @@ async function submit() {
         class="border-line bg-card field-sizing-content min-h-12 rounded-2xl border px-4 py-3 text-base font-normal"
       />
       <span class="text-ink-soft text-xs font-normal">
-        Переписку можно показать как чат: строки «[чат]» и «[/чат]», внутри — «Имя: сообщение».
+        Переписку можно показать как чат: строки «[чат]» и «[/чат]», внутри — «Имя: сообщение». Строка «# …» — заголовок.
       </span>
     </label>
     <div class="grid gap-4 sm:grid-cols-2">

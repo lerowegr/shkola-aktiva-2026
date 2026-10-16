@@ -5,9 +5,11 @@
  * «[/чат]» — переписка: строка «Имя: текст» начинает новое сообщение от
  * этого человека, следующие строки дописываются в него. Так организаторы
  * в админке оформляют задания вроде «Продолжи переписку» без вёрстки.
+ * Строка «# Заголовок» — заголовок (например, «# Задание 1»).
  */
 export type HelpBlock =
   | { kind: "text"; text: string }
+  | { kind: "heading"; text: string }
   | { kind: "chat"; messages: { author: string; text: string }[] };
 
 // Имя — до трёх слов без запятых: «Катя», «Мама», «Анна Петровна». Фраза
@@ -20,8 +22,14 @@ export function parseHelp(raw: string): HelpBlock[] {
   // split по разделителю: чётные части — текст, нечётные — переписки.
   parts.forEach((part, index) => {
     if (index % 2 === 0) {
-      const text = part.replace(/^\n+|\n+$/g, "");
-      if (text.trim()) blocks.push({ kind: "text", text });
+      // Заголовки «# …» режут текст на куски.
+      for (const piece of part.split(/^(# .+)$/m)) {
+        if (/^# .+$/.test(piece)) blocks.push({ kind: "heading", text: piece.slice(2).trim() });
+        else {
+          const text = piece.replace(/^\n+|\n+$/g, "");
+          if (text.trim()) blocks.push({ kind: "text", text });
+        }
+      }
       return;
     }
     const messages: { author: string; text: string }[] = [];
