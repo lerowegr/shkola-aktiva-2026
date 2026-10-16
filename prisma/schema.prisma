@@ -415,6 +415,9 @@ model FormSection {
   order       Int
   title       String
   description String?
+  /// Раздел — домашнее задание: его ответы (ссылки на работы) при отправке
+  /// анкеты становятся сдачей ДЗ и уходят мастеру на проверку ДЗ.
+  homework    Boolean   @default(false)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

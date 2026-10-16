@@ -34,9 +34,9 @@ describe("разделы-шаги", () => {
     });
     const sections = await applicationSections(seasonId, [{ section: "Опыт" }, { section: "Контакты" }, { section: "Старый" }]);
     expect(sections).toEqual([
-      { title: "Контакты", description: null },
-      { title: "Опыт", description: "Расскажи" },
-      { title: "Старый", description: null },
+      { title: "Контакты", description: null, homework: false },
+      { title: "Опыт", description: "Расскажи", homework: false },
+      { title: "Старый", description: null, homework: false },
     ]);
   });
 });

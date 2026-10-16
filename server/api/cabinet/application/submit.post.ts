@@ -1,8 +1,8 @@
 import { z } from "zod";
 
 import { assignApplication, assignFollowUp } from "~~/lib/applications/assign";
-import { applicationQuestions } from "~~/lib/applications/candidate";
-import { hasHomework } from "~~/lib/applications/homework";
+import { applicationQuestions, applicationSections } from "~~/lib/applications/candidate";
+import { homeworkText } from "~~/lib/applications/homework";
 import { notifyAssigned, notifySubmitted } from "~~/lib/applications/notifications";
 import { formatValue, normalizeUrl, submitProblems } from "~~/lib/applications/form";
 import { db } from "~~/lib/db";
@@ -13,7 +13,8 @@ import { requireProfile } from "~~/server/utils/session";
 /**
  * Отправить анкету.
  *
- * Домашнее задание — часть анкеты: без него анкета не уходит.
+ * Домашнее задание — раздел анкеты: его ответы (ссылки на работы)
+ * проверяются как остальные вопросы, а при отправке становятся сдачей ДЗ.
  *
  * После отправки анкета только для чтения и сразу уходит мастеру с
  * наименьшей нагрузкой; домашка — тому же мастеру на проверку ДЗ. Если мастеров ещё нет, она подождёт: главный
@@ -48,14 +49,14 @@ export default defineAction(z.object({}), async ({ event }) => {
   const known = new Set(application.answers.map((answer) => answer.questionId));
   const filled = Object.entries(suggested).filter(([questionId]) => !known.has(questionId));
 
+  const sections = await applicationSections(application.seasonId, questions);
+  const homeworkSections = new Set(sections.filter((section) => section.homework).map((section) => section.title));
+
   const answers = {
     ...Object.fromEntries(filled),
     ...Object.fromEntries(application.answers.map((answer) => [answer.questionId, answer.value])),
   };
   const problems = submitProblems(questions, answers, profile);
-  if (!(await hasHomework(application.id))) {
-    problems.push({ field: "homework", message: "Прикрепите домашнее задание — без него анкета не отправится." });
-  }
 
   if (problems.length > 0) {
     return {
@@ -104,6 +105,17 @@ export default defineAction(z.object({}), async ({ event }) => {
       },
     });
 
+    // Ответы раздела «Домашнее задание» — сдача ДЗ: по ней работа попадает
+    // в «Оценку ДЗ», к решениям и в рассылки.
+    const homework = homeworkText(questions, homeworkSections, answers);
+    if (homework) {
+      await tx.submission.updateMany({
+        where: { applicationId: application.id, stageKind: "HOMEWORK", replacedAt: null },
+        data: { replacedAt: new Date() },
+      });
+      await tx.submission.create({ data: { applicationId: application.id, stageKind: "HOMEWORK", text: homework, via: "SITE" } });
+    }
+
     // Условие status: DRAFT — вторая одновременная отправка ничего не сделает.
     await tx.application.updateMany({
       where: { id: application.id, status: "DRAFT" },
@@ -120,7 +132,7 @@ export default defineAction(z.object({}), async ({ event }) => {
 
   const review = await assignApplication(application.id, "APPLICATION", null);
   // Домашка ушла вместе с анкетой — сразу на проверку, тому же мастеру.
-  const homeworkReview = await assignFollowUp(application.id, "HOMEWORK");
+  const homeworkReview = homeworkSections.size ? await assignFollowUp(application.id, "HOMEWORK") : null;
 
   await notifySubmitted(application.id, user.id);
   if (review) await notifyAssigned([review.id]);

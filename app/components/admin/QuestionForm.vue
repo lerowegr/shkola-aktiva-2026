@@ -85,7 +85,18 @@ async function submit() {
 <template>
   <form class="bg-paper flex flex-col gap-4 rounded-2xl p-4" @submit.prevent="submit">
     <UiInput v-model="form.label" label="Вопрос" />
-    <UiInput v-model="form.help" label="Подсказка под вопросом — необязательно" />
+    <label class="flex flex-col gap-1.5 text-sm font-medium">
+      Подсказка или текст задания — необязательно
+      <textarea
+        v-model="form.help"
+        rows="3"
+        maxlength="5000"
+        class="border-line bg-card field-sizing-content min-h-12 rounded-2xl border px-4 py-3 text-base font-normal"
+      />
+      <span class="text-ink-soft text-xs font-normal">
+        Переписку можно показать как чат: строки «[чат]» и «[/чат]», внутри — «Имя: сообщение».
+      </span>
+    </label>
     <div class="grid gap-4 sm:grid-cols-2">
       <UiSelect v-model="form.section" label="Раздел">
         <option v-for="item in sections" :key="item" :value="item">{{ item }}</option>

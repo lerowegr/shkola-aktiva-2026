@@ -107,7 +107,7 @@ const shown = computed(() => {
           {{ question.label }}
           <span v-if="!question.required" class="text-ink-soft font-normal">— необязательно</span>
         </label>
-        <p v-if="question.help" class="text-ink-soft text-sm">{{ question.help }}</p>
+        <FormRichHelp v-if="question.help" :text="question.help" />
       </div>
     </div>
 

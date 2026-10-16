@@ -11,6 +11,7 @@ import {
   DEFAULT_APPLICATION_CRITERIA,
   DEFAULT_APPLICATION_MARKERS,
   DEFAULT_APPLICATION_QUESTIONS,
+  DEFAULT_APPLICATION_SECTIONS,
   DEFAULT_ASSESSMENT_CRITERIA,
   DEFAULT_ASSESSMENT_MARKERS,
   DEFAULT_HOMEWORK_CRITERIA,
@@ -144,15 +145,22 @@ async function main() {
         required: question.required ?? true,
         options: question.options ?? [],
         maxLength: question.maxLength ?? null,
-        minLength: question.type === "LONG_TEXT" && (question.required ?? true) ? 200 : null,
+        minLength: question.minLength ?? null,
+        format: question.format ?? null,
       })),
     });
   }
-  // Разделы-шаги анкеты — из названий у вопросов, в порядке первого вопроса.
+  // Разделы-шаги анкеты — с описаниями и пометкой «домашнее задание».
   if ((await db.formSection.count({ where: { seasonId: season.id, stageKind: "APPLICATION" } })) === 0) {
-    const titles = [...new Set(DEFAULT_APPLICATION_QUESTIONS.map((question) => question.section))];
     await db.formSection.createMany({
-      data: titles.map((title, index) => ({ seasonId: season.id, stageKind: "APPLICATION" as const, order: index + 1, title })),
+      data: DEFAULT_APPLICATION_SECTIONS.map((section, index) => ({
+        seasonId: season.id,
+        stageKind: "APPLICATION" as const,
+        order: index + 1,
+        title: section.title,
+        description: section.description ?? null,
+        homework: section.homework ?? false,
+      })),
       skipDuplicates: true,
     });
   }

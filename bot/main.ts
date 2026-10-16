@@ -14,8 +14,7 @@ import { pathToFileURL } from "node:url";
 import { Bot, InlineKeyboard, type Context } from "grammy";
 
 import { issueTempPassword } from "../lib/auth/temp-password";
-import { confirmLoginCode, linkTelegram, upsertTelegramUser  } from "../lib/auth/telegram-users";
-import { submitHomework } from "../lib/applications/homework";
+import { confirmLoginCode, linkTelegram } from "../lib/auth/telegram-users";
 import { receiveFromTelegram } from "../lib/messages/bot-inbox";
 
 const APP_URL = (process.env.NUXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -165,41 +164,17 @@ export function createBot(token: string): Bot {
     if (result.reply) await ctx.reply(result.reply);
   });
 
-  // PDF в личку — домашнее задание к анкете (пока анкета черновик и приём открыт).
+  // Файлы бот не принимает: домашнее задание — ссылки в анкете на сайте.
   bot.on("message:document", async (ctx) => {
     if (ctx.chat.type !== "private") return;
-    const document = ctx.message.document;
-
-    if (document.mime_type !== "application/pdf") {
-      await ctx.reply("Домашнее задание принимаю в PDF. Сохраните работу в PDF и пришлите ещё раз.");
-      return;
-    }
-    // Telegram отдаёт ботам файлы до 20 МБ — столько же принимает и сайт.
-    if ((document.file_size ?? 0) > 20 * 1024 * 1024) {
-      await ctx.reply("Файл больше 20 МБ. Сожмите PDF или загрузите работу на сайте.");
-      return;
-    }
-
-    const user = await upsertTelegramUser(telegramUser(ctx));
-    const file = await ctx.getFile();
-    const response = await fetch(`https://api.telegram.org/file/bot${ctx.api.token}/${file.file_path}`);
-    if (!response.ok) {
-      await ctx.reply("Не получилось скачать файл. Попробуйте ещё раз через минуту.");
-      return;
-    }
-
-    const result = await submitHomework({
-      userId: user.id,
-      file: { filename: document.file_name ?? "работа.pdf", data: new Uint8Array(await response.arrayBuffer()) },
-      text: ctx.message.caption ?? null,
-      via: "TELEGRAM",
-    });
-    await ctx.reply(result.message);
+    await ctx.reply(
+      `Домашнее задание сдаётся в анкете на сайте: выложите работу на Google Диск, Яндекс Диск или в облако VK и вставьте ссылку в раздел «Домашнее задание». ${APP_URL}/cabinet/application`,
+    );
   });
 
   bot.on("message", async (ctx) => {
     if (ctx.chat.type !== "private") return;
-    await ctx.reply("Принимаю текст и PDF. Вопрос организаторам — обычным сообщением, домашнее задание — файлом PDF.");
+    await ctx.reply("Принимаю текст: вопрос организаторам — обычным сообщением. Домашнее задание — ссылками в анкете на сайте.");
   });
 
   bot.catch((error) => {

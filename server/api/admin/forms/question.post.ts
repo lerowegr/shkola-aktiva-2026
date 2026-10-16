@@ -9,7 +9,7 @@ const schema = z.object({
   section: z.string().max(60),
   type: z.enum(["SHORT_TEXT", "LONG_TEXT", "SINGLE_CHOICE", "MULTI_CHOICE", "URL"]),
   label: z.string().max(300),
-  help: z.string().max(300).nullable(),
+  help: z.string().max(5000, "Подсказка — не длиннее 5000 знаков.").nullable(),
   required: z.boolean(),
   options: z.array(z.string().max(100)).max(20),
   maxLength: z.number().int().min(10).max(10000).nullable(),

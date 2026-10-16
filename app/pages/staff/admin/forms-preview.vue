@@ -10,7 +10,7 @@ useHead({ title: "Анкета глазами кандидата" });
 
 type Format = "DIGITS" | "GROUP" | "PHONE" | "VK" | "TELEGRAM";
 interface Editor {
-  sections: { id: string; title: string; description: string | null }[];
+  sections: { id: string; title: string; description: string | null; homework: boolean }[];
   questions: {
     id: string;
     section: string;

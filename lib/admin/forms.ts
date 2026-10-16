@@ -40,7 +40,7 @@ export async function loadEditor(seasonId: string) {
     db.formSection.findMany({
       where: { seasonId, stageKind: "APPLICATION" },
       orderBy: { order: "asc" },
-      select: { id: true, title: true, description: true },
+      select: { id: true, title: true, description: true, homework: true },
     }),
     db.formQuestion.findMany({
       where: { seasonId, stageKind: "APPLICATION" },
@@ -131,9 +131,10 @@ export async function renumberQuestions(seasonId: string): Promise<void> {
 
 export async function saveSection(
   seasonId: string,
-  input: { id?: string; title: string; description: string | null },
+  input: { id?: string; title: string; description: string | null; homework?: boolean },
 ): Promise<AdminResult> {
   const title = input.title.trim();
+  const homework = input.homework ?? false;
   if (!title) return { ok: false, message: "Назовите раздел." };
   const description = input.description?.trim() || null;
 
@@ -149,14 +150,14 @@ export async function saveSection(
     // Вопросы ссылаются на раздел по названию — переименовываем вместе.
     await db.$transaction([
       db.formQuestion.updateMany({ where: { seasonId, stageKind: "APPLICATION", section: current.title }, data: { section: title } }),
-      db.formSection.update({ where: { id: input.id }, data: { title, description } }),
+      db.formSection.update({ where: { id: input.id }, data: { title, description, homework } }),
     ]);
     return { ok: true };
   }
 
   const last = await db.formSection.aggregate({ where: { seasonId, stageKind: "APPLICATION" }, _max: { order: true } });
   await db.formSection.create({
-    data: { seasonId, stageKind: "APPLICATION", title, description, order: (last._max.order ?? 0) + 1 },
+    data: { seasonId, stageKind: "APPLICATION", title, description, homework, order: (last._max.order ?? 0) + 1 },
   });
   return { ok: true };
 }

@@ -121,14 +121,14 @@ const MODES = [
       </div>
 
       <label v-if="forms[stage.id]" class="flex flex-col gap-1.5 text-sm font-medium">
-        {{ stage.kind === "HOMEWORK" ? "Текст задания" : "Пояснение для кандидатов" }}
+        {{ stage.kind === "HOMEWORK" ? "Пояснение к ДЗ для мастеров — необязательно" : "Пояснение для кандидатов" }}
         <textarea
           v-model="forms[stage.id]!.description"
           rows="4"
           maxlength="5000"
           :placeholder="
             stage.kind === 'HOMEWORK'
-              ? 'Что сделать, в каком виде сдать, на что обратить внимание'
+              ? 'На что смотреть при проверке ДЗ'
               : stage.kind === 'ASSESSMENT'
                 ? 'Что за этап: очный, групповой, сколько длится, что взять с собой'
                 : 'Необязательно'
@@ -136,8 +136,8 @@ const MODES = [
           class="border-line bg-paper rounded-2xl border px-4 py-3 text-base font-normal"
         />
         <span v-if="stage.kind === 'HOMEWORK'" class="text-ink-soft text-xs font-normal">
-          Домашнее задание — часть анкеты: кандидат видит задание последним шагом анкеты и сдаёт его вместе с ней.
-          Даты этого этапа на кандидатов не влияют — сдать можно, пока открыт приём анкет.
+          Задания ДЗ — вопросы раздела «Домашнее задание» в «Анкета и оценка»: кандидат прикрепляет ссылки на работы
+          последним шагом анкеты. Даты этого этапа на кандидатов не влияют. Этот текст видят только мастера в карточке ДЗ.
         </span>
         <span v-else-if="stage.kind === 'ASSESSMENT'" class="text-ink-soft text-xs font-normal">
           Кандидаты видят это в кабинете. Корпус, аудитория и время у каждой группы свои — их задают и рассылают в

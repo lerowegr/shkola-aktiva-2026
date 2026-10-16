@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /** Форма раздела анкеты: название шага и описание под ним, как в Google Forms. */
-const props = defineProps<{ section: { id: string; title: string; description: string | null } | null }>();
+const props = defineProps<{ section: { id: string; title: string; description: string | null; homework?: boolean } | null }>();
 const emit = defineEmits<{ saved: []; cancel: [] }>();
 
-const form = reactive({ title: props.section?.title ?? "", description: props.section?.description ?? "" });
+const form = reactive({ title: props.section?.title ?? "", description: props.section?.description ?? "", homework: props.section?.homework ?? false });
 const save = useAction("/api/admin/forms/section");
 
 async function submit() {
-  const result = await save.submit({ id: props.section?.id, title: form.title, description: form.description || null });
+  const result = await save.submit({ id: props.section?.id, title: form.title, description: form.description || null, homework: form.homework });
   if (result.ok) emit("saved");
 }
 </script>
@@ -25,6 +25,9 @@ async function submit() {
         placeholder="Зачем этот раздел и как отвечать. Можно оставить пустым."
       />
     </label>
+    <UiCheckbox v-model="form.homework">
+      Это домашнее задание — ответы раздела (ссылки на работы) уходят мастеру на проверку ДЗ
+    </UiCheckbox>
     <p v-if="section" class="text-ink-soft text-xs">Переименование переносит все вопросы раздела.</p>
     <UiNotice :message="save.result.value?.ok ? null : save.result.value?.message" />
     <div class="flex gap-2 sm:w-80">

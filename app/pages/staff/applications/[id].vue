@@ -195,7 +195,12 @@ async function pass() {
               </span>
               <span class="text-accent text-sm font-semibold">Открыть</span>
             </a>
-            <p v-if="currentWork.text" class="text-sm whitespace-pre-line">{{ currentWork.text }}</p>
+            <p v-if="currentWork.text" class="text-sm break-words whitespace-pre-line">
+              <template v-for="(part, i) in linkParts(currentWork.text)" :key="i">
+                <a v-if="part.href" :href="part.href" target="_blank" rel="noopener noreferrer" class="text-accent underline-offset-2 hover:underline">{{ part.text }}</a>
+                <template v-else>{{ part.text }}</template>
+              </template>
+            </p>
 
             <details v-if="olderWork.length" class="group text-sm">
               <summary class="text-ink-soft flex cursor-pointer items-center gap-1.5">Прежние версии: {{ olderWork.length }}<ChevronDown class="size-4 transition-transform group-open:rotate-180" aria-hidden="true" /></summary>

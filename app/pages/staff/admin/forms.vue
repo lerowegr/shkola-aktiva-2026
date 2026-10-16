@@ -12,7 +12,7 @@ useHead({ title: "Анкета и оценка" });
 type Stage = "APPLICATION" | "HOMEWORK" | "ASSESSMENT" | "INTERVIEW";
 type Format = "DIGITS" | "GROUP" | "PHONE" | "VK" | "TELEGRAM";
 interface Editor {
-  sections: { id: string; title: string; description: string | null }[];
+  sections: { id: string; title: string; description: string | null; homework: boolean }[];
   questions: {
     id: string;
     section: string;
@@ -56,7 +56,7 @@ const groups = computed(() => {
   const orphans = questions.filter((question) => !sections.value.includes(question.section));
   if (orphans.length) {
     list.push({
-      section: { id: "", title: "Без раздела", description: null },
+      section: { id: "", title: "Без раздела", description: null, homework: false },
       items: orphans.map((question) => ({ question, number: ++number })),
     });
   }
@@ -143,7 +143,10 @@ watch(tab, () => {
           <div v-else class="flex items-start gap-3">
             <div class="min-w-0 flex-1">
               <p class="text-ink-soft text-xs font-medium">Шаг {{ groupIndex + 1 }}</p>
-              <h2 class="font-display text-lg">{{ group.section.title }}</h2>
+              <h2 class="font-display text-lg">
+                {{ group.section.title }}
+                <span v-if="group.section.homework" class="bg-brand-yellow-soft ml-1 rounded-md px-1.5 py-0.5 align-middle font-sans text-xs">домашнее задание</span>
+              </h2>
               <p v-if="group.section.description" class="text-ink-soft mt-1 line-clamp-2 text-sm whitespace-pre-line">{{ group.section.description }}</p>
               <p v-else-if="group.section.id" class="text-ink-soft mt-1 text-sm">Без описания</p>
             </div>

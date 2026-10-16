@@ -27,6 +27,8 @@ export interface CandidateQuestion {
 export interface CandidateSection {
   title: string;
   description: string | null;
+  /** Домашнее задание: ответы раздела — ссылки на работы, уходят на проверку ДЗ. */
+  homework: boolean;
 }
 
 export interface CandidateApplication {
@@ -97,12 +99,12 @@ export async function applicationSections(seasonId: string, questions: readonly 
   const rows = await db.formSection.findMany({
     where: { seasonId, stageKind: "APPLICATION" },
     orderBy: { order: "asc" },
-    select: { title: true, description: true },
+    select: { title: true, description: true, homework: true },
   });
   const used = new Set(questions.map((question) => question.section));
   const sections = rows.filter((row) => used.has(row.title));
   for (const title of used) {
-    if (!sections.some((section) => section.title === title)) sections.push({ title, description: null });
+    if (!sections.some((section) => section.title === title)) sections.push({ title, description: null, homework: false });
   }
   return sections;
 }
