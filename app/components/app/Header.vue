@@ -3,6 +3,7 @@ import { LogOut } from "lucide-vue-next";
 
 /** Шапка кабинетов: знак ША, кто вошёл, выход. */
 const user = await useSession();
+const Link = resolveComponent("NuxtLink");
 </script>
 
 <template>
@@ -15,10 +16,16 @@ const user = await useSession();
 
       <div v-if="user" class="flex min-w-0 items-center gap-2 sm:gap-3">
         <AppNotificationBell />
-        <div class="min-w-0 text-right">
+        <!-- Организатору имя — вход в его кабинет. -->
+        <component
+          :is="user.isStaff ? Link : 'div'"
+          v-bind="user.isStaff ? { to: '/staff/me', 'aria-label': 'Мой кабинет' } : {}"
+          class="min-w-0 rounded-lg px-1 text-right"
+          :class="user.isStaff && 'hover:bg-white/10'"
+        >
           <p class="truncate text-sm font-semibold">{{ user.name }}</p>
-          <p class="text-paper/60 text-xs">{{ user.isStaff ? "Организатор" : "Кандидат" }}</p>
-        </div>
+          <p class="text-paper/60 text-xs">{{ user.isStaff ? "Организатор · мой кабинет" : "Кандидат" }}</p>
+        </component>
         <button
           type="button"
           class="text-paper/70 hover:text-paper grid size-10 shrink-0 place-items-center rounded-xl hover:bg-white/10"

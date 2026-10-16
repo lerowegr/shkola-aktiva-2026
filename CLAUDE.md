@@ -108,7 +108,9 @@ grammY · zod 4 · Tailwind 4 · Vitest. Без Auth.js: сессии свои, 
 app/pages/          login, tg, invite/[token]; cabinet/ — кандидат;
                     staff/ — организатор: мои, all, applications/[id],
                     homework (оценка ДЗ), assessment (ЦО), interviews, decisions, dashboards, stages;
-                    staff/admin/ — люди, роли, анкета и оценка, рассылки, журнал
+                    me — личный кабинет организатора (имя, вход, моя работа);
+                    staff/admin/ — люди (роли, блок, удаление с передачей работы),
+                    роли, анкета и оценка, рассылки, журнал
 app/layouts/staff   шапка с вкладками кабинета организатора
 app/components/     ui/* — базовые, app/* — общие, staff/* — кабинет мастера,
                     admin/* — формы админки, dash/* — графики дашборда,

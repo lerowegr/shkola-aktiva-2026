@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { refDebounced } from "@vueuse/core";
-import { Ban, Copy, KeyRound, Search, ShieldCheck, X } from "lucide-vue-next";
+import { Ban, Copy, KeyRound, Search, ShieldCheck, Trash2, X } from "lucide-vue-next";
 
 import type { PersonRow } from "~~/lib/admin/people";
 
-/** Люди: роли, блокировка, ссылки-приглашения. Справа — пригласить нового. */
+/**
+ * Люди: роли, блокировка, ссылки-приглашения, удаление организатора
+ * (только тех.админ — «люди» и «роли» вместе). Справа — пригласить нового.
+ */
 definePageMeta({ layout: "staff" });
 useHead({ title: "Люди" });
 
@@ -15,6 +18,42 @@ const scope = ref<"staff" | "all">("staff");
 const { data, refresh } = await useFetch<{ people: PersonRow[] }>("/api/admin/people", { query: { q, scope } });
 const { data: roles } = await useFetch<{ roles: { id: string; name: string; grantable: boolean }[] }>("/api/admin/roles");
 const user = await useSession();
+const { data: nav } = await useFetch("/api/staff/nav", { key: "staff-nav" });
+const canDelete = computed(() => Boolean(nav.value?.can.team && nav.value?.can.roles));
+
+// --- Удаление организатора ----------------------------------------------------
+interface DeleteCheck {
+  name: string;
+  scored: number;
+  assigned: number;
+  notes: number;
+  interviews: number;
+  groups: number;
+}
+const removing = ref<{ person: PersonRow; check: DeleteCheck | null; successor: string; pending: boolean } | null>(null);
+async function askDelete(person: PersonRow) {
+  removing.value = { person, check: null, successor: "", pending: false };
+  removing.value.check = await $fetch<DeleteCheck>("/api/admin/people/delete-check", { query: { userId: person.id } }).catch(() => null);
+}
+const hasWork = (check: DeleteCheck | null) => Boolean(check && check.scored + check.notes + check.interviews + check.groups > 0);
+const successors = computed(() =>
+  (data.value?.people ?? []).filter((item) => item.roles.length > 0 && !item.blocked && item.id !== removing.value?.person.id),
+);
+async function confirmDelete() {
+  const current = removing.value;
+  if (!current) return;
+  current.pending = true;
+  const result = await call(
+    "/api/admin/people/delete",
+    { userId: current.person.id, successorId: current.successor || null },
+    current.person.id,
+  );
+  current.pending = false;
+  if (result.ok) {
+    removing.value = null;
+    message.value = { id: "deleted", ok: true, text: result.message ?? "Удалён." };
+  }
+}
 
 const open = ref<string | null>(null);
 const message = ref<{ id: string; ok: boolean; text: string } | null>(null);
@@ -69,6 +108,7 @@ function initialsOf(name: string) {
             Организаторы и кандидаты. Роль можно выдать или снять, только если все её права есть у вас.
           </p>
         </div>
+        <UiNotice v-if="message?.id === 'deleted'" :ok="message.ok" :message="message.text" />
 
         <div class="flex flex-col gap-2 sm:flex-row">
           <label class="relative flex-1">
@@ -176,6 +216,14 @@ function initialsOf(name: string) {
                   <Ban class="size-4" aria-hidden="true" /> {{ person.blocked ? "Вернуть доступ" : "Заблокировать" }}
                 </button>
                 <button
+                  v-if="canDelete && person.roles.length > 0 && !person.isOwner && person.id !== user?.id"
+                  type="button"
+                  class="border-danger/40 text-danger hover:border-danger flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm"
+                  @click="askDelete(person)"
+                >
+                  <Trash2 class="size-4" aria-hidden="true" /> Удалить
+                </button>
+                <button
                   v-if="person.nickname"
                   type="button"
                   class="border-line bg-card hover:border-ink-soft flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm"
@@ -190,6 +238,36 @@ function initialsOf(name: string) {
                 <button type="button" class="text-accent flex items-center gap-1 text-xs font-semibold" @click="copy(links[person.id]!)">
                   <Copy class="size-3.5" aria-hidden="true" /> Скопировать
                 </button>
+              </div>
+              <div v-if="removing?.person.id === person.id" class="border-danger/40 bg-card flex flex-col gap-3 rounded-2xl border p-3">
+                <p class="text-sm font-semibold">Удалить {{ person.name }} совсем?</p>
+                <p class="text-ink-soft text-sm">
+                  Аккаунт, роли и входы пропадут, вернуть их нельзя. Если человек просто временно не участвует —
+                  лучше «Заблокировать».
+                </p>
+                <p v-if="!removing.check" class="text-ink-soft text-sm">Смотрим, есть ли у него работа…</p>
+                <template v-else>
+                  <ul class="text-sm">
+                    <li>Оценок с баллами: <b>{{ removing.check.scored }}</b>, назначено без оценки: <b>{{ removing.check.assigned }}</b></li>
+                    <li>Заметок собеседований: <b>{{ removing.check.notes }}</b>, собеседований впереди: <b>{{ removing.check.interviews }}</b></li>
+                    <li>Групп ЦО: <b>{{ removing.check.groups }}</b></li>
+                  </ul>
+                  <UiSelect v-model="removing.successor" :label="hasWork(removing.check) ? 'Кому передать работу — баллы сохранятся' : 'Кому передать назначения — необязательно'" size="md">
+                    <option value="">{{ hasWork(removing.check) ? "Выберите организатора" : "Никому — снять назначения" }}</option>
+                    <option v-for="item in successors" :key="item.id" :value="item.id">{{ item.name }}</option>
+                  </UiSelect>
+                </template>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    class="bg-danger rounded-xl px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    :disabled="!removing.check || removing.pending || (hasWork(removing.check) && !removing.successor)"
+                    @click="confirmDelete"
+                  >
+                    {{ removing.pending ? "Удаляем…" : "Удалить" }}
+                  </button>
+                  <button type="button" class="border-line rounded-xl border px-3 py-2 text-sm" @click="removing = null">Отмена</button>
+                </div>
               </div>
               <UiNotice v-if="message?.id === person.id" :ok="message.ok" :message="message.text" />
             </div>
