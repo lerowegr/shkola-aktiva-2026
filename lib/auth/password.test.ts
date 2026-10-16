@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { randomBytes, scryptSync } from "node:crypto";
 
-import { hashPassword, verifyPassword } from "./password";
+import { hashPassword, needsRehash, verifyPassword } from "./password";
 
 describe("hashPassword / verifyPassword", () => {
   it("принимает верный пароль и отвергает неверный", async () => {
@@ -30,12 +31,16 @@ describe("hashPassword / verifyPassword", () => {
     expect(await verifyPassword("что угодно", "scrypt$99$8$1$c2FsdA==$aGFzaA==")).toBe(false);
   });
 
-  it("проверяет хеш по параметрам из самой строки", async () => {
-    // Хеш, посчитанный с более дешёвыми настройками, обязан продолжать
-    // работать: иначе поднятие стоимости заперло бы снаружи всех разом.
-    const cheap = "scrypt$14$8$1$";
-    const hash = await hashPassword("проверка");
-    expect(hash.startsWith("scrypt$16$8$1$")).toBe(true);
-    expect(cheap.startsWith("scrypt$")).toBe(true);
+  it("старый хеш (2^16) по-прежнему впускает и помечается на пересчёт", async () => {
+    // Параметры читаются из самой строки: смена стоимости никого не запирает.
+    const salt = randomBytes(16);
+    const key = scryptSync("проверка", salt, 64, { N: 1 << 16, r: 8, p: 1, maxmem: 80 * 1024 * 1024 });
+    const old = ["scrypt", 16, 8, 1, salt.toString("base64"), key.toString("base64")].join("$");
+    expect(await verifyPassword("проверка", old)).toBe(true);
+    expect(needsRehash(old)).toBe(true);
+
+    const fresh = await hashPassword("проверка");
+    expect(fresh.startsWith("scrypt$14$8$1$")).toBe(true);
+    expect(needsRehash(fresh)).toBe(false);
   });
 });

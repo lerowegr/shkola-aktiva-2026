@@ -175,6 +175,7 @@ const state = {
   duration: 60,
   staff: 0,
   submit: false,
+  maxP95: 3,
   startedAt: 0,
   stoppedAt: 0,
   reason: "",
@@ -368,6 +369,8 @@ function start(input) {
   const rate = Number(input.rate);
   const duration = Number(input.duration);
   const staff = Number(input.staff ?? 0);
+  const maxP95 = Number(input.maxP95 ?? 3);
+  if (!(maxP95 >= 1 && maxP95 <= 15)) return { ok: false, message: "Порог автостопа — от 1 до 15 секунд." };
   if (!(rate > 0 && rate <= LIMITS.rate)) return { ok: false, message: `Скорость — от 0,1 до ${LIMITS.rate} регистраций в секунду.` };
   if (!(Number.isInteger(duration) && duration >= 5 && duration <= LIMITS.duration)) return { ok: false, message: `Длительность — от 5 до ${LIMITS.duration} секунд.` };
   if (!(Number.isInteger(staff) && staff >= 0 && staff <= LIMITS.staff)) return { ok: false, message: `Организаторов — от 0 до ${LIMITS.staff}.` };
@@ -390,6 +393,7 @@ function start(input) {
     duration,
     staff,
     submit: Boolean(input.submit) && TARGETS[target].submit,
+    maxP95,
     startedAt: Date.now(),
     stoppedAt: 0,
     reason: "",
@@ -422,7 +426,7 @@ function start(input) {
       const errors = recent.reduce((sum, s) => sum + s.errors, 0);
       const p95 = quantile(recent.flatMap((s) => s.latencies), 0.95);
       if (requests > 20 && errors / requests > 0.05) return stop(`автостоп: ошибок ${Math.round((100 * errors) / requests)}% за 10 с`);
-      if (requests > 20 && p95 > 3000) return stop(`автостоп: 95% ответов дольше ${(p95 / 1000).toFixed(1)} с`);
+      if (requests > 20 && p95 > state.maxP95 * 1000) return stop(`автостоп: 95% ответов дольше ${(p95 / 1000).toFixed(1)} с`);
     }
   }, 100);
   return { ok: true };

@@ -73,6 +73,9 @@
       <label>Организаторов одновременно
         <input id="staff" type="number" min="0" max="50" value="20">
       </label>
+      <label>Автостоп, если 95% ответов дольше, с
+        <input id="maxP95" type="number" min="1" max="15" step="0.5" value="3">
+      </label>
       <label style="flex-direction:row;align-items:center;gap:8px">
         <input id="submit" type="checkbox"> отправлять анкету (только локальная копия)
       </label>
@@ -243,7 +246,7 @@ $("start").addEventListener("click", async () => {
   const rate = Number($("rate").value), duration = Number($("duration").value);
   if (target === "prod" && !confirm(`Нагрузка на боевой сайт: ${rate} регистраций в секунду, ${duration} с. Живые люди в это время тоже пользуются сайтом. Запускаем?`)) return;
   notice($("runNotice"), null);
-  const result = await post("/start", { target, rate, duration, staff: Number($("staff").value), submit: $("submit").checked });
+  const result = await post("/start", { target, rate, duration, staff: Number($("staff").value), maxP95: Number($("maxP95").value), submit: $("submit").checked });
   if (!result.ok) notice($("runNotice"), result);
 });
 $("stop").addEventListener("click", () => post("/stop", {}));

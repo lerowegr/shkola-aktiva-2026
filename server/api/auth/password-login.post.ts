@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { verifyPassword } from "~~/lib/auth/password";
+import { hashPassword, needsRehash, verifyPassword } from "~~/lib/auth/password";
 import { normalizeEmail } from "~~/lib/auth/email";
 import { loginKind, normalizeLogin } from "~~/lib/auth/login";
 import { tempPasswordMatches } from "~~/lib/auth/temp-password";
@@ -16,7 +16,7 @@ import { startSession } from "~~/server/utils/session";
  * ответа снаружи вычитывается, чьи адреса есть в системе.
  */
 const ABSENT =
-  "scrypt$16$8$1$AAAAAAAAAAAAAAAAAAAAAA==$" +
+  "scrypt$14$8$1$AAAAAAAAAAAAAAAAAAAAAA==$" +
   "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 const schema = z.object({
@@ -92,6 +92,11 @@ export default defineAction(schema, async ({ body, event }) => {
   }
 
   await clearMisses(email);
+  // Пароль со старыми, более тяжёлыми параметрами — пересчитываем: так у всех
+  // одинаковое время проверки, и по нему не отличить старый аккаунт от нового.
+  if (ok && needsRehash(user.passwordHash)) {
+    await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(body.password) } });
+  }
   if (temporary) await db.user.update({ where: { id: user.id }, data: { mustChangePassword: true } });
   await startSession(event, user.id);
 
