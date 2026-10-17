@@ -37,7 +37,7 @@ const form = reactive({
 const FORMATS = [
   { key: "", label: "Любой текст" },
   { key: "DIGITS", label: "Только цифры" },
-  { key: "GROUP", label: "Номер группы — ТЦБМ23-2" },
+  { key: "GROUP", label: "Номер группы — Ю26-3В или ТЦБМ23-2" },
   { key: "PHONE", label: "Телефон — +7 (XXX) XXX-XX-XX" },
   { key: "VK", label: "ВКонтакте — ссылка на vk.ru" },
   { key: "TELEGRAM", label: "Telegram — @ник" },

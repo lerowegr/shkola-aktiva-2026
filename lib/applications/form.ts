@@ -53,7 +53,7 @@ const TELEGRAM_HOSTS = /^(?:https?:\/\/)?(?:www\.)?(?:t\.me|telegram\.me)\//i;
 /** Пример под каждый формат — в подсказке поля и в тексте ошибки. */
 export const FORMAT_EXAMPLE: Record<QuestionFormat, string> = {
   DIGITS: "1901234",
-  GROUP: "ТЦБМ23-2",
+  GROUP: "Ю26-3В",
   PHONE: "+7 999 123-45-67",
   VK: "vk.ru/ivan",
   TELEGRAM: "@ivan_petrov",
@@ -75,9 +75,9 @@ export function formatValue(format: QuestionFormat, raw: string): Formatted {
 
     case "GROUP": {
       const group = value.replace(/\s+/g, "").replace(/[–—]/g, "-").toUpperCase();
-      return /^[А-ЯЁA-Z]{1,8}\d{2}-\d{1,2}$/.test(group)
+      return /^[А-ЯЁA-Z]{1,8}\d{2}-\d{1,2}[А-ЯЁA-Z]?$/.test(group)
         ? { ok: true, value: group }
-        : { ok: false, message: "Номер группы — буквы, две цифры года и номер через дефис, например ТЦБМ23-2." };
+        : { ok: false, message: "Номер группы — буквы, две цифры года и номер через дефис; в конце может быть буква. Например, Ю26-3В или ТЦБМ23-2." };
     }
 
     case "PHONE": {

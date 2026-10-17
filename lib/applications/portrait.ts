@@ -485,7 +485,7 @@ export const PORTRAIT_QUESTIONS: PortraitQuestion[] = [
     section: "Контактная информация",
     type: "SHORT_TEXT",
     label: "Номер учебной группы",
-    help: "Например, ТЦБМ23-2",
+    help: "Например, Ю26-3В или ТЦБМ23-2",
     format: "GROUP",
   },
   { section: "Контактная информация", type: "SHORT_TEXT", label: "Ссылка на ВК", help: "Например, vk.ru/ivan", format: "VK" },

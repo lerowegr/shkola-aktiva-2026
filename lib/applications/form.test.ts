@@ -81,7 +81,7 @@ describe("submitProblems — что мешает отправить", () => {
     expect(submitProblems([group], { "study-group": "ТЦБМ2023/2" }, profile)).toEqual([
       {
         field: "study-group",
-        message: "Номер группы — буквы, две цифры года и номер через дефис, например ТЦБМ23-2.",
+        message: "Номер группы — буквы, две цифры года и номер через дефис; в конце может быть буква. Например, Ю26-3В или ТЦБМ23-2.",
       },
     ]);
   });
@@ -146,6 +146,8 @@ describe("formatValue — приведение к единому виду", () =
 
   it("группа: от одной буквы до восьми, верхний регистр, пробелы и тире нормализуются", () => {
     expect(formatValue("GROUP", "ю26-3")).toEqual(ok("Ю26-3"));
+    expect(formatValue("GROUP", "ю26-3в")).toEqual(ok("Ю26-3В"));
+    expect(formatValue("GROUP", "ю26-3в ")).toEqual(ok("Ю26-3В"));
     expect(formatValue("GROUP", "тцбм 23-2")).toEqual(ok("ТЦБМ23-2"));
     expect(formatValue("GROUP", "ТЦБМ23–12")).toEqual(ok("ТЦБМ23-12"));
     expect(formatValue("GROUP", "  АБ 24—1  ")).toEqual(ok("АБ24-1"));
@@ -155,6 +157,7 @@ describe("formatValue — приведение к единому виду", () =
     expect(formatValue("GROUP", "ТЦБМ23/2").ok).toBe(false);
     expect(formatValue("GROUP", "ТЦБМ23-").ok).toBe(false);
     expect(formatValue("GROUP", "ТЦБМ23-123").ok).toBe(false);
+    expect(formatValue("GROUP", "Ю26-3ВГ").ok).toBe(false);
     expect(formatValue("GROUP", "1ТЦБМ23-2").ok).toBe(false);
     expect(formatValue("GROUP", "ТЦБМ_23-2").ok).toBe(false);
     expect(formatValue("GROUP", "ТЦБМ2З-2").ok).toBe(false);
