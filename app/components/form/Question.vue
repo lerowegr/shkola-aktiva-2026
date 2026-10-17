@@ -129,6 +129,7 @@ const shown = computed(() => {
     <div v-if="homework && question.type === 'URL' && !readonly" class="bg-paper flex flex-col gap-2 rounded-2xl p-4 text-sm">
       <p class="font-medium">Ссылка на папку Google Диска</p>
       <p>Загрузи выполненные задания в папку на Google Диске и вставь ссылку на папку в поле ниже. Открой доступ к просмотру всем, у кого есть ссылка.</p>
+      <p class="text-danger font-medium">Проверьте, чтобы доступ к папке по ссылке был настроен на уровне «Редактор» или «Комментатор», иначе мы не сможем посмотреть Ваше ДЗ.</p>
       <p>Назови файлы по номеру задания: <span class="font-medium">SHA 2026_задание 1</span>, <span class="font-medium">SHA 2026_задание 2</span>, <span class="font-medium">SHA 2026_задание 3</span>.</p>
     </div>
 
