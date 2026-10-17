@@ -151,6 +151,27 @@ summary::marker {
   content: "";
 }
 
+/* Переходы между разделами кабинета мастера: коротко, без движения у тех,
+   кто включил системное уменьшение анимации. */
+@media (prefers-reduced-motion: no-preference) {
+  .staff-page-enter-active,
+  .staff-page-leave-active {
+    transition:
+      opacity 0.22s ease,
+      transform 0.22s cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .staff-page-enter-from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  .staff-page-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
 /*
  * Кнопки лендинга. Скругления на главной: кнопки и плашки — круглые,
  * карточки — 24px. В кабинетах свои кнопки (UiButton).

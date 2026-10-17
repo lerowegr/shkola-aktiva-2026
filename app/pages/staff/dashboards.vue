@@ -134,8 +134,10 @@ function time(date: Date) {
         <div role="tablist" class="bg-paper border-line flex max-w-full flex-wrap gap-1 self-start rounded-2xl border p-1">
           <button
             v-for="item in STAGES"
+            :id="`stage-tab-${item.key}`"
             :key="item.key"
             type="button"
+            aria-controls="stage-review-panel"
             role="tab"
             :aria-selected="stage === item.key"
             class="rounded-xl px-3 py-1.5 text-sm whitespace-nowrap"
@@ -147,22 +149,32 @@ function time(date: Date) {
           </button>
         </div>
 
-        <p v-if="!stats?.reviewers.length" class="text-ink-soft text-sm">На этом этапе работы ещё не назначены.</p>
-        <div v-else class="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <DashReviewers :reviewers="stats.reviewers" :overall="stats.overall" :max="stats.max" />
-          <div class="flex min-w-0 flex-col gap-2">
-            <h3 class="text-sm font-medium">Итоговые баллы проверенных работ</h3>
-            <p v-if="!stats.histogram.some(Boolean)" class="text-ink-soft text-sm">
-              Пока ни одной полностью проверенной работы.
-            </p>
-            <DashHistogram
-              v-else
-              :counts="stats.histogram"
-              :mean="stats.overall"
-              :caption="`Распределение итоговых баллов, этап «${STAGES.find((item) => item.key === stage)?.label}»`"
-            />
+        <Transition name="dash-stage" mode="out-in">
+          <div
+            id="stage-review-panel"
+            :key="stage"
+            role="tabpanel"
+            :aria-labelledby="`stage-tab-${stage}`"
+            class="min-h-16"
+          >
+            <p v-if="!stats?.reviewers.length" class="text-ink-soft text-sm">На этом этапе работы ещё не назначены.</p>
+            <div v-else class="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+              <DashReviewers :reviewers="stats.reviewers" :overall="stats.overall" :max="stats.max" />
+              <div class="flex min-w-0 flex-col gap-2">
+                <h3 class="text-sm font-medium">Итоговые баллы проверенных работ</h3>
+                <p v-if="!stats.histogram.some(Boolean)" class="text-ink-soft text-sm">
+                  Пока ни одной полностью проверенной работы.
+                </p>
+                <DashHistogram
+                  v-else
+                  :counts="stats.histogram"
+                  :mean="stats.overall"
+                  :caption="`Распределение итоговых баллов, этап «${STAGES.find((item) => item.key === stage)?.label}»`"
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        </Transition>
       </DashCard>
 
       <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
@@ -236,3 +248,22 @@ function time(date: Date) {
     </div>
   </main>
 </template>
+
+<style scoped>
+@media (prefers-reduced-motion: no-preference) {
+  .dash-stage-enter-active,
+  .dash-stage-leave-active {
+    transition:
+      opacity 0.16s ease,
+      transform 0.16s cubic-bezier(0.2, 0, 0, 1);
+  }
+  .dash-stage-enter-from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  .dash-stage-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+</style>
