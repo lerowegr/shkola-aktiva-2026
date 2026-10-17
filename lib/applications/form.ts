@@ -75,7 +75,7 @@ export function formatValue(format: QuestionFormat, raw: string): Formatted {
 
     case "GROUP": {
       const group = value.replace(/\s+/g, "").replace(/[–—]/g, "-").toUpperCase();
-      return /^[А-ЯЁA-Z]{2,8}\d{2}-\d{1,2}$/.test(group)
+      return /^[А-ЯЁA-Z]{1,8}\d{2}-\d{1,2}$/.test(group)
         ? { ok: true, value: group }
         : { ok: false, message: "Номер группы — буквы, две цифры года и номер через дефис, например ТЦБМ23-2." };
     }

@@ -144,7 +144,8 @@ describe("formatValue — приведение к единому виду", () =
     expect(formatValue("PHONE", "5 999 123 45 67").ok).toBe(false);
   });
 
-  it("группа: формат по образцу, верхний регистр, пробелы и тире нормализуются", () => {
+  it("группа: от одной буквы до восьми, верхний регистр, пробелы и тире нормализуются", () => {
+    expect(formatValue("GROUP", "ю26-3")).toEqual(ok("Ю26-3"));
     expect(formatValue("GROUP", "тцбм 23-2")).toEqual(ok("ТЦБМ23-2"));
     expect(formatValue("GROUP", "ТЦБМ23–12")).toEqual(ok("ТЦБМ23-12"));
     expect(formatValue("GROUP", "  АБ 24—1  ")).toEqual(ok("АБ24-1"));
@@ -157,6 +158,7 @@ describe("formatValue — приведение к единому виду", () =
     expect(formatValue("GROUP", "1ТЦБМ23-2").ok).toBe(false);
     expect(formatValue("GROUP", "ТЦБМ_23-2").ok).toBe(false);
     expect(formatValue("GROUP", "ТЦБМ2З-2").ok).toBe(false);
+    expect(formatValue("GROUP", "ТЦБМВУЗКФ23-2").ok).toBe(false);
   });
 
   it("только цифры: пробелы убираются, буквы — ошибка", () => {
