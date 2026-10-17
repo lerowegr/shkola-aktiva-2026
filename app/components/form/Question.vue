@@ -125,6 +125,12 @@ const shown = computed(() => {
     <!-- Задания ДЗ — на всю ширину карточки: в колонке у номера им тесно. -->
     <FormRichHelp v-if="question.help && homework" :text="question.help" />
 
+    <div v-if="homework && question.type === 'URL' && !readonly" class="bg-paper flex flex-col gap-2 rounded-2xl p-4 text-sm">
+      <p class="font-medium">Ссылка на папку Google Диска</p>
+      <p>Загрузи выполненные задания в папку на Google Диске и вставь ссылку на папку в поле ниже. Открой доступ к просмотру всем, у кого есть ссылка.</p>
+      <p>Назови файлы по номеру задания: <span class="font-medium">SHA 2026_задание 1</span>, <span class="font-medium">SHA 2026_задание 2</span>, <span class="font-medium">SHA 2026_задание 3</span>.</p>
+    </div>
+
     <p v-if="readonly" class="pl-10 whitespace-pre-line" :class="shown ? '' : 'text-ink-soft'">
       {{ shown || "Нет ответа" }}
     </p>
@@ -176,7 +182,8 @@ const shown = computed(() => {
       :maxlength="question.maxLength ?? undefined"
       :aria-invalid="!!error || undefined"
       :placeholder="placeholder"
-      class="border-line bg-paper focus:border-accent focus:ring-accent/20 min-h-12 rounded-2xl border px-4 text-base outline-none focus:ring-4 sm:ml-10"
+      class="border-line bg-paper focus:border-accent focus:ring-accent/20 min-h-12 min-w-0 rounded-2xl border px-4 text-base outline-none focus:ring-4"
+      :class="homework ? '' : 'sm:ml-10'"
       @blur="tidy"
     >
 

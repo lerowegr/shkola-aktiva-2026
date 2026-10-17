@@ -1,4 +1,5 @@
 import { materializeReminders } from "~~/lib/interviews/reminders";
+import { materializeApplicationDeadline, materializeAssessmentReminders } from "~~/lib/notifications/selection-reminders";
 import { materializeStageOpen } from "~~/lib/notifications/stage-open";
 import { createPushSender } from "~~/lib/notifications/push-sender";
 import { createTelegramSender } from "~~/lib/notifications/telegram-sender";
@@ -28,12 +29,14 @@ export default defineNitroPlugin((nitroApp) => {
     if (running) return;
     running = true;
     try {
-      // Напоминания о собеседованиях и «анкета открылась» — раз в минуту,
+      // Напоминания об этапах и «анкета открылась» — раз в минуту,
       // а не каждые 5 секунд.
       if (Date.now() - lastReminders >= 60_000) {
         lastReminders = Date.now();
         await materializeReminders();
         await materializeStageOpen();
+        await materializeApplicationDeadline();
+        await materializeAssessmentReminders();
       }
       const result = await processDeliveries({ senders });
       if (result.sent + result.failed > 0) {

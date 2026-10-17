@@ -121,6 +121,21 @@ function showProblems(problems: SubmitProblem[]) {
 }
 
 const checking = ref(false);
+const savingDraft = ref(false);
+const draftMessage = ref<string | null>(null);
+async function saveDraft() {
+  savingDraft.value = true;
+  draftMessage.value = null;
+  try {
+    await props.flush();
+    if (props.saveState === "error") return;
+    draftMessage.value = "Анкета сохранена. Можно вернуться позже, добавить домашнее задание и отправить всё вместе до дедлайна.";
+  } catch {
+    draftMessage.value = "Не удалось сохранить анкету. Проверь интернет и попробуй ещё раз, прежде чем закрывать страницу.";
+  } finally {
+    savingDraft.value = false;
+  }
+}
 async function next() {
   checking.value = true;
   try {
@@ -223,8 +238,8 @@ const shown = (value: AnswerValue | undefined) => (Array.isArray(value) ? value.
         @update:model-value="setAnswer(item.question.id, $event)"
       />
 
-      <div class="flex gap-2">
-        <div v-if="current > 0" class="w-40 shrink-0">
+      <div class="flex flex-col gap-2 sm:flex-row">
+        <div v-if="current > 0" class="sm:w-40 sm:shrink-0">
           <UiButton variant="ghost" @click="go(current - 1)"><ArrowLeft class="size-5" aria-hidden="true" /> Назад</UiButton>
         </div>
         <UiButton :pending="checking" @click="next">
@@ -283,5 +298,13 @@ const shown = (value: AnswerValue | undefined) => (Array.isArray(value) ? value.
         <UiButton v-else @click="confirming = true"><Send class="size-5" aria-hidden="true" /> Отправить анкету</UiButton>
       </div>
     </section>
+
+    <div class="border-line flex flex-col gap-3 border-t pt-4">
+      <p class="text-ink-soft text-sm">Ответы сохраняются автоматически. Домашнее задание можно добавить позже — до отправки анкеты.</p>
+      <UiButton variant="ghost" :pending="savingDraft" :disabled="sending || checking" @click="saveDraft">
+        <CloudCheck class="size-5 shrink-0" aria-hidden="true" /> Сохранить и продолжить позже
+      </UiButton>
+      <p v-if="draftMessage" class="text-ink-soft text-sm" role="status">{{ draftMessage }}</p>
+    </div>
   </div>
 </template>
