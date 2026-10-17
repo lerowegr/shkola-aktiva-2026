@@ -117,6 +117,7 @@ function showProblems(problems: SubmitProblem[]) {
   nextTick(() => {
     const target = document.getElementById(first.field in props.profile ? `p-${first.field}` : `q-${first.field}`);
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    target?.querySelector<HTMLElement>("input, textarea, button")?.focus({ preventScroll: true });
   });
 }
 

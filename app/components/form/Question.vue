@@ -31,6 +31,7 @@ const props = defineProps<{
 
 const model = defineModel<AnswerValue | undefined>();
 const id = useId();
+const errorId = `${id}-error`;
 
 const text = computed({
   get: () => (typeof model.value === "string" ? model.value : ""),
@@ -139,6 +140,7 @@ const shown = computed(() => {
       v-else-if="question.type === 'SINGLE_CHOICE' || question.type === 'MULTI_CHOICE'"
       :role="question.type === 'SINGLE_CHOICE' ? 'radiogroup' : 'group'"
       :aria-labelledby="id"
+      :aria-describedby="error ? errorId : undefined"
       class="flex flex-wrap gap-2 sm:pl-10"
     >
       <button
@@ -167,6 +169,7 @@ const shown = computed(() => {
       rows="3"
       :maxlength="question.maxLength ?? undefined"
       :aria-invalid="!!error || undefined"
+      :aria-describedby="error ? errorId : undefined"
       class="border-line bg-paper focus:border-accent focus:ring-accent/20 min-h-24 resize-none rounded-2xl border px-4 py-3 text-base outline-none focus:ring-4 sm:ml-10"
       placeholder="Ваш ответ"
     />
@@ -181,6 +184,7 @@ const shown = computed(() => {
       :autocapitalize="question.format === 'GROUP' ? 'characters' : 'off'"
       :maxlength="question.maxLength ?? undefined"
       :aria-invalid="!!error || undefined"
+      :aria-describedby="error ? errorId : undefined"
       :placeholder="placeholder"
       class="border-line bg-paper focus:border-accent focus:ring-accent/20 min-h-12 min-w-0 rounded-2xl border px-4 text-base outline-none focus:ring-4"
       :class="homework ? '' : 'sm:ml-10'"
@@ -192,6 +196,6 @@ const shown = computed(() => {
       {{ counter.text }}
     </p>
     <p v-if="driveAdvice" class="bg-brand-yellow-soft rounded-2xl px-4 py-3 text-sm sm:ml-10" aria-live="polite">{{ driveAdvice }}</p>
-    <p v-if="error" class="text-danger text-sm sm:pl-10">{{ error }}</p>
+    <p v-if="error" :id="errorId" class="text-danger text-sm sm:pl-10" aria-live="polite">{{ error }}</p>
   </div>
 </template>

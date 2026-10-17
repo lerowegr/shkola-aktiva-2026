@@ -76,6 +76,23 @@ describe("submitProblems — что мешает отправить", () => {
     expect(problems).toEqual([{ field: "q1", message: "Ответьте на вопрос «Хобби»." }]);
   });
 
+  it("ошибка формата группы адресована конкретному вопросу и подсказывает образец", () => {
+    const group = q({ id: "study-group", label: "Номер учебной группы", format: "GROUP" });
+    expect(submitProblems([group], { "study-group": "ТЦБМ2023/2" }, profile)).toEqual([
+      {
+        field: "study-group",
+        message: "Номер группы — буквы, две цифры года и номер через дефис, например ТЦБМ23-2.",
+      },
+    ]);
+  });
+
+  it("проверка шага возвращает только ошибки его полей, а не соседних вопросов", () => {
+    const group = q({ id: "study-group", format: "GROUP" });
+    const phone = q({ id: "phone", format: "PHONE" });
+    expect(stepProblems([group, phone], { "study-group": "ТЦБМ2023", phone: "123" }, profile, ["study-group"]))
+      .toMatchObject([{ field: "study-group" }]);
+  });
+
   it("ссылка проверяется при отправке", () => {
     const url = q({ type: "URL", label: "ВК" });
     expect(submitProblems([url], { q1: "vk.com/id1" }, profile)).toEqual([]);
@@ -127,11 +144,19 @@ describe("formatValue — приведение к единому виду", () =
     expect(formatValue("PHONE", "5 999 123 45 67").ok).toBe(false);
   });
 
-  it("группа: верхний регистр без пробелов, длинное тире — дефис", () => {
+  it("группа: формат по образцу, верхний регистр, пробелы и тире нормализуются", () => {
     expect(formatValue("GROUP", "тцбм 23-2")).toEqual(ok("ТЦБМ23-2"));
     expect(formatValue("GROUP", "ТЦБМ23–12")).toEqual(ok("ТЦБМ23-12"));
+    expect(formatValue("GROUP", "  АБ 24—1  ")).toEqual(ok("АБ24-1"));
+    expect(formatValue("GROUP", "ABCDEFGH99-99")).toEqual(ok("ABCDEFGH99-99"));
     expect(formatValue("GROUP", "ТЦБМ").ok).toBe(false);
+    expect(formatValue("GROUP", "ТЦБМ2023-2").ok).toBe(false);
     expect(formatValue("GROUP", "ТЦБМ23/2").ok).toBe(false);
+    expect(formatValue("GROUP", "ТЦБМ23-").ok).toBe(false);
+    expect(formatValue("GROUP", "ТЦБМ23-123").ok).toBe(false);
+    expect(formatValue("GROUP", "1ТЦБМ23-2").ok).toBe(false);
+    expect(formatValue("GROUP", "ТЦБМ_23-2").ok).toBe(false);
+    expect(formatValue("GROUP", "ТЦБМ2З-2").ok).toBe(false);
   });
 
   it("только цифры: пробелы убираются, буквы — ошибка", () => {
