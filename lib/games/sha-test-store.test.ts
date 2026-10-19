@@ -23,6 +23,7 @@ describe("тест про ША на базе", () => {
 
   it("вопросы без верных ответов, одна попытка, второй раз — отказ", async () => {
     const user = await db.user.create({ data: { firstName: "Аня" } });
+    expect(user.onboardedAt).toBeNull();
     const before = await loadCandidateTest(user.id);
     expect(before.done).toBeNull();
     expect(before.questions).toHaveLength(2);
@@ -38,6 +39,11 @@ describe("тест про ША на базе", () => {
     const after = await loadCandidateTest(user.id);
     expect(after.done).toMatchObject({ score: 1, total: 2, fromBot: false });
     expect(after.questions).toEqual([]);
+
+    // Регистрация после теста не теряет попытку и не разрешает новую.
+    await db.user.update({ where: { id: user.id }, data: { onboardedAt: new Date() } });
+    expect((await loadCandidateTest(user.id)).done).toMatchObject({ score: 1, total: 2 });
+    expect(await submitTest(user.id, answers)).toMatchObject({ ok: false });
   });
 
   it("результат из бота находится по Telegram и привязывается", async () => {

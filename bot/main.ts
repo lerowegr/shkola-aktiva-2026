@@ -17,6 +17,8 @@ import { issueTempPassword } from "../lib/auth/temp-password";
 import { confirmLoginCode, linkTelegram } from "../lib/auth/telegram-users";
 import { receiveFromTelegram } from "../lib/messages/bot-inbox";
 
+import { entryGreeting, entryKeyboard } from "./entry";
+
 const APP_URL = (process.env.NUXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
 function telegramUser(ctx: Context) {
@@ -28,20 +30,6 @@ function telegramUser(ctx: Context) {
     username: from.username ?? null,
   };
 }
-
-/**
- * Кнопка «Открыть» — только на https: Telegram не открывает Mini App по
- * http и не принимает ссылки на localhost. Локально бот просто пишет адрес.
- */
-function openKeyboard(): InlineKeyboard | undefined {
-  if (!APP_URL.startsWith("https://")) return undefined;
-  return new InlineKeyboard().webApp("Открыть Школу Актива", `${APP_URL}/tg`);
-}
-
-const GREETING =
-  "Привет! Это бот Школы Актива 2026.\n\n" +
-  "Здесь приходят новости отбора: когда открылся этап, сколько осталось до дедлайна и что ответили организаторы.\n\n" +
-  "Есть вопрос — просто напишите его сюда, организаторы ответят.";
 
 /**
  * «Забыли пароль?» на сайте ведёт сюда: Telegram уже знает, кто это, и
@@ -127,8 +115,8 @@ export function createBot(token: string): Bot {
     }
 
     await ctx.reply(
-      openKeyboard() ? GREETING : `${GREETING}\n\nСайт: ${APP_URL}`,
-      { reply_markup: openKeyboard() },
+      entryGreeting(APP_URL),
+      { reply_markup: entryKeyboard(APP_URL) },
     );
   });
 

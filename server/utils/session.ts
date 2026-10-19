@@ -124,9 +124,10 @@ export async function requireSignedIn(event: AppEvent): Promise<CurrentUser> {
 }
 
 /**
- * Для действий кандидата в отборе: анкета, тест, домашка, запись. Без
+ * Для действий кандидата в отборе: анкета, домашка, запись. Без
  * знакомства ничего из этого не принимаем —
  * страница сама уводит на /cabinet/welcome, а это — на случай прямого запроса.
+ * Тест про ША доступен до знакомства и требует только входа.
  */
 export async function requireProfile(event: AppEvent): Promise<CurrentUser> {
   const user = await requireSignedIn(event);

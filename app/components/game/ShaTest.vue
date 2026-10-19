@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ArrowLeft, ArrowRight, Check, Send } from "lucide-vue-next";
 
+import type { CurrentUser } from "~~/lib/auth/actor";
+import { testNextAction } from "~~/lib/auth/miniapp-entry";
 import type { ActionResult } from "~/composables/useAction";
 
 /**
@@ -15,7 +17,9 @@ interface TestData {
   questions: { id: string; text: string; options: string[] }[];
 }
 
-const { data, refresh, pending } = useFetch<TestData>("/api/cabinet/test");
+const { data, refresh, pending, error } = useFetch<TestData>("/api/cabinet/test");
+const user = useState<CurrentUser | null>("session", () => null);
+const nextAction = computed(() => testNextAction(user.value));
 
 const phase = ref<"intro" | "question" | "result">("intro");
 const index = ref(0);
@@ -109,6 +113,11 @@ function word(score: number) {
   <div class="flex flex-col gap-4">
     <div v-if="pending && !data" class="bg-line/60 h-56 animate-pulse rounded-3xl" aria-hidden="true" />
 
+    <div v-else-if="error && !data" class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5">
+      <UiNotice message="Не получилось загрузить тест. Проверьте интернет и попробуйте ещё раз." />
+      <UiButton :pending="pending" @click="refresh()">Попробовать ещё раз</UiButton>
+    </div>
+
     <!-- Итог: пройден сейчас или раньше -->
     <section
       v-else-if="shown && (phase === 'result' || data?.done)"
@@ -130,6 +139,14 @@ function word(score: number) {
           <UiButton variant="telegram" href="https://t.me/schoolofactivity" target="_blank">Наш Telegram</UiButton>
           <UiButton variant="ghost" href="https://vk.ru/schoolofactivity" target="_blank">Наш ВК</UiButton>
         </div>
+      </div>
+      <div class="flex w-full flex-col gap-2">
+        <UiButton :href="nextAction.href">
+          {{ nextAction.label }} <ArrowRight class="size-4 shrink-0" aria-hidden="true" />
+        </UiButton>
+        <NuxtLink v-if="nextAction.href !== '/'" to="/" class="text-ink-soft hover:text-ink inline-flex min-h-11 items-center justify-center text-sm">
+          Перейти на сайт ША
+        </NuxtLink>
       </div>
     </section>
 

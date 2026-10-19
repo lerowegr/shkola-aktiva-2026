@@ -6,7 +6,7 @@
  * пустые блоки и сообщения об ошибке.
  */
 export default defineNuxtRouteMiddleware(async (to) => {
-  const needsUser = to.path.startsWith("/cabinet") || to.path.startsWith("/staff");
+  const needsUser = to.path === "/test" || to.path.startsWith("/cabinet") || to.path.startsWith("/staff");
   if (!needsUser) return;
 
   const user = await useSession();
