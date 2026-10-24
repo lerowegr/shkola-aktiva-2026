@@ -74,3 +74,38 @@ export function readPlace(raw: unknown): Place | null {
   const field = (key: string) => (typeof value[key] === "string" && value[key] ? (value[key] as string) : null);
   return { building: field("building"), room: field("room"), startsAt: field("startsAt"), note: field("note") };
 }
+
+// ---------------------------------------------------------------------------
+// Самозапись: кандидат сам выбирает дату ЦО
+// ---------------------------------------------------------------------------
+
+/** Записаться можно не позже чем за 2 часа до начала. */
+export const ASSESSMENT_BOOK_BEFORE_MS = 2 * 60 * 60 * 1000;
+/** Перенести или отменить свою запись — не позже чем за 12 часов. */
+export const ASSESSMENT_CHANGE_BEFORE_MS = 12 * 60 * 60 * 1000;
+
+export interface BookableGroup {
+  /** null — группу собирают организаторы, записи нет. */
+  capacity: number | null;
+  /** Пусто — всем факультетам. */
+  faculties: readonly string[];
+  startsAt: Date | string | null;
+  /** Сколько уже в группе. */
+  taken: number;
+}
+
+/** Предлагается ли дата этому кандидату (место — отдельно: см. hasRoom). */
+export function offeredTo(group: BookableGroup, faculty: string | null, now: Date): boolean {
+  if (group.capacity === null || !group.startsAt) return false;
+  if (new Date(group.startsAt).getTime() - now.getTime() < ASSESSMENT_BOOK_BEFORE_MS) return false;
+  return group.faculties.length === 0 || (faculty !== null && group.faculties.includes(faculty));
+}
+
+export function hasRoom(group: BookableGroup): boolean {
+  return group.capacity !== null && group.taken < group.capacity;
+}
+
+/** Свою запись можно поменять, пока до начала больше 12 часов. */
+export function canChangeBooking(startsAt: Date | string | null, now: Date): boolean {
+  return !startsAt || new Date(startsAt).getTime() - now.getTime() >= ASSESSMENT_CHANGE_BEFORE_MS;
+}

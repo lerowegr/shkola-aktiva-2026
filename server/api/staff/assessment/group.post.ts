@@ -11,6 +11,8 @@ const schema = z.object({
   room: z.string().max(200).default(""),
   startsAt: z.iso.datetime({ offset: true, error: "Дата и время указаны неверно." }).nullable().default(null),
   note: z.string().max(1000).default(""),
+  capacity: z.number().int().nullable().default(null),
+  faculties: z.array(z.string().max(20)).max(20).default([]),
 });
 
 /** Создать группу или поправить место и время. */
@@ -26,7 +28,7 @@ export default defineAction(schema, async ({ body, event }) => {
     action: result.created ? "assessment.group.create" : "assessment.group.update",
     entityType: "assessment_group",
     entityId: result.id,
-    meta: { title: body.title.trim(), building: body.building.trim(), room: body.room.trim(), startsAt: body.startsAt },
+    meta: { title: body.title.trim(), building: body.building.trim(), room: body.room.trim(), startsAt: body.startsAt, capacity: body.capacity, faculties: body.faculties },
   });
 
   return { ok: true, id: result.id, message: result.created ? "Группа создана." : "Сохранено." };

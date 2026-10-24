@@ -1,3 +1,4 @@
+import { loadCandidateAssessment } from "~~/lib/assessment/candidate";
 import { db } from "~~/lib/db";
 import { notify } from "~~/lib/notifications/notify";
 
@@ -8,14 +9,22 @@ import { fullName } from "./staff";
  * назначена. Ключи событий не дают задвоить уведомление, если обработчик
  * вызвали повторно.
  */
+/**
+ * Анкета отправлена. Если для факультета кандидата уже открыты даты центра
+ * оценки — сразу зовём выбрать дату: это следующий шаг.
+ */
 export async function notifySubmitted(applicationId: string, userId: string) {
+  const assessment = await loadCandidateAssessment(userId).catch(() => null);
+  const choose = (assessment?.options.length ?? 0) > 0;
   await notify([
     {
       userId,
       category: "SELECTION",
-      title: "Анкета отправлена",
-      body: "Её уже читает мастер отбора. О следующем шаге сообщим здесь.",
-      url: "/cabinet",
+      title: choose ? "Анкета отправлена — выберите дату центра оценки" : "Анкета отправлена",
+      body: choose
+        ? "Анкета и домашнее задание у нас. Следующий шаг — центр оценки: выберите удобную дату в кабинете, пока есть места."
+        : "Её уже читает мастер отбора. О дате центра оценки сообщим здесь.",
+      url: choose ? "/cabinet/assessment" : "/cabinet",
       key: `application:${applicationId}:submitted`,
     },
   ]);

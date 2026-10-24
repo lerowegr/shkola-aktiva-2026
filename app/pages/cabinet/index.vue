@@ -40,7 +40,8 @@ const personal = computed(() => {
 
   if (submitted && co.value) {
     if (coOver.value) result.ASSESSMENT = { label: "Пройден — ждём итогов", tone: "done" };
-    else if (co.value.place?.startsAt) result.ASSESSMENT = { label: `Ваша группа: ${moment(co.value.place.startsAt)}`, tone: "now" };
+    else if (co.value.place?.startsAt) result.ASSESSMENT = { label: `Ваша дата: ${moment(co.value.place.startsAt)}`, tone: "now", to: "/cabinet/assessment" };
+    else if (co.value.options.length) result.ASSESSMENT = { label: "Выберите дату", tone: "now", to: "/cabinet/assessment" };
     else if (co.value.state === "open") result.ASSESSMENT = { label: "Распределяем по группам", tone: "wait" };
   }
 
@@ -73,7 +74,7 @@ const personal = computed(() => {
       </div>
 
       <AppInterviewCard v-if="iv && (iv.final || (iv.allowed && (iv.booking || iv.state !== 'upcoming')))" :iv="iv" />
-      <AppAssessmentCard v-if="co && (co.place || co.state === 'open')" :co="co" />
+      <AppAssessmentCard v-if="co && (co.place || co.state === 'open' || co.options.length)" :co="co" />
       <AppApplicationCard v-if="app" :app="app" />
 
       <NuxtLink

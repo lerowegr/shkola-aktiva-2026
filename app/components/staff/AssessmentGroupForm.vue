@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import type { ActionResult } from "~/composables/useAction";
+import { FACULTIES } from "~~/lib/profile/onboarding";
 
 /**
- * Группа центра оценки: название, где и когда, эксперты. Новая группа
- * сначала создаётся, потом ей ставятся эксперты — два запроса, но одна кнопка.
+ * Группа центра оценки: название, где и когда, эксперты и — если кандидаты
+ * записываются сами — сколько мест и каким факультетам дата доступна.
+ * Новая группа сначала создаётся, потом ей ставятся эксперты — два запроса,
+ * но одна кнопка.
  */
 interface Group {
   id: string;
@@ -13,6 +16,8 @@ interface Group {
   startsAt: Date | string | null;
   note: string | null;
   experts: { id: string; name: string }[];
+  capacity: number | null;
+  faculties: string[];
 }
 
 const props = defineProps<{ group: Group | null; pool: { id: string; name: string }[]; suggestedTitle: string }>();
@@ -25,6 +30,9 @@ const form = reactive({
   startsAt: mskInputValue(props.group?.startsAt ? new Date(props.group.startsAt).toISOString() : null),
   note: props.group?.note ?? "",
   experts: props.group?.experts.map((expert) => expert.id) ?? [],
+  selfBooking: (props.group?.capacity ?? null) !== null,
+  capacity: props.group?.capacity ?? 20,
+  faculties: [...(props.group?.faculties ?? [])],
 });
 
 const pending = ref(false);
@@ -47,6 +55,8 @@ async function save() {
       room: form.room,
       startsAt: form.startsAt ? mskFromInput(form.startsAt) : null,
       note: form.note,
+      capacity: form.selfBooking ? Number(form.capacity) : null,
+      faculties: form.selfBooking ? form.faculties : [],
     });
     if (!saved.ok) return (result.value = saved);
 
@@ -93,6 +103,24 @@ const field = "border-line bg-paper focus:border-accent min-h-11 rounded-xl bord
         class="border-line bg-paper focus:border-accent rounded-xl border px-3 py-2.5 text-base font-normal outline-none"
       />
     </label>
+
+    <fieldset class="bg-paper flex flex-col gap-3 rounded-2xl p-3">
+      <UiCheckbox v-model="form.selfBooking">Кандидаты записываются на эту дату сами</UiCheckbox>
+      <template v-if="form.selfBooking">
+        <label class="flex flex-col gap-1.5 text-sm font-medium">
+          Мест для записи
+          <input v-model.number="form.capacity" type="number" min="1" max="500" inputmode="numeric" :class="[field, 'w-28']" >
+        </label>
+        <div class="flex flex-col gap-1.5">
+          <p class="text-sm font-medium">Для каких факультетов</p>
+          <p class="text-ink-soft -mt-1 text-xs">Ничего не отмечено — дату видят все. Факультет кандидат указал при регистрации.</p>
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <UiCheckbox v-for="faculty in FACULTIES" :key="faculty" v-model="form.faculties" :value="faculty">{{ faculty }}</UiCheckbox>
+          </div>
+        </div>
+      </template>
+      <p v-else class="text-ink-soft -mt-1 text-xs">Группу собираете вы: «Разложить поровну» или вручную, место сообщаете рассылкой.</p>
+    </fieldset>
 
     <fieldset class="flex flex-col gap-2">
       <legend class="mb-1.5 text-sm font-medium">Эксперты — оценивают всех кандидатов группы</legend>

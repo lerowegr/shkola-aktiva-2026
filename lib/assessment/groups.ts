@@ -3,6 +3,8 @@ import { displayName } from "~~/lib/auth/actor";
 import { db } from "~~/lib/db";
 import { notify } from "~~/lib/notifications/notify";
 
+import { FACULTIES } from "~~/lib/profile/onboarding";
+
 import { balance, placeChanged, placeLine, placeOf, placeProblem, readPlace } from "./rules";
 
 /**
@@ -28,6 +30,10 @@ export interface GroupInput {
   room: string;
   startsAt: string | null;
   note: string;
+  /** Мест для самозаписи; null — группу собирают организаторы. */
+  capacity?: number | null;
+  /** Каким факультетам дата доступна; пусто — всем. */
+  faculties?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -53,6 +59,15 @@ async function ensureReviews(groupId: string, actorId: string | null) {
 
 const untouched = { scores: { none: {} }, markers: { none: {} }, OR: [{ comment: null }, { comment: "" }] };
 
+/** Оценки кандидата после смены группы: новым экспертам — заготовки, пустые у прежних — убрать. */
+export async function syncMemberReviews(applicationId: string, groupId: string | null, actorId: string | null) {
+  const experts = groupId
+    ? (await db.assessmentExpert.findMany({ where: { groupId }, select: { userId: true } })).map((expert) => expert.userId)
+    : [];
+  await dropStaleReviews(applicationId, experts);
+  if (groupId) await ensureReviews(groupId, actorId);
+}
+
 /** Убрать пустые заготовки кандидата у тех, кто больше не его эксперт. */
 async function dropStaleReviews(applicationId: string, keepReviewers: string[]) {
   await db.review.deleteMany({
@@ -76,12 +91,21 @@ export async function saveGroup(seasonId: string, input: GroupInput): Promise<Re
   const startsAt = input.startsAt ? new Date(input.startsAt) : null;
   if (startsAt && Number.isNaN(startsAt.getTime())) return { ok: false, message: "Дата и время указаны неверно." };
 
+  const capacity = input.capacity ?? null;
+  if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1 || capacity > 500)) {
+    return { ok: false, message: "Мест для записи — от 1 до 500, или оставьте пустым." };
+  }
+  if (capacity !== null && !startsAt) return { ok: false, message: "Чтобы кандидаты записывались сами, укажите дату и время." };
+  const faculties = [...new Set((input.faculties ?? []).filter((faculty) => (FACULTIES as readonly string[]).includes(faculty)))];
+
   const data = {
     title,
     building: input.building.trim() || null,
     room: input.room.trim() || null,
     startsAt,
     note: input.note.trim() || null,
+    capacity,
+    faculties,
   };
 
   if (input.id) {
@@ -235,12 +259,18 @@ export async function placeMember(
 
 /** Кандидаты без группы — поровну по группам. */
 export async function distribute(seasonId: string, actorId: string): Promise<Result<{ placed: number }>> {
+  // Только по группам организаторов: в группы с самозаписью кандидаты идут сами.
   const groups = await db.assessmentGroup.findMany({
-    where: { seasonId },
+    where: { seasonId, capacity: null },
     orderBy: [{ startsAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
     select: { id: true, _count: { select: { members: true } } },
   });
-  if (groups.length === 0) return { ok: false, message: "Сначала создайте хотя бы одну группу." };
+  if (groups.length === 0) {
+    return {
+      ok: false,
+      message: "Нет групп без самозаписи. В группы с местами для записи кандидаты записываются сами; чтобы раскладывать, создайте группу без мест.",
+    };
+  }
 
   const free = await db.application.findMany({
     where: { seasonId, status: "SUBMITTED", assessment: null },
@@ -337,6 +367,8 @@ export interface AssessmentGroupRow {
   stale: boolean;
   experts: { id: string; name: string }[];
   members: { applicationId: string; name: string; faculty: string | null; done: number; total: number }[];
+  capacity: number | null;
+  faculties: string[];
 }
 
 export interface AssessmentOverview {
@@ -359,6 +391,8 @@ export async function loadGroups(seasonId: string, onlyExpert?: string): Promise
         note: true,
         notified: true,
         notifiedAt: true,
+        capacity: true,
+        faculties: true,
         experts: { select: { user: { select: { id: true, firstName: true, lastName: true, email: true, telegramUsername: true } } } },
         members: {
           orderBy: [{ application: { lastName: "asc" } }, { application: { firstName: "asc" } }],
@@ -393,6 +427,8 @@ export async function loadGroups(seasonId: string, onlyExpert?: string): Promise
       startsAt: group.startsAt,
       note: group.note,
       notifiedAt: group.notifiedAt,
+      capacity: group.capacity,
+      faculties: group.faculties,
       stale: placeChanged(readPlace(group.notified), placeOf(group)),
       experts: group.experts
         .map((expert) => ({ id: expert.user.id, name: displayName(expert.user) }))

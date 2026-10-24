@@ -24,6 +24,8 @@ interface Group {
   stale: boolean;
   experts: { id: string; name: string }[];
   members: { applicationId: string; name: string; faculty: string | null; done: number; total: number }[];
+  capacity: number | null;
+  faculties: string[];
 }
 interface Overview {
   manage: boolean;
@@ -179,6 +181,11 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
               Оценено {{ progress(group) }}
             </span>
           </div>
+
+          <p v-if="group.capacity !== null" class="bg-brand-green-soft/60 self-start rounded-xl px-2.5 py-1 text-sm">
+            Самозапись: {{ group.members.length }} из {{ group.capacity }}
+            · {{ group.faculties.length ? group.faculties.join(", ") : "все факультеты" }}
+          </p>
 
           <p class="text-sm">
             <span class="text-ink-soft">Эксперты: </span>

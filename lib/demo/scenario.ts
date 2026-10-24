@@ -255,6 +255,20 @@ export async function resetDemo(now = new Date()): Promise<{ staff: number; cand
     // Вторая группа уже прошла ЦО — эксперт её оценил.
     for (const key of ["egor", "zhenya", "igor", "kira", "lyova"]) await review(app(key), "ASSESSMENT", staff.katya!, key === "lyova" ? "low" : "high");
   }
+  // Даты с самозаписью: Борис, Вика и Глеб выбирают дату сами (Вика и Борис —
+  // ещё и свою, для ЮФ и ФЭБ).
+  const own = await saveGroup(seasonId, {
+    title: "ЦО для ЮФ и ФЭБ",
+    building: "2",
+    room: "410",
+    startsAt: at(5, 12),
+    note: "Возьмите студенческий",
+    capacity: 15,
+    faculties: ["ЮФ", "ФЭБ"],
+  });
+  const forAll = await saveGroup(seasonId, { title: "ЦО для всех", building: "Главный", room: "Актовый зал", startsAt: at(6, 15), note: "", capacity: 30 });
+  if (own.ok) await setExperts(seasonId, own.id, [staff.ilya!], staff.lead!);
+  if (forAll.ok) await setExperts(seasonId, forAll.id, [staff.katya!], staff.lead!);
 
   // Собеседования: прошедшие — вчера, Женя — послезавтра.
   const slot = (offsetDays: number, hour: number) => {

@@ -1054,6 +1054,11 @@ model AssessmentGroup {
   /// правка без рассылки не должна молча менять ему аудиторию.
   notified   Json?
   notifiedAt DateTime?
+  /// Мест для самозаписи: кандидат сам выбирает эту дату в кабинете.
+  /// null — группу собирают организаторы, кандидатам она не предлагается.
+  capacity   Int?
+  /// Каким факультетам дата доступна. Пусто — всем.
+  faculties  String[]  @default([])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

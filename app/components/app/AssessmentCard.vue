@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CalendarClock, MapPin, UsersRound } from "lucide-vue-next";
+import { ArrowRight, CalendarClock, MapPin, UsersRound } from "lucide-vue-next";
 
 import type { CandidateAssessment } from "~~/lib/assessment/candidate";
 import { placeLine } from "~~/lib/assessment/rules";
@@ -52,6 +52,17 @@ const fallback = computed(() =>
       </div>
       <p v-if="place.note" class="text-ink/80 whitespace-pre-line sm:col-span-2">{{ place.note }}</p>
     </dl>
+    <NuxtLink
+      v-else-if="co.options.length"
+      to="/cabinet/assessment"
+      class="bg-accent text-accent-ink flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition hover:brightness-110"
+    >
+      Выберите дату — доступно дат: {{ co.options.length }}
+      <ArrowRight class="size-5 shrink-0" aria-hidden="true" />
+    </NuxtLink>
     <p v-else class="text-ink/70 text-sm">Где и когда — пришлём уведомлением, как только группы будут готовы.</p>
+    <NuxtLink v-if="place && !over && co.canChange" to="/cabinet/assessment" class="text-ink/70 hover:text-ink self-start text-sm underline">
+      Перенести или отменить запись
+    </NuxtLink>
   </section>
 </template>
