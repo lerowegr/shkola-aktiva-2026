@@ -23,7 +23,8 @@ let roundStart = 0;
 let totalStart = 0;
 let pausedAt = 0;
 
-const current = computed(() => party[round.value]!);
+// После последней загадки раунд выходит за конец — загадки уже нет.
+const current = computed(() => party[round.value] ?? null);
 const done = computed(() => round.value >= party.length);
 
 function load(src: string): Promise<HTMLImageElement> {
@@ -37,7 +38,7 @@ function load(src: string): Promise<HTMLImageElement> {
 
 function draw() {
   const element = canvas.value;
-  const image = images.get(current.value.src);
+  const image = current.value ? images.get(current.value.src) : undefined;
   if (!element || !image) return;
   const context = element.getContext("2d");
   if (!context) return;
@@ -95,6 +96,7 @@ function sharper() {
 
 function answer(index: number) {
   if (phase.value !== "playing" || done.value) return;
+  if (!current.value) return;
   if (index === current.value.correct) {
     score.value += roundScore(stage.value, (performance.now() - roundStart) / 1000, wrong.value);
     haptic("success");
@@ -165,7 +167,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div v-if="phase === 'playing' || phase === 'paused'" class="flex flex-col gap-3">
+    <div v-if="current && (phase === 'playing' || phase === 'paused')" class="flex flex-col gap-3">
       <div class="flex items-center justify-between text-sm">
         <span class="text-ink-soft">Чёткость: <strong class="tabular-nums">{{ stage + 1 }} из {{ STAGE_BLOCKS.length }}</strong></span>
         <div class="shrink-0">

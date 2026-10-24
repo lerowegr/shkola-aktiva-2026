@@ -15,7 +15,13 @@ const reply = ref<{ ok: boolean; message?: string; streak?: number; best?: numbe
 const round = ref(0);
 
 async function finished(result: { score: number; moves?: number | null; durationMs: number }) {
-  reply.value = (await send.submit({ kind: props.kind, ...result })) as typeof reply.value;
+  // Сервер принимает целые числа, а таймеры игр бывают дробными.
+  reply.value = (await send.submit({
+    kind: props.kind,
+    score: Math.round(result.score),
+    moves: result.moves == null ? result.moves : Math.round(result.moves),
+    durationMs: Math.round(result.durationMs),
+  })) as typeof reply.value;
   if (reply.value?.ok) emit("solved");
 }
 

@@ -14,7 +14,15 @@ const emit = defineEmits<{ again: [] }>();
 const send = useAction("/api/cabinet/games/result");
 const reply = ref<{ ok: boolean; message?: string; record?: boolean; standing?: Standing } | null>(null);
 onMounted(async () => {
-  reply.value = (await send.submit({ game: props.game, ...props.result })) as typeof reply.value;
+  // Таймеры игр копят время из performance.now() — дробные миллисекунды;
+  // сервер принимает целые числа.
+  const { score, moves, durationMs } = props.result;
+  reply.value = (await send.submit({
+    game: props.game,
+    score: Math.round(score),
+    moves: moves == null ? moves : Math.round(moves),
+    durationMs: Math.round(durationMs),
+  })) as typeof reply.value;
 });
 
 const mine = computed(() => describeResult(props.game, { moves: null, ...props.result }));

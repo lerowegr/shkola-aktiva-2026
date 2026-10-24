@@ -19,6 +19,12 @@ describe("правдоподобие", () => {
     expect(implausible({ game: "MEMORY", score: 12, moves: 12, durationMs: 41_000 })).toBeNull();
   });
 
+  it("быстрый честный проигрыш — не обман", () => {
+    // Сбрасывая фигуры подряд, тетрис заканчивается за 3 секунды.
+    expect(implausible({ game: "TETRIS", score: 202, durationMs: 3_100 })).toBeNull();
+    expect(implausible({ game: "SNAKE", score: 0, durationMs: 1_500 })).toBeNull();
+  });
+
   it("говорит результат словами", () => {
     expect(describeResult("MEMORY", { score: 12, moves: 12, durationMs: 41_000 })).toBe("12 ходов, 0:41");
     expect(describeResult("SLIDE", { score: 65_000, moves: 22, durationMs: 65_000 })).toBe("1:05, 22 хода");

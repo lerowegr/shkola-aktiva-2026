@@ -76,7 +76,8 @@ export const GAMES: Record<GameKind, GameRules> = {
     // Идеальная игра за две минуты — около 150 тысяч; запас сверху на всякий случай.
     score: { min: 0, max: 200_000 },
     moves: null,
-    duration: { min: 5_000, max: TETRIS_SECONDS * 1000 + 5_000 },
+    // Сбрасывая фигуры подряд, поле можно забить за пару секунд — тоже честная партия.
+    duration: { min: 1_000, max: TETRIS_SECONDS * 1000 + 5_000 },
   },
   PIXEL: {
     slug: "pixels",
