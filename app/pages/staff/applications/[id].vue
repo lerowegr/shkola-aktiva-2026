@@ -64,6 +64,13 @@ function isLink(value: string | null) {
 // --- Биржа: взять, передать, вернуть -------------------------------------------
 const session = await useSession();
 const canReview = computed(() => session.value?.permissions.includes("applications.review") ?? false);
+// «Написать»: ветка переписки с кандидатом — от лица ША (бот в Telegram и сайт).
+const canMessage = computed(() => session.value?.isOwner || (session.value?.permissions.includes("messages.reply") ?? false));
+const openThread = useAction("/api/staff/messages/open");
+async function writeTo() {
+  const result = await openThread.submit({ applicationId: id.value });
+  if (result.ok && typeof result.threadId === "string") await navigateTo(`/staff/messages?thread=${result.threadId}`);
+}
 const myActive = computed(() => card.value?.reviews.find((item) => item.isMine && !item.released) ?? null);
 const holders = computed(() => (card.value?.reviews ?? []).filter((item) => !item.released && !item.isMine));
 
@@ -142,7 +149,17 @@ async function pass() {
           </p>
         </div>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
+        <UiButton
+          v-if="canMessage"
+          variant="telegram"
+          class="min-h-10 px-3 text-sm sm:w-auto"
+          :pending="openThread.pending.value"
+          :title="card.hasTelegram ? 'Сообщение придёт ему от бота ША в Telegram и на сайт' : 'Telegram не привязан — увидит только на сайте'"
+          @click="writeTo"
+        >
+          <Send class="size-4" aria-hidden="true" /> Написать{{ card.hasTelegram ? " в Telegram" : "" }}
+        </UiButton>
         <UiButton variant="ghost" class="min-h-10 px-3 text-sm sm:w-auto" :disabled="!data?.prev" @click="go(data?.prev ?? null)">
           <ChevronLeft class="size-4" aria-hidden="true" /> Предыдущая
         </UiButton>
@@ -151,6 +168,8 @@ async function pass() {
         </UiButton>
       </div>
     </div>
+
+    <UiNotice v-if="openThread.result.value?.ok === false" :message="openThread.result.value.message" />
 
     <!-- Анкета — две колонки: ответы и оценка рядом. ДЗ и собеседование — одной
          колонкой: работа, сценарий собеса, а критерии в самом низу. -->

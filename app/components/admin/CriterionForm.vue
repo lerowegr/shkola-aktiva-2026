@@ -65,7 +65,11 @@ async function submit() {
       <textarea v-model="form.examples" rows="3" maxlength="5000" class="border-line bg-card field-sizing-content min-h-12 rounded-2xl border px-4 py-3 text-sm font-normal" />
     </label>
     <fieldset class="flex flex-col gap-2">
-      <legend class="mb-1 text-sm font-medium">Что значит балл — коротко, со ссылкой на индикаторы; можно не для каждого</legend>
+      <legend class="mb-1 text-sm font-medium">Что значит балл — коротко, со ссылкой на индикаторы</legend>
+      <p class="text-ink-soft -mt-1 text-xs">
+        Ставить можно только расписанные баллы: заполнены 0, 2 и 4 — у эксперта будут кнопки 0, 2, 4. Ничего не заполнено —
+        любой балл от 0 до максимума.
+      </p>
       <label v-for="score in form.maxScore + 1" :key="score" class="flex items-start gap-3">
         <span class="text-accent mt-3 w-4 text-sm font-semibold">{{ score - 1 }}</span>
         <textarea v-model="form.texts[score - 1]" rows="1" maxlength="1500" class="border-line bg-card field-sizing-content flex-1 rounded-xl border px-3 py-2.5 text-sm" />

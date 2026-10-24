@@ -34,6 +34,17 @@ export function reviewSummary(
   return { total, max, status: done ? "done" : "progress" };
 }
 
-export function validScore(criterion: { maxScore: number }, score: number): boolean {
-  return Number.isInteger(score) && score >= 0 && score <= criterion.maxScore;
+/**
+ * Какие баллы можно ставить. Расписаны баллы (0 / 2 / 4) — только они:
+ * 1 и 3 у такого критерия не бывает. Расшифровок нет — любой от 0 до максимума.
+ */
+export function allowedScores(criterion: { maxScore: number; levels?: readonly { score: number; text?: string }[] | null }): number[] {
+  const described = [...new Set((criterion.levels ?? []).filter((level) => level.text?.trim() !== "").map((level) => level.score))]
+    .filter((score) => Number.isInteger(score) && score >= 0 && score <= criterion.maxScore)
+    .sort((a, b) => a - b);
+  return described.length ? described : Array.from({ length: criterion.maxScore + 1 }, (_, score) => score);
+}
+
+export function validScore(criterion: { maxScore: number; levels?: readonly { score: number; text?: string }[] | null }, score: number): boolean {
+  return allowedScores(criterion).includes(score);
 }

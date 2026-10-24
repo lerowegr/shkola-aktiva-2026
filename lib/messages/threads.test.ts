@@ -60,7 +60,7 @@ describe("переписка", () => {
     await postMessage({ threadId: thread.id, author: "STAFF", authorId: staff.id, text: "Здравствуйте!", via: "SITE" });
 
     const notification = await db.notification.findFirstOrThrow({ where: { userId: candidate.id } });
-    expect(notification).toMatchObject({ category: "MESSAGES", title: "Организаторы ответили", url: "/cabinet/messages" });
+    expect(notification).toMatchObject({ category: "MESSAGES", title: "Сообщение от Школы Актива", url: "/cabinet/messages" });
   });
 
   it("сообщение кандидата — уведомление его мастеру, а не всем", async () => {

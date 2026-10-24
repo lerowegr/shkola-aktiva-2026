@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reviewSummary, validScore } from "./review";
+import { allowedScores, reviewSummary, validScore } from "./review";
 
 const criteria = [
   { id: "interest", maxScore: 4 },
@@ -48,5 +48,19 @@ describe("validScore", () => {
     expect(validScore({ maxScore: 4 }, 5)).toBe(false);
     expect(validScore({ maxScore: 4 }, -1)).toBe(false);
     expect(validScore({ maxScore: 4 }, 1.5)).toBe(false);
+  });
+});
+
+describe("allowedScores", () => {
+  it("расписаны 0 / 2 / 4 — только они, 1 и 3 нельзя", () => {
+    const criterion = { maxScore: 4, levels: [{ score: 0, text: "нет" }, { score: 2, text: "частично" }, { score: 4, text: "всё" }] };
+    expect(allowedScores(criterion)).toEqual([0, 2, 4]);
+    expect(validScore(criterion, 2)).toBe(true);
+    expect(validScore(criterion, 3)).toBe(false);
+  });
+
+  it("без расшифровок — любой балл от 0 до максимума", () => {
+    expect(allowedScores({ maxScore: 2, levels: [] })).toEqual([0, 1, 2]);
+    expect(allowedScores({ maxScore: 2 })).toEqual([0, 1, 2]);
   });
 });

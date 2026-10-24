@@ -4,7 +4,7 @@ import { db } from "~~/lib/db";
 import type { StageKind } from "~~/lib/generated/prisma/enums";
 import { can } from "~~/lib/permissions";
 
-import { validScore } from "./review";
+import { allowedScores, validScore } from "./review";
 
 /**
  * Сохранение оценки: баллы, маркеры, комментарий.
@@ -67,12 +67,13 @@ export async function saveScore(
       seasonId: own.review.application.seasonId,
       stageKind: own.review.stageKind,
     },
-    select: { id: true, title: true, maxScore: true },
+    select: { id: true, title: true, maxScore: true, levels: true },
   });
   if (!criterion) return { ok: false, message: "Критерий не найден — обновите страницу." };
 
-  if (params.score !== null && !validScore(criterion, params.score)) {
-    return { ok: false, message: `Балл по «${criterion.title}» — от 0 до ${criterion.maxScore}.` };
+  const shape = { maxScore: criterion.maxScore, levels: criterion.levels as { score: number; text: string }[] };
+  if (params.score !== null && !validScore(shape, params.score)) {
+    return { ok: false, message: `По «${criterion.title}» можно поставить только ${allowedScores(shape).join(", ")}.` };
   }
 
   const key = { reviewId_criterionId: { reviewId: params.reviewId, criterionId: criterion.id } };

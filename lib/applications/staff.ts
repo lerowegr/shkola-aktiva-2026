@@ -260,6 +260,8 @@ export interface StaffApplication {
   name: string;
   initials: string;
   telegramUsername: string | null;
+  /** Telegram привязан — сообщение из «Сообщений» дойдёт от бота ША. */
+  hasTelegram: boolean;
   submittedAt: Date | null;
   profile: { lastName: string | null; firstName: string | null; middleName: string | null; studentId: string | null };
   questions: { id: string; section: string; label: string; answer: AnswerValue | null }[];
@@ -284,7 +286,7 @@ export async function loadStaffApplication(
       middleName: true,
       studentId: true,
       submittedAt: true,
-      user: { select: { telegramUsername: true } },
+      user: { select: { telegramUsername: true, telegramId: true } },
       answers: { select: { questionId: true, value: true } },
       bookings: {
         where: { cancelledAt: null },
@@ -406,6 +408,7 @@ export async function loadStaffApplication(
     name: fullName(application),
     initials: initials(application),
     telegramUsername: application.user.telegramUsername,
+    hasTelegram: application.user.telegramId !== null,
     submittedAt: application.submittedAt,
     profile: {
       lastName: application.lastName,

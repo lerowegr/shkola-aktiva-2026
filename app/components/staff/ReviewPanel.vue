@@ -2,7 +2,7 @@
 import { CircleCheck, CloudOff, Eye, LoaderCircle, UserCheck } from "lucide-vue-next";
 
 import type { ActionResult } from "~/composables/useAction";
-import { reviewSummary } from "~~/lib/applications/review";
+import { allowedScores, reviewSummary } from "~~/lib/applications/review";
 import type { StaffCriterion, StaffReview } from "~~/lib/applications/staff";
 
 /**
@@ -137,24 +137,25 @@ function when(date: Date) {
           role="radiogroup"
           :aria-label="criterion.title"
           class="grid gap-1.5"
-          :style="{ gridTemplateColumns: `repeat(${criterion.maxScore + 1}, minmax(0, 1fr))` }"
+          :style="{ gridTemplateColumns: `repeat(${allowedScores(criterion).length}, minmax(0, 1fr))` }"
         >
+          <!-- Только баллы из расшифровок: у шкалы 0 / 2 / 4 кнопок 1 и 3 нет. -->
           <button
-            v-for="score in criterion.maxScore + 1"
+            v-for="score in allowedScores(criterion)"
             :key="score"
             type="button"
             role="radio"
-            :aria-checked="scores[criterion.id] === score - 1"
+            :aria-checked="scores[criterion.id] === score"
             :disabled="!canEdit"
             class="min-h-11 rounded-xl border text-sm font-semibold transition disabled:cursor-default"
             :class="
-              scores[criterion.id] === score - 1
+              scores[criterion.id] === score
                 ? 'border-accent bg-accent text-accent-ink'
                 : 'border-line bg-card enabled:hover:border-accent/50'
             "
-            @click="setScore(criterion.id, score - 1)"
+            @click="setScore(criterion.id, score)"
           >
-            {{ score - 1 }}
+            {{ score }}
           </button>
         </div>
 

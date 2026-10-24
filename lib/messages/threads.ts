@@ -73,7 +73,7 @@ async function notifyCandidate(threadId: string, text: string) {
     {
       userId: thread.candidateId,
       category: "MESSAGES",
-      title: "Организаторы ответили",
+      title: "Сообщение от Школы Актива",
       // Ответ целиком (в пределах сообщения Telegram): человек должен
       // прочитать его там, где получил, не переходя на сайт.
       body: text.slice(0, 1500),
