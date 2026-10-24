@@ -13,6 +13,7 @@ const props = withDefaults(defineProps<{ scope: ListScope; stage?: EvaluatedStag
 const search = ref("");
 const q = refDebounced(search, 250);
 const filter = ref<ListFilter>("all");
+const faculty = useFacultyFilter();
 
 // Родитель перечитывает список после «Распределить». Выставляем обёртку до
 // await: после него defineExpose уже не работает.
@@ -20,7 +21,7 @@ let reload: () => Promise<void> = async () => {};
 defineExpose({ refresh: () => reload() });
 
 const { data, pending, refresh } = await useFetch<ListResult>("/api/staff/applications", {
-  query: { scope: props.scope, filter, q, stage: props.stage },
+  query: { scope: props.scope, filter, q, stage: props.stage, faculty },
   key: `staff-list-${props.stage}-${props.scope}`,
 });
 reload = refresh;
@@ -37,7 +38,8 @@ const link = (id: string) =>
 
 <template>
   <section class="bg-card border-line overflow-hidden rounded-3xl border">
-    <div class="flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+    <div class="flex flex-col gap-3 p-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:p-4">
+      <div class="flex flex-col gap-3 sm:flex-1 sm:flex-row sm:items-center">
       <label class="relative flex-1 sm:max-w-xs">
         <span class="sr-only">Поиск</span>
         <Search class="text-ink-soft absolute top-1/2 left-3.5 size-4 -translate-y-1/2" aria-hidden="true" />
@@ -48,6 +50,8 @@ const link = (id: string) =>
           class="border-line bg-paper focus:border-accent focus:ring-accent/20 min-h-11 w-full rounded-2xl border pr-3 pl-10 text-sm outline-none focus:ring-4"
         >
       </label>
+      <StaffFacultyFilter v-model="faculty" :counts="data?.faculties" />
+      </div>
 
       <div role="tablist" class="bg-paper grid grid-cols-3 gap-1 rounded-2xl p-1 sm:flex">
         <button
@@ -95,7 +99,9 @@ const link = (id: string) =>
             <StaffAvatar :seed="row.id" :text="row.initials" />
             <span class="min-w-0">
               <span class="block truncate text-sm font-semibold">{{ row.name }}</span>
-              <span v-if="row.telegramUsername" class="text-ink-soft block truncate text-xs">@{{ row.telegramUsername }}</span>
+              <span class="text-ink-soft block truncate text-xs">
+                {{ [row.faculty, row.telegramUsername ? `@${row.telegramUsername}` : null].filter(Boolean).join(" · ") }}
+              </span>
             </span>
           </span>
 
@@ -136,6 +142,8 @@ const link = (id: string) =>
       {{
         search
           ? "Никого не нашли. Проверьте написание."
+          : faculty
+            ? "С этого факультета здесь никого нет."
           : filter === "todo"
             ? "Всё проверено 🎉"
             : stage === "HOMEWORK"

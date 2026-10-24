@@ -74,7 +74,7 @@ export interface ScheduleSlot {
   capacity: number;
   interviewers: { id: string; name: string }[];
   mine: boolean;
-  bookings: { applicationId: string; name: string; telegramUsername: string | null }[];
+  bookings: { applicationId: string; name: string; telegramUsername: string | null; faculty: string | null }[];
 }
 
 /** Расписание организаторов: все слоты сезона по времени. */
@@ -100,7 +100,7 @@ export async function schedule(seasonId: string, viewerId: string): Promise<Sche
               lastName: true,
               firstName: true,
               middleName: true,
-              user: { select: { telegramUsername: true } },
+              user: { select: { telegramUsername: true, faculty: true } },
             },
           },
         },
@@ -120,6 +120,7 @@ export async function schedule(seasonId: string, viewerId: string): Promise<Sche
       applicationId: booking.application.id,
       name: fullName(booking.application),
       telegramUsername: booking.application.user.telegramUsername,
+      faculty: booking.application.user.faculty,
     })),
   }));
 }

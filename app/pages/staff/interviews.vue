@@ -2,6 +2,7 @@
 import { CalendarPlus, MapPin, Trash2 } from "lucide-vue-next";
 
 import type { ScheduleSlot } from "~~/lib/interviews/slots";
+import { facultyMatches, NO_FACULTY } from "~~/lib/profile/faculty";
 
 /**
  * «Собеседования»: расписание по дням и нарезка слотов. Кандидаты
@@ -16,9 +17,22 @@ const canManage = computed(() => nav.value?.can.interviews ?? false);
 
 const { data, refresh } = await useFetch<{ slots: ScheduleSlot[] }>("/api/staff/interviews");
 const onlyMine = ref(false);
+// С факультетом — только слоты, где записан кто-то с него; в слоте — только они.
+const faculty = useFacultyFilter();
+const facultyCounts = computed(() => {
+  const counts: Record<string, number> = {};
+  for (const booking of (data.value?.slots ?? []).flatMap((slot) => slot.bookings)) {
+    const key = booking.faculty || NO_FACULTY;
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+});
 
 const days = computed(() => {
-  const slots = (data.value?.slots ?? []).filter((slot) => !onlyMine.value || slot.mine);
+  const slots = (data.value?.slots ?? [])
+    .filter((slot) => !onlyMine.value || slot.mine)
+    .map((slot) => (faculty.value ? { ...slot, bookings: slot.bookings.filter((booking) => facultyMatches(booking.faculty, faculty.value)) } : slot))
+    .filter((slot) => !faculty.value || slot.bookings.length > 0);
   const groups: { key: string; day: Date | string; slots: ScheduleSlot[] }[] = [];
   for (const slot of slots) {
     const key = mskDayKey(slot.startsAt);
@@ -76,7 +90,10 @@ const time = mskTime;
         </p>
       </div>
 
-      <UiCheckbox v-model="onlyMine" class="self-start">Только мои собеседования</UiCheckbox>
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <UiCheckbox v-model="onlyMine" class="self-start sm:self-auto">Только мои собеседования</UiCheckbox>
+        <StaffFacultyFilter v-model="faculty" :counts="facultyCounts" />
+      </div>
 
       <UiNotice v-if="remove.result.value && !remove.result.value.ok" :message="remove.result.value.message" />
 
@@ -101,7 +118,7 @@ const time = mskTime;
                   :to="`/staff/applications/${booking.applicationId}?stage=INTERVIEW&from=all`"
                   class="block truncate text-sm font-semibold hover:underline"
                 >
-                  {{ booking.name }}<span v-if="booking.telegramUsername" class="text-ink-soft font-normal"> · @{{ booking.telegramUsername }}</span>
+                  {{ booking.name }}<span v-if="booking.faculty" class="text-ink-soft font-normal"> · {{ booking.faculty }}</span><span v-if="booking.telegramUsername" class="text-ink-soft font-normal"> · @{{ booking.telegramUsername }}</span>
                 </NuxtLink>
               </template>
               <p v-else class="text-ink-soft text-sm">Свободно<template v-if="slot.capacity > 1"> · мест {{ slot.capacity }}</template></p>
@@ -121,7 +138,7 @@ const time = mskTime;
       </div>
 
       <p v-if="days.length === 0" class="bg-card border-line text-ink-soft rounded-3xl border p-8 text-center text-sm">
-        {{ onlyMine ? "Вас пока нет ни в одном слоте." : "Слотов пока нет." }}
+        {{ faculty ? "С этого факультета пока никто не записался." : onlyMine ? "Вас пока нет ни в одном слоте." : "Слотов пока нет." }}
       </p>
     </section>
 

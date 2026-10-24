@@ -319,12 +319,12 @@ export interface AssessmentGroupRow {
   /** Место поменялось после рассылки. */
   stale: boolean;
   experts: { id: string; name: string }[];
-  members: { applicationId: string; name: string; done: number; total: number }[];
+  members: { applicationId: string; name: string; faculty: string | null; done: number; total: number }[];
 }
 
 export interface AssessmentOverview {
   groups: AssessmentGroupRow[];
-  free: { applicationId: string; name: string }[];
+  free: { applicationId: string; name: string; faculty: string | null }[];
 }
 
 /** Все группы сезона, или только те, где viewer — эксперт. */
@@ -352,6 +352,7 @@ export async function loadGroups(seasonId: string, onlyExpert?: string): Promise
                 lastName: true,
                 firstName: true,
                 middleName: true,
+                user: { select: { faculty: true } },
                 reviews: {
                   where: { stageKind: "ASSESSMENT" },
                   select: { reviewerId: true, _count: { select: { scores: true } } },
@@ -387,6 +388,7 @@ export async function loadGroups(seasonId: string, onlyExpert?: string): Promise
         return {
           applicationId: application.id,
           name: fullName(application),
+          faculty: application.user.faculty,
           done: relevant.filter((review) => criteria > 0 && review._count.scores >= criteria).length,
           total: relevant.length,
         };
@@ -399,8 +401,11 @@ export async function loadGroups(seasonId: string, onlyExpert?: string): Promise
   const free = await db.application.findMany({
     where: { seasonId, status: "SUBMITTED", assessment: null },
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    select: { id: true, lastName: true, firstName: true, middleName: true },
+    select: { id: true, lastName: true, firstName: true, middleName: true, user: { select: { faculty: true } } },
   });
 
-  return { groups: rows, free: free.map((application) => ({ applicationId: application.id, name: fullName(application) })) };
+  return {
+    groups: rows,
+    free: free.map((application) => ({ applicationId: application.id, name: fullName(application), faculty: application.user.faculty })),
+  };
 }

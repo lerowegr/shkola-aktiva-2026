@@ -3,6 +3,7 @@ import { BellRing, CalendarClock, ChevronDown, ChevronRight, MapPin, Pencil, Plu
 
 import type { ActionResult } from "~/composables/useAction";
 import { placeLine } from "~~/lib/assessment/rules";
+import { facultyMatches, NO_FACULTY } from "~~/lib/profile/faculty";
 
 /**
  * «Центр оценки»: очный групповой этап. Распределяющий собирает группы
@@ -22,7 +23,7 @@ interface Group {
   notifiedAt: string | null;
   stale: boolean;
   experts: { id: string; name: string }[];
-  members: { applicationId: string; name: string; done: number; total: number }[];
+  members: { applicationId: string; name: string; faculty: string | null; done: number; total: number }[];
 }
 interface Overview {
   manage: boolean;
@@ -30,11 +31,30 @@ interface Overview {
   stage: { title: string; state: "upcoming" | "open" | "closed"; opensAt: string | null; closesAt: string | null } | null;
   criteria: number;
   groups: Group[];
-  free: { applicationId: string; name: string }[];
+  free: { applicationId: string; name: string; faculty: string | null }[];
   experts: { id: string; name: string }[];
 }
 
 const { data, refresh } = await useFetch<Overview>("/api/staff/assessment");
+
+// Факультет: в группах и «Без группы» — только кандидаты с него; группы без
+// них прячем. Только просмотр — состав групп не меняется.
+const faculty = useFacultyFilter();
+const facultyCounts = computed(() => {
+  const counts: Record<string, number> = {};
+  const people = [...(data.value?.groups ?? []).flatMap((group) => group.members), ...(data.value?.free ?? [])];
+  for (const person of people) {
+    const key = person.faculty || NO_FACULTY;
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+});
+const shownGroups = computed(() =>
+  (data.value?.groups ?? [])
+    .map((group) => ({ group, members: group.members.filter((member) => facultyMatches(member.faculty, faculty.value)) }))
+    .filter((item) => !faculty.value || item.members.length > 0),
+);
+const shownFree = computed(() => (data.value?.free ?? []).filter((person) => facultyMatches(person.faculty, faculty.value)));
 
 const editing = ref<string | "new" | null>(null);
 const notice = ref<ActionResult | null>(null);
@@ -90,6 +110,13 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
       У этапа нет критериев — добавьте их в «Админка → Анкета и оценка → Оценка ЦО».
     </div>
 
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <StaffFacultyFilter v-model="faculty" :counts="facultyCounts" />
+      <p v-if="faculty && shownGroups.length === 0 && shownFree.length === 0" class="text-ink-soft text-sm">
+        С этого факультета здесь никого нет.
+      </p>
+    </div>
+
     <!-- Распределяющий -->
     <template v-if="data?.manage">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -122,7 +149,7 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
     </p>
 
     <div class="grid gap-4 lg:grid-cols-2">
-      <article v-for="group in data?.groups ?? []" :key="group.id" class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-5">
+      <article v-for="{ group, members } in shownGroups" :key="group.id" class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-5">
         <template v-if="editing === group.id && data?.manage">
           <h2 class="font-display text-xl">{{ group.title }}</h2>
           <StaffAssessmentGroupForm :group="group" :pool="data.experts" :suggested-title="group.title" @saved="saved" @cancel="editing = null" />
@@ -160,14 +187,14 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
 
           <details class="group/members">
             <summary class="flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium">
-              <UsersRound class="size-4" aria-hidden="true" /> Кандидаты: {{ group.members.length }}
+              <UsersRound class="size-4" aria-hidden="true" /> Кандидаты: {{ faculty ? `${members.length} из ${group.members.length}` : group.members.length }}
               <ChevronDown class="text-ink-soft size-4 transition-transform group-open/members:rotate-180" aria-hidden="true" />
             </summary>
             <ul class="mt-2 flex flex-col divide-y divide-line">
-              <li v-for="member in group.members" :key="member.applicationId" class="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <li v-for="member in members" :key="member.applicationId" class="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
                 <span class="text-sm">
                   {{ member.name }}
-                  <span class="text-ink-soft text-xs">· оценок {{ member.done }} из {{ member.total }}</span>
+                  <span class="text-ink-soft text-xs">· {{ [member.faculty, `оценок ${member.done} из ${member.total}`].filter(Boolean).join(" · ") }}</span>
                 </span>
                 <UiSelect
                   v-if="data?.manage"
@@ -214,12 +241,12 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
     </div>
 
     <!-- Без группы -->
-    <section v-if="data?.manage && data.free.length" class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5">
-      <h2 class="font-display text-xl">Без группы: {{ data.free.length }}</h2>
+    <section v-if="data?.manage && shownFree.length" class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5">
+      <h2 class="font-display text-xl">Без группы: {{ faculty ? `${shownFree.length} из ${data.free.length}` : data.free.length }}</h2>
       <p class="text-ink-soft text-sm">Все, кто отправил анкету. «Разложить поровну» добавит их в самые маленькие группы.</p>
       <ul class="flex flex-col divide-y divide-line">
-        <li v-for="person in data.free" :key="person.applicationId" class="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
-          <span class="text-sm">{{ person.name }}</span>
+        <li v-for="person in shownFree" :key="person.applicationId" class="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
+          <span class="text-sm">{{ person.name }}<span v-if="person.faculty" class="text-ink-soft text-xs"> · {{ person.faculty }}</span></span>
           <UiSelect
             v-if="data.groups.length"
             size="sm"

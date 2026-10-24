@@ -2,6 +2,7 @@ import { displayName } from "~~/lib/auth/actor";
 import { db } from "~~/lib/db";
 import type { StageKind } from "~~/lib/generated/prisma/enums";
 import type { GuideView } from "~~/lib/interviews/guide";
+import { facultyMatches, NO_FACULTY, type FacultyFilter } from "~~/lib/profile/faculty";
 
 import type { AnswerValue } from "./form";
 import { reviewSummary, type ReviewSummary } from "./review";
@@ -66,6 +67,8 @@ export interface ListRow {
   name: string;
   initials: string;
   telegramUsername: string | null;
+  /** Факультет из знакомства — для фильтра и подписи в списке. */
+  faculty: string | null;
   submittedAt: Date | null;
   reviewers: { id: string; name: string; isMe: boolean; released: boolean }[];
   mine: boolean;
@@ -76,8 +79,11 @@ export interface ListRow {
 
 export interface ListResult {
   rows: ListRow[];
+  /** Счётчики вкладок — с учётом выбранного факультета. */
   counts: Record<ListFilter, number>;
   unassigned: number;
+  /** Сколько анкет на каждом факультете (NO_FACULTY — не указан), без учёта фильтра. */
+  faculties: Record<string, number>;
 }
 
 function matches(row: ListRow, studentId: string | null, query: string): boolean {
@@ -95,8 +101,10 @@ export async function listApplications(params: {
   filter: ListFilter;
   query: string;
   stage?: EvaluatedStage;
+  faculty?: FacultyFilter;
 }): Promise<ListResult> {
   const { seasonId, viewerId, scope, filter, query } = params;
+  const faculty = params.faculty ?? "";
   const stage = params.stage ?? "APPLICATION";
 
   const [criteria, applications] = await Promise.all([
@@ -117,7 +125,7 @@ export async function listApplications(params: {
         middleName: true,
         studentId: true,
         submittedAt: true,
-        user: { select: { telegramUsername: true } },
+        user: { select: { telegramUsername: true, faculty: true } },
         submissions: {
           where: { stageKind: stage, replacedAt: null },
           orderBy: { submittedAt: "desc" },
@@ -149,6 +157,7 @@ export async function listApplications(params: {
       name: fullName(application),
       initials: initials(application),
       telegramUsername: application.user.telegramUsername,
+      faculty: application.user.faculty,
       studentId: application.studentId,
       // Для домашки «когда сдал» — дата работы, а не анкеты.
       submittedAt: application.submissions[0]?.submittedAt ?? application.submittedAt,
@@ -167,18 +176,25 @@ export async function listApplications(params: {
     };
   });
 
+  const faculties: Record<string, number> = {};
+  for (const row of all) {
+    const key = row.faculty || NO_FACULTY;
+    faculties[key] = (faculties[key] ?? 0) + 1;
+  }
+  const inFaculty = all.filter((row) => facultyMatches(row.faculty, faculty));
+
   const counts = {
-    all: all.length,
-    todo: all.filter((row) => row.summary.status !== "done").length,
-    done: all.filter((row) => row.summary.status === "done").length,
+    all: inFaculty.length,
+    todo: inFaculty.filter((row) => row.summary.status !== "done").length,
+    done: inFaculty.filter((row) => row.summary.status === "done").length,
   };
 
-  const rows = all
+  const rows = inFaculty
     .filter((row) => filter === "all" || (filter === "done") === (row.summary.status === "done"))
     .filter((row) => matches(row, row.studentId, query))
     .map(({ studentId: _studentId, ...row }) => row);
 
-  return { rows, counts, unassigned: all.filter((row) => row.reviewers.length === 0).length };
+  return { rows, counts, unassigned: all.filter((row) => row.reviewers.length === 0).length, faculties };
 }
 
 // ---------------------------------------------------------------------------

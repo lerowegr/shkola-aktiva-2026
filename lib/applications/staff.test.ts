@@ -30,8 +30,12 @@ beforeEach(async () => {
   });
 });
 
-async function application(lastName: string, reviewerId: string | null, opts: { username?: string; studentId?: string } = {}) {
-  const user = await db.user.create({ data: { firstName: "Имя", telegramUsername: opts.username ?? null } });
+async function application(
+  lastName: string,
+  reviewerId: string | null,
+  opts: { username?: string; studentId?: string; faculty?: string } = {},
+) {
+  const user = await db.user.create({ data: { firstName: "Имя", telegramUsername: opts.username ?? null, faculty: opts.faculty ?? null } });
   const app = await db.application.create({
     data: {
       seasonId,
@@ -79,6 +83,21 @@ describe("listApplications", () => {
     const todo = await listApplications({ seasonId, viewerId: katya.id, scope: "mine", filter: "todo", query: "" });
     expect(todo.rows.map((row) => row.name)).toEqual(["Ковалёв Имя"]);
     expect(todo.counts).toEqual({ all: 2, todo: 1, done: 1 });
+  });
+
+  it("фильтр по факультету: строки и счётчики вкладок — по нему, разбивка — по всем", async () => {
+    await application("Смирнова", katya.id, { faculty: "МЭО" });
+    await application("Петрова", katya.id, { faculty: "ЮФ" });
+    await application("Безфака", katya.id);
+    const list = (faculty: "" | "МЭО" | "none") =>
+      listApplications({ seasonId, viewerId: katya.id, scope: "mine", filter: "all", query: "", faculty });
+
+    const meo = await list("МЭО");
+    expect(meo.rows.map((row) => [row.name, row.faculty])).toEqual([["Смирнова Имя", "МЭО"]]);
+    expect(meo.counts.all).toBe(1);
+    expect(meo.faculties).toEqual({ МЭО: 1, ЮФ: 1, none: 1 });
+    expect((await list("none")).rows.map((row) => row.name)).toEqual(["Безфака Имя"]);
+    expect((await list("")).rows).toHaveLength(3);
   });
 
   it("поиск по фамилии, нику и студбилету", async () => {
