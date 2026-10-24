@@ -60,6 +60,13 @@ const editing = ref<string | "new" | null>(null);
 const notice = ref<ActionResult | null>(null);
 const busy = ref<string | null>(null);
 
+// Удаление — с подтверждением прямо в карточке группы.
+const confirmDelete = ref<string | null>(null);
+async function removeGroup(group: Group) {
+  confirmDelete.value = null;
+  await act(`d:${group.id}`, "/api/staff/assessment/group-delete", { id: group.id });
+}
+
 async function act(key: string, url: string, body: Record<string, unknown>) {
   busy.value = key;
   try {
@@ -227,13 +234,25 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
               </UiButton>
               <UiButton variant="ghost" @click="editing = group.id"><Pencil class="size-4" aria-hidden="true" /> Изменить</UiButton>
               <UiButton
-                v-if="group.members.length === 0"
+                v-if="confirmDelete !== group.id"
                 variant="ghost"
                 :pending="busy === `d:${group.id}`"
-                @click="act(`d:${group.id}`, '/api/staff/assessment/group-delete', { id: group.id })"
+                @click="confirmDelete = group.id"
               >
                 <Trash2 class="size-4" aria-hidden="true" /> Удалить
               </UiButton>
+              <div v-else class="bg-brand-red-soft flex flex-col gap-2 rounded-2xl p-3 text-sm sm:col-span-2" role="alertdialog" :aria-label="`Удалить ${group.title}?`">
+                <p class="font-semibold">Удалить «{{ group.title }}»?</p>
+                <p v-if="group.members.length">
+                  Кандидаты ({{ group.members.length }}) вернутся в «Без группы». Начатые оценки экспертов сохранятся, пустые
+                  уберутся.<template v-if="group.notifiedAt"> Группе уже сообщили место — после переноса сообщите новое.</template>
+                </p>
+                <p v-else>В группе никого нет.</p>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="bg-danger rounded-xl px-4 py-2 font-semibold text-white" @click="removeGroup(group)">Да, удалить</button>
+                  <button type="button" class="text-ink-soft rounded-xl px-4 py-2" @click="confirmDelete = null">Отмена</button>
+                </div>
+              </div>
             </template>
           </div>
         </template>

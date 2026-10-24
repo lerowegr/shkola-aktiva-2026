@@ -95,17 +95,34 @@ export async function saveGroup(seasonId: string, input: GroupInput): Promise<Re
   return { ok: true, id: created.id, created: true };
 }
 
-export async function deleteGroup(seasonId: string, groupId: string): Promise<Result<{ title: string }>> {
+/**
+ * Удалить группу — и с кандидатами. Как при переносе: кандидаты уходят в
+ * «Без группы», пустые заготовки оценок убираются, начатые остаются (баллы
+ * не пропадают — их видно в карточке). Если группе уже сообщали место,
+ * кандидаты его больше не видят: им нужно сообщить новое.
+ */
+export async function deleteGroup(
+  seasonId: string,
+  groupId: string,
+): Promise<Result<{ title: string; members: number; kept: number; notified: boolean }>> {
   const group = await db.assessmentGroup.findFirst({
     where: { id: groupId, seasonId },
-    select: { id: true, title: true, _count: { select: { members: true } } },
+    select: { id: true, title: true, notifiedAt: true, experts: { select: { userId: true } }, members: { select: { applicationId: true } } },
   });
   if (!group) return { ok: false, message: "Группа не найдена — обновите страницу." };
-  if (group._count.members > 0) {
-    return { ok: false, message: "В группе есть кандидаты. Сначала перенесите их в другие группы." };
-  }
-  await db.assessmentGroup.delete({ where: { id: group.id } });
-  return { ok: true, title: group.title };
+
+  const applicationIds = group.members.map((member) => member.applicationId);
+  const experts = group.experts.map((expert) => expert.userId);
+  await db.$transaction([
+    db.review.deleteMany({
+      where: { stageKind: "ASSESSMENT", applicationId: { in: applicationIds }, reviewerId: { in: experts }, ...untouched },
+    }),
+    // Участники и эксперты уходят каскадом вместе с группой.
+    db.assessmentGroup.delete({ where: { id: group.id } }),
+  ]);
+  const kept = await db.review.count({ where: { stageKind: "ASSESSMENT", applicationId: { in: applicationIds }, reviewerId: { in: experts } } });
+
+  return { ok: true, title: group.title, members: applicationIds.length, kept, notified: group.notifiedAt !== null };
 }
 
 /** Эксперты группы целиком: кого нет в списке — снимается. */

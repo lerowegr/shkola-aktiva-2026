@@ -6,7 +6,7 @@ import { requirePermission } from "~~/server/utils/session";
 
 const schema = z.object({ id: z.string().min(1) });
 
-/** Удалить пустую группу. */
+/** Удалить группу; её кандидаты уходят в «Без группы». */
 export default defineAction(schema, async ({ body, event }) => {
   const actor = await requirePermission(event, "applications.assign");
   const result = await deleteGroup(await requireCurrentSeasonId(), body.id);
@@ -17,7 +17,11 @@ export default defineAction(schema, async ({ body, event }) => {
     action: "assessment.group.delete",
     entityType: "assessment_group",
     entityId: body.id,
-    meta: { title: result.title },
+    meta: { title: result.title, members: result.members, kept: result.kept },
   });
-  return { ok: true, message: "Группа удалена." };
+  const parts = ["Группа удалена."];
+  if (result.members) parts.push(`Кандидаты (${result.members}) — в «Без группы».`);
+  if (result.kept) parts.push(`Начатые оценки (${result.kept}) сохранены.`);
+  if (result.notified && result.members) parts.push("Им уже сообщали место — после переноса сообщите новое.");
+  return { ok: true, message: parts.join(" ") };
 });

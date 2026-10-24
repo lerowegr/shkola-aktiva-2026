@@ -81,13 +81,23 @@ describe("группы центра оценки", () => {
     expect(reviewers.sort()).toEqual([kate.id, olya.id].sort());
   });
 
-  it("группу с кандидатами не удалить", async () => {
+  it("группу удалить можно и с кандидатами: они — без группы, начатые оценки остаются", async () => {
     const g = await group("Группа");
+    const kate = await expert("Катя");
+    await setExperts(seasonId, g, [kate.id], kate.id);
     const a = await candidate("А");
-    await placeMember(seasonId, a.id, g, null);
-    expect(await deleteGroup(seasonId, g)).toMatchObject({ ok: false });
-    await placeMember(seasonId, a.id, null, null);
-    expect(await deleteGroup(seasonId, g)).toMatchObject({ ok: true });
+    const b = await candidate("Б");
+    await placeMember(seasonId, a.id, g, kate.id);
+    await placeMember(seasonId, b.id, g, kate.id);
+    const started = await db.review.findFirstOrThrow({ where: { applicationId: a.id, reviewerId: kate.id } });
+    await db.review.update({ where: { id: started.id }, data: { comment: "Хорош в команде" } });
+
+    expect(await deleteGroup(seasonId, g)).toMatchObject({ ok: true, title: "Группа", members: 2, kept: 1, notified: false });
+    expect(await db.assessmentGroup.count()).toBe(0);
+    expect(await db.assessmentMember.count()).toBe(0);
+    // Пустая заготовка Б убрана, начатая оценка А — на месте.
+    expect((await db.review.findMany({ where: { stageKind: "ASSESSMENT" }, select: { applicationId: true } })).map((r) => r.applicationId)).toEqual([a.id]);
+    expect((await loadGroups(seasonId)).free).toHaveLength(2);
   });
 
   it("рассылка: нужно место и время; повтор — только после изменения", async () => {
