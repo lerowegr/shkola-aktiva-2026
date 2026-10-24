@@ -174,6 +174,24 @@ async function pass() {
             <p class="text-sm whitespace-pre-line">{{ card.task }}</p>
           </section>
 
+          <!-- Формулировки заданий ДЗ — как их видел кандидат. На ДЗ раскрыты, на собеседовании — по клику. -->
+          <details
+            v-if="card.homeworkTasks.length"
+            class="bg-card border-line group/tasks rounded-3xl border p-5"
+            :open="card.stage === 'HOMEWORK'"
+          >
+            <summary class="flex cursor-pointer items-center justify-between gap-3 font-semibold select-none">
+              Задания домашнего задания
+              <ChevronDown class="text-ink-soft size-5 transition-transform group-open/tasks:rotate-180" aria-hidden="true" />
+            </summary>
+            <div class="mt-4 flex flex-col gap-4">
+              <div v-for="task in card.homeworkTasks" :key="task.label" class="flex flex-col gap-2">
+                <p v-if="card.homeworkTasks.length > 1" class="text-ink-soft text-xs font-semibold">{{ task.label }}</p>
+                <FormRichHelp :text="task.help" />
+              </div>
+            </div>
+          </details>
+
           <section v-if="currentWork" class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5">
             <div class="flex items-center justify-between gap-3">
               <h2 class="font-semibold">{{ card.stage === "INTERVIEW" ? "Домашнее задание" : "Работа" }}</h2>

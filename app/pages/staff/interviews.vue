@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CalendarPlus, MapPin, Trash2 } from "lucide-vue-next";
+import { CalendarPlus, MapPin, Trash2, UsersRound } from "lucide-vue-next";
 
 import type { ScheduleSlot } from "~~/lib/interviews/slots";
 import { facultyMatches, NO_FACULTY } from "~~/lib/profile/faculty";
@@ -70,6 +70,23 @@ async function createSlots() {
   if (result.ok) await refresh();
 }
 
+// Собеседующие готового слота: правка прямо в строке расписания.
+const editingSlot = ref<string | null>(null);
+const slotPeople = ref<string[]>([]);
+const saveSlot = useAction("/api/staff/interviews/slot-interviewers");
+function editSlot(slot: ScheduleSlot) {
+  editingSlot.value = editingSlot.value === slot.id ? null : slot.id;
+  slotPeople.value = slot.interviewers.map((person) => person.id);
+  saveSlot.result.value = null;
+}
+async function saveSlotPeople(slotId: string) {
+  const result = await saveSlot.submit({ slotId, interviewerIds: slotPeople.value });
+  if (result.ok) {
+    editingSlot.value = null;
+    await refresh();
+  }
+}
+
 const remove = useAction("/api/staff/interviews/delete");
 async function deleteSlot(slotId: string) {
   const result = await remove.submit({ slotId });
@@ -103,7 +120,7 @@ const time = mskTime;
           <li
             v-for="slot in group.slots"
             :key="slot.id"
-            class="border-line flex flex-col gap-2 border-t px-4 py-3 first:border-t-0 sm:flex-row sm:items-center sm:gap-4"
+            class="border-line flex flex-col gap-2 border-t px-4 py-3 first:border-t-0 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4"
             :class="slot.mine ? 'bg-brand-green-soft/30' : ''"
           >
             <div class="w-28 shrink-0">
@@ -125,6 +142,15 @@ const time = mskTime;
               <p class="text-ink-soft truncate text-xs">{{ slot.interviewers.map((person) => person.name).join(", ") }}</p>
             </div>
             <button
+              v-if="canManage"
+              type="button"
+              class="text-ink-soft hover:text-ink flex items-center gap-1.5 self-start rounded-xl px-2 py-1.5 text-xs font-medium sm:self-auto"
+              :aria-expanded="editingSlot === slot.id"
+              @click="editSlot(slot)"
+            >
+              <UsersRound class="size-4" aria-hidden="true" /> Собеседующие
+            </button>
+            <button
               v-if="canManage && slot.bookings.length === 0"
               type="button"
               class="text-ink-soft hover:text-danger grid size-9 place-items-center self-end rounded-xl sm:self-auto"
@@ -133,6 +159,24 @@ const time = mskTime;
             >
               <Trash2 class="size-4" aria-hidden="true" />
             </button>
+            <form
+              v-if="editingSlot === slot.id"
+              class="bg-paper flex w-full basis-full flex-col gap-2 rounded-2xl p-3"
+              @submit.prevent="saveSlotPeople(slot.id)"
+            >
+              <p class="text-sm font-medium">Кто собеседует в {{ time(slot.startsAt) }}</p>
+              <div class="grid gap-1.5 sm:grid-cols-2">
+                <UiCheckbox v-for="person in pool?.people ?? []" :key="person.id" v-model="slotPeople" :value="person.id">{{ person.name }}</UiCheckbox>
+              </div>
+              <p v-if="slot.bookings.length" class="text-ink-soft text-xs">
+                Записанному кандидату оценка появится у новых собеседующих; начатые оценки снятых сохранятся.
+              </p>
+              <UiNotice :ok="saveSlot.result.value?.ok" :message="saveSlot.result.value?.message" />
+              <div class="flex gap-2">
+                <UiButton type="submit" class="w-auto px-4 text-sm" :pending="saveSlot.pending.value" :disabled="slotPeople.length === 0">Сохранить</UiButton>
+                <UiButton variant="ghost" class="w-auto px-4 text-sm" @click="editingSlot = null">Отмена</UiButton>
+              </div>
+            </form>
           </li>
         </ul>
       </div>

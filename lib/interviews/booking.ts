@@ -123,6 +123,49 @@ async function syncReviews(tx: Parameters<Parameters<typeof db.$transaction>[0]>
   }
 }
 
+/**
+ * Собеседующие слота целиком: кого нет в списке — снимается. Записанным
+ * кандидатам оценки пересчитываются как при записи: новым собеседующим —
+ * заготовки, пустые у снятых — убираются, начатые остаются.
+ */
+export async function setSlotInterviewers(
+  slotId: string,
+  interviewerIds: string[],
+): Promise<{ ok: true; added: string[]; removed: string[] } | { ok: false; message: string }> {
+  const wanted = [...new Set(interviewerIds)];
+  if (wanted.length === 0) return { ok: false, message: "Выберите хотя бы одного собеседующего." };
+
+  const valid = await db.user.count({
+    where: {
+      id: { in: wanted },
+      status: "ACTIVE",
+      roles: { some: { role: { permissions: { hasSome: ["applications.review", "interviews.manage"] } } } },
+    },
+  });
+  if (valid !== wanted.length) return { ok: false, message: "Собеседовать могут только мастера и ведущие собеседований — обновите страницу." };
+
+  return db.$transaction(async (tx) => {
+    // Тот же замок, что у записи: кандидат не запишется посреди смены состава.
+    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BOOKING_LOCK})`);
+    const slot = await tx.interviewSlot.findUnique({
+      where: { id: slotId },
+      select: {
+        interviewers: { select: { userId: true } },
+        bookings: { where: { cancelledAt: null }, select: { applicationId: true } },
+      },
+    });
+    if (!slot) return { ok: false as const, message: "Слот не найден — обновите страницу." };
+
+    const current = slot.interviewers.map((item) => item.userId);
+    const added = wanted.filter((id) => !current.includes(id));
+    const removed = current.filter((id) => !wanted.includes(id));
+    await tx.slotInterviewer.deleteMany({ where: { slotId, userId: { in: removed } } });
+    if (added.length) await tx.slotInterviewer.createMany({ data: added.map((userId) => ({ slotId, userId })), skipDuplicates: true });
+    for (const booking of slot.bookings) await syncReviews(tx, booking.applicationId, wanted);
+    return { ok: true as const, added, removed };
+  });
+}
+
 export async function book(userId: string, slotId: string, now = new Date()): Promise<BookingResult> {
   const ctx = await context(userId);
   if (!ctx?.stage || !ctx.application) return { ok: false, message: "Анкета не найдена." };

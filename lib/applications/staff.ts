@@ -252,6 +252,8 @@ export interface StaffApplication {
   interview: StaffInterview | null;
   /** Текст задания этапа — для домашки. */
   task: string | null;
+  /** Формулировки заданий ДЗ (подсказки вопросов раздела ДЗ) — для ДЗ и собеседования. */
+  homeworkTasks: { label: string; help: string }[];
   /** Сдачи работы, свежая первой. Для анкеты пусто. */
   submissions: StaffSubmission[];
   id: string;
@@ -340,7 +342,7 @@ export async function loadStaffApplication(
     db.formQuestion.findMany({
       where: { seasonId: application.seasonId, stageKind: "APPLICATION" },
       orderBy: { order: "asc" },
-      select: { id: true, section: true, label: true },
+      select: { id: true, section: true, label: true, help: true },
     }),
     criteriaFor(application.seasonId, stage),
     db.stage.findUnique({
@@ -354,6 +356,17 @@ export async function loadStaffApplication(
       select: { id: true, title: true, example: true },
     }),
   ]);
+  const homeworkSections =
+    stage === "APPLICATION"
+      ? new Set<string>()
+      : new Set(
+          (
+            await db.formSection.findMany({
+              where: { seasonId: application.seasonId, stageKind: "APPLICATION", homework: true },
+              select: { title: true },
+            })
+          ).map((section) => section.title),
+        );
 
   const editors = new Set(application.reviews.map((review) => review.updatedById).filter(Boolean) as string[]);
   const people = await db.user.findMany({
@@ -378,6 +391,9 @@ export async function loadStaffApplication(
           }
         : null,
     task: stageRow?.description ?? null,
+    homeworkTasks: questions
+      .filter((question) => homeworkSections.has(question.section) && question.help?.trim())
+      .map((question) => ({ label: question.label, help: question.help! })),
     submissions: application.submissions.map((submission) => ({
       id: submission.id,
       submittedAt: submission.submittedAt,
@@ -397,7 +413,7 @@ export async function loadStaffApplication(
       middleName: application.middleName,
       studentId: application.studentId,
     },
-    questions: questions.map((question) => ({ ...question, answer: answers.get(question.id) ?? null })),
+    questions: questions.map(({ help: _help, ...question }) => ({ ...question, answer: answers.get(question.id) ?? null })),
     criteria: criteria.map((criterion) => ({
       ...criterion,
       levels: criterion.levels as { score: number; text: string }[],

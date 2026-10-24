@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "~~/lib/db";
 import { resetDatabase } from "~~/lib/test/db";
 
-import { book, cancel } from "./booking";
+import { book, cancel, setSlotInterviewers } from "./booking";
 import { dueReminders, materializeReminders } from "./reminders";
 import { createSlots, cutSlots } from "./slots";
 
@@ -91,6 +91,25 @@ describe("запись на собеседование", () => {
     expect(await book(user.id, s.id, NOW)).toMatchObject({ ok: true });
     const reviewers = await db.review.findMany({ where: { applicationId: application.id, stageKind: "INTERVIEW" } });
     expect(reviewers.map((review) => review.reviewerId).sort()).toEqual([katya.id, ilya.id].sort());
+  });
+
+  it("собеседующих слота можно поменять: новым — оценка, начатая у снятого остаётся", async () => {
+    const role = await db.role.create({ data: { name: "М", slug: "m", permissions: ["applications.review"] } });
+    const olya = await db.user.create({ data: { firstName: "Оля", roles: { create: { roleId: role.id } } } });
+    await db.userRole.createMany({ data: [katya.id, ilya.id].map((userId) => ({ userId, roleId: role.id })) });
+    const { user, application } = await candidate("Алина", true);
+    const s = await slot("2026-10-20T10:00:00", [katya.id, ilya.id]);
+    await book(user.id, s.id, NOW);
+    await db.review.updateMany({ where: { applicationId: application.id, reviewerId: katya.id }, data: { comment: "Начала" } });
+
+    expect(await setSlotInterviewers(s.id, [olya.id])).toMatchObject({ ok: true, added: [olya.id] });
+    const reviewers = (await db.review.findMany({ where: { applicationId: application.id, stageKind: "INTERVIEW" } })).map((r) => r.reviewerId);
+    // Илья (пусто) снят, Катя (начала) осталась, Оля добавлена.
+    expect(reviewers.sort()).toEqual([katya.id, olya.id].sort());
+    expect((await db.slotInterviewer.findMany({ where: { slotId: s.id } })).map((i) => i.userId)).toEqual([olya.id]);
+
+    const stranger = await db.user.create({ data: { firstName: "Кандидат" } });
+    expect(await setSlotInterviewers(s.id, [stranger.id])).toMatchObject({ ok: false });
   });
 
   it("занятый слот второму не даётся, даже одновременно", async () => {
