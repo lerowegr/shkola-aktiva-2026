@@ -60,8 +60,8 @@ const Link = resolveComponent("NuxtLink");
       <component
         :is="stage.to ? Link : 'div'"
         :to="stage.to"
-        class="border-line bg-card flex items-center gap-4 rounded-2xl border p-4 transition"
-        :class="[stage.tone === 'now' && 'border-accent ring-accent/15 ring-4', stage.to && 'hover:border-ink-soft']"
+        class="bg-card flex items-center gap-4 rounded-2xl border p-4 transition"
+        :class="[stage.tone === 'now' ? 'border-accent ring-accent/15 ring-4' : 'border-line', stage.to && 'hover:border-ink-soft']"
       >
         <span
           class="font-display grid size-10 shrink-0 place-items-center rounded-xl text-sm"

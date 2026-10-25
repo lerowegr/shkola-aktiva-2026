@@ -38,8 +38,8 @@ function toggle() {
       @change="toggle"
     >
     <span
-      class="border-line bg-card mt-[3px] grid size-5 shrink-0 place-items-center rounded-md border transition peer-focus-visible:ring-accent peer-focus-visible:ring-4 peer-focus-visible:outline-none"
-      :class="checked ? 'border-accent bg-accent text-accent-ink' : ''"
+      class="mt-[3px] grid size-5 shrink-0 place-items-center rounded-md border transition peer-focus-visible:ring-accent peer-focus-visible:ring-4 peer-focus-visible:outline-none"
+      :class="checked ? 'border-accent bg-accent text-accent-ink' : 'border-line bg-card'"
       aria-hidden="true"
     >
       <Check v-if="checked" class="size-3.5" stroke-width="3.5" />
