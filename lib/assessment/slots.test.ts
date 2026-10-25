@@ -67,4 +67,18 @@ describe("выбор другого времени ЦО того же дня", (
     expect(await chooseSlot(userId, late.id, at("2026-10-26T14:30:00Z"))).toMatchObject({ ok: false });
     expect(await answerInvite(userId, "CANT", now)).toMatchObject({ ok: true });
   });
+
+  it("место держит только «буду»: молчащие не занимают, заполненное видно как занятое", async () => {
+    const early = await session("17:20", "2026-10-26T14:20:00Z", ["МЭО"], 1);
+    const late = await session("18:50", "2026-10-26T15:50:00Z", ["МЭО"], 1);
+    const silent = await candidate("МЭО", early.id);
+    const mover = await candidate("МЭО", late.id);
+
+    // Молчащий не держит 17:20 — его занимает тот, кто выбрал первым.
+    expect(await chooseSlot(mover, early.id, now)).toMatchObject({ ok: true });
+    const slots = (await loadCandidateAssessment(silent, now))!.invite!.slots;
+    expect(slots.find((slot) => slot.id === early.id)).toMatchObject({ current: true, free: 0 });
+    expect(await answerInvite(silent, "GOING", now)).toMatchObject({ ok: false });
+    expect(await chooseSlot(silent, late.id, now)).toMatchObject({ ok: true });
+  });
 });

@@ -6,6 +6,7 @@
  * снова «не смогу».
  *
  * Без --apply только показывает, кого затронет. Только ещё не начавшиеся сборы.
+ * --silent — заодно и тех, кто ещё не ответил: им то же «выберите время».
  * --urgent — в Telegram сразу, даже ночью (иначе ночью ждёт 08:00).
  *
  *   на сервере: ./deploy/dc.sh run --rm -T migrate npx tsx scripts/co-reopen-cant.ts
@@ -19,26 +20,29 @@ const MSK = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", day: "
 async function main() {
   const apply = process.argv.includes("--apply");
   const urgent = process.argv.includes("--urgent");
+  const silent = process.argv.includes("--silent");
   const now = new Date();
 
   const invites = await db.assessmentInvite.findMany({
     where: {
-      answer: "CANT",
+      OR: [{ answer: "CANT" }, ...(silent ? [{ answer: null, reserveQueued: false }] : [])],
       session: { reserve: false, startsAt: { gt: now }, season: { isCurrent: true } },
       application: { status: "SUBMITTED" },
     },
     select: {
       id: true,
+      answer: true,
       session: { select: { title: true, startsAt: true } },
       application: { select: { userId: true, lastName: true, firstName: true } },
     },
     orderBy: { session: { startsAt: "asc" } },
   });
 
-  console.log(`Ответили «не смогу» на ещё не начавшиеся сборы: ${invites.length}`);
+  const cant = invites.filter((invite) => invite.answer === "CANT").length;
+  console.log(`На ещё не начавшиеся сборы: «не смогу» — ${cant}, не ответили — ${invites.length - cant}`);
   for (const invite of invites) {
     const name = [invite.application.lastName, invite.application.firstName].filter(Boolean).join(" ") || "без имени";
-    console.log(`  ${name} — ${invite.session.title} (${MSK.format(invite.session.startsAt)} МСК)`);
+    console.log(`  ${invite.answer === "CANT" ? "не смогу " : "молчит   "} ${name} — ${invite.session.title} (${MSK.format(invite.session.startsAt)} МСК)`);
   }
   if (!apply) {
     console.log("\nЭто проверка. Чтобы сбросить ответы и разослать уведомления — добавьте --apply.");
@@ -46,23 +50,23 @@ async function main() {
   }
 
   await db.assessmentInvite.updateMany({
-    where: { id: { in: invites.map((invite) => invite.id) }, answer: "CANT" },
+    where: { id: { in: invites.filter((invite) => invite.answer === "CANT").map((invite) => invite.id) }, answer: "CANT" },
     data: { answer: null, answeredAt: null, reserveQueued: false },
   });
   const sent = await notify(
     invites.map((invite) => ({
       userId: invite.application.userId,
       category: "SELECTION" as const,
-      title: "Центр оценки: появилось другое время и резервный день",
+      title: "Центр оценки: выберите время",
       body:
-        "Раньше в ответе на приглашение был только один вариант времени. Теперь можно выбрать другое время для вашего факультета или записаться на резервный день. " +
-        "Откройте кабинет и выберите, что подходит. «Не получится» — только если не подходит ничего.",
+        "Для вашего факультета есть несколько времён на выбор, а если ни одно не подходит — резервный день. " +
+        "Места ограничены: кто раньше выбрал, за тем и место. Откройте кабинет и выберите, что подходит. «Не получится» — только если не подходит ничего.",
       url: "/cabinet/assessment",
       key: `assessment-reopen:${invite.id}`,
     })),
     { urgent },
   );
-  console.log(`\nОтветы сброшены: ${invites.length}. Уведомлений создано: ${sent}${urgent ? " (срочно)" : " (ночью — в Telegram к 08:00)"}.`);
+  console.log(`\nОтветы «не смогу» сброшены: ${cant}. Уведомлений создано: ${sent}${urgent ? " (срочно)" : " (ночью — в Telegram к 08:00)"}.`);
 }
 
 main()

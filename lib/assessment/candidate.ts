@@ -30,7 +30,7 @@ export interface CandidateSlot extends CandidateDay {
   id: string;
   /** Сбор, на который сейчас приглашён. */
   current: boolean;
-  /** Свободных мест; у своего сбора не важно. */
+  /** Свободных мест (своё место, если уже «буду», учтено как свободное). 0 — все заняты. */
   free: number;
 }
 
@@ -131,8 +131,8 @@ const MSK_TIME = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", h
 /**
  * Сборы, между которыми кандидат может выбрать время: того же дня (по
  * Москве), что и его приглашение, для его факультета, ещё не начавшиеся.
- * Чужие — только со свободными местами. Место занимает тот, кто ответил
- * «буду» или ещё молчит; «не смогу» и «резервный день» место освобождают.
+ * Место занимает только ответ «буду»: кто первый выбрал, того и место.
+ * Заполненные тоже в списке — кандидат видит «все места заняты».
  */
 async function slotsFor(
   client: Client,
@@ -157,7 +157,7 @@ async function slotsFor(
   ).filter((session) => mskDay(session.startsAt) === day);
   const taken = await client.assessmentInvite.groupBy({
     by: ["sessionId"],
-    where: { sessionId: { in: sessions.map((session) => session.id) }, OR: [{ answer: null }, { answer: "GOING" }] },
+    where: { sessionId: { in: sessions.map((session) => session.id) }, answer: "GOING", reserveQueued: false },
     _count: { _all: true },
   });
   const used = new Map(taken.map((row) => [row.sessionId, row._count._all]));
@@ -165,10 +165,9 @@ async function slotsFor(
     .map((session) => {
       const current = session.id === invite.sessionId;
       // Свой сбор: себя из занятых не вычитаем дважды.
-      const mine = current && (invite.answer === null || invite.answer === "GOING") ? 1 : 0;
+      const mine = current && invite.answer === "GOING" ? 1 : 0;
       return { ...asDay(session), id: session.id, current, free: session.capacity - (used.get(session.id) ?? 0) + mine };
-    })
-    .filter((slot) => slot.current || slot.free > 0);
+    });
 }
 
 export async function loadCandidateAssessment(
@@ -250,7 +249,8 @@ export async function chooseSlot(userId: string, sessionId: string, now = new Da
       return { ok: false, message: "Ваш центр оценки уже начался — поменять время можно только через организаторов в «Сообщениях»." };
     }
     const slot = (await slotsFor(tx, application, now)).find((item) => item.id === sessionId && !item.current);
-    if (!slot) return { ok: false, message: "На это время мест уже нет или оно уже началось — выберите другое." };
+    if (!slot) return { ok: false, message: "Это время недоступно — обновите страницу и выберите другое." };
+    if (slot.free <= 0) return { ok: false, message: "На это время все места заняты — выберите другое или резервный день." };
 
     await tx.assessmentInvite.update({
       where: { id: invite.id },
@@ -305,6 +305,13 @@ export async function answerInvite(
         message:
           "Центр оценки уже начался — поменять ответ можно только через организаторов в «Сообщениях».",
       };
+    }
+    // «Буду» занимает место: если его уже разобрали — отказ.
+    if (answer === "GOING" && (invite.answer !== "GOING" || invite.reserveQueued)) {
+      const taken = await tx.assessmentInvite.count({ where: { sessionId: invite.sessionId, answer: "GOING", reserveQueued: false } });
+      if (taken >= invite.session.capacity) {
+        return { ok: false, message: "На это время все места заняты — выберите другое время или резервный день." };
+      }
     }
     if (invite.answer === answer)
       return {
