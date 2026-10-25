@@ -5,6 +5,7 @@ import { applicationQuestions, applicationSections } from "~~/lib/applications/c
 import { homeworkText } from "~~/lib/applications/homework";
 import { notifyAssigned, notifySubmitted } from "~~/lib/applications/notifications";
 import { formatValue, normalizeUrl, submitProblems } from "~~/lib/applications/form";
+import { autoInvite } from "~~/lib/assessment/sessions";
 import { db } from "~~/lib/db";
 import { suggestAnswers } from "~~/lib/profile/onboarding";
 import { editableDraft } from "~~/server/utils/application-guard";
@@ -135,6 +136,7 @@ export default defineAction(z.object({}), async ({ event }) => {
   const homeworkReview = homeworkSections.size ? await assignFollowUp(application.id, "HOMEWORK") : null;
 
   await notifySubmitted(application.id, user.id);
+  await autoInvite(application.id);
   if (review) await notifyAssigned([review.id]);
   if (homeworkReview) await notifyAssigned([homeworkReview.id], "HOMEWORK");
 

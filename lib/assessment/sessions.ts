@@ -148,6 +148,65 @@ function inviteText(place: Place, reserve: { startsAt: Date | string } | null) {
   return lines.join("\n");
 }
 
+/** Одинаковое приглашение при ручной рассылке и при поздней отправке анкеты. */
+async function notifyInvites(
+  invites: { id: string; application: { userId: string } }[],
+  place: Place,
+  reserve: { startsAt: Date | string } | null,
+) {
+  await notify(
+    invites.map((invite) => ({
+      userId: invite.application.userId,
+      category: "SELECTION" as const,
+      title: "Приглашение на центр оценки — будете?",
+      body: inviteText(place, reserve),
+      url: "/cabinet/assessment",
+      key: `assessment-invite:${invite.id}`,
+    })),
+    { urgent: true },
+  );
+}
+
+/**
+ * Поздняя анкета присоединяется к уже начатой рассылке своего факультета.
+ * Не меняем опубликованное место и не мешаем отправке анкеты при ошибке.
+ */
+export async function autoInvite(applicationId: string, now = new Date()): Promise<boolean> {
+  try {
+    const application = await db.application.findFirst({
+      where: { id: applicationId, status: "SUBMITTED", season: { isCurrent: true }, user: { status: "ACTIVE" } },
+      select: { id: true, seasonId: true, user: { select: { faculty: true } }, assessmentInvite: { select: { id: true } } },
+    });
+    if (!application?.user.faculty || application.assessmentInvite) return false;
+
+    const sessions = await db.assessmentSession.findMany({
+      where: { seasonId: application.seasonId, reserve: false, invitedAt: { not: null }, startsAt: { gt: now } },
+      orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+      select: { id: true, faculties: true, reserve: true, invited: true },
+    });
+    const session = sessions.find((item) => invitesFaculty(item, application.user.faculty));
+    const place = session && readPlace(session.invited);
+    if (!session || !place || placeProblem(place)) return false;
+
+    // Вторая вкладка или одновременное ручное приглашение: выигрывает только одно создание.
+    const created = await db.assessmentInvite.createMany({
+      data: [{ sessionId: session.id, applicationId: application.id, invitedAt: now }],
+      skipDuplicates: true,
+    });
+    if (created.count === 0) return false;
+
+    const invite = await db.assessmentInvite.findUniqueOrThrow({
+      where: { applicationId: application.id },
+      select: { id: true, application: { select: { userId: true } } },
+    });
+    await notifyInvites([invite], place, await reserveOf(application.seasonId));
+    return true;
+  } catch (error) {
+    console.error("Не удалось автоматически пригласить на центр оценки", error);
+    return false;
+  }
+}
+
 /**
  * Пригласить на сбор. Без списка — всех с отправленной анкетой нужных
  * факультетов, кого ещё ни на один сбор не приглашали. Со списком — этих
@@ -164,6 +223,9 @@ export async function inviteSession(
   });
   if (!session) return { ok: false, message: "Сбор не найден — обновите страницу." };
   const place = placeOf(session);
+  if (placeChanged(readPlace(session.invited), place)) {
+    return { ok: false, message: "Место или время сбора изменились после приглашения — сначала нажмите «Сообщить об изменении», потом приглашайте новых." };
+  }
   const problem = placeProblem(place);
   if (problem) return { ok: false, message: problem };
 
@@ -193,16 +255,7 @@ export async function inviteSession(
     where: { sessionId: session.id, applicationId: { in: fresh.map((item) => item.id) } },
     select: { id: true, application: { select: { userId: true } } },
   });
-  await notify(
-    invites.map((invite) => ({
-      userId: invite.application.userId,
-      category: "SELECTION" as const,
-      title: "Приглашение на центр оценки — будете?",
-      body: inviteText(place, reserve),
-      url: "/cabinet/assessment",
-      key: `assessment-invite:${invite.id}`,
-    })),
-  );
+  await notifyInvites(invites, place, reserve);
   return { ok: true, invited: invites.length, skipped };
 }
 
@@ -274,6 +327,7 @@ export async function notifyChange(seasonId: string, sessionId: string): Promise
       url: "/cabinet/assessment",
       key: `assessment-change:${session.id}:${now.getTime()}:${invite.id}`,
     })),
+    { urgent: true },
   );
   return { ok: true, sent: people.length };
 }

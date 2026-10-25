@@ -1,16 +1,25 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "~~/lib/db";
 import { resetDatabase } from "~~/lib/test/db";
 
-import { deleteSession, inviteSession, loadOverview, loadSessionPage, notifyChange, remindSession, saveSession } from "./sessions";
+import { loadCandidateAssessment } from "./candidate";
+import { autoInvite, deleteSession, inviteSession, loadOverview, loadSessionPage, notifyChange, remindSession, saveSession } from "./sessions";
 
 describe("сборы центра оценки", () => {
   let seasonId: string;
+  const now = new Date("2026-10-25T22:00:00.000Z"); // 01:00 по Москве — проверяем ночную доставку.
 
   beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
     await resetDatabase();
     seasonId = (await db.season.create({ data: { slug: "s", title: "S", year: 2026, isCurrent: true } })).id;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   async function candidate(faculty: string | null, status: "SUBMITTED" | "DRAFT" = "SUBMITTED") {
@@ -22,6 +31,12 @@ describe("сборы центра оценки", () => {
     const result = await saveSession(seasonId, { title, startsAt: "2026-11-02T15:00:00.000Z", faculties, ...base, ...extra });
     if (!result.ok) throw new Error(result.message);
     return result.id;
+  }
+
+  async function startMailing(sessionId: string) {
+    const first = await candidate("МЭО");
+    expect(await inviteSession(seasonId, sessionId, [first.id])).toMatchObject({ ok: true, invited: 1 });
+    return first;
   }
 
   it("сбор без факультетов не создать, резервный день — один на сезон", async () => {
@@ -121,5 +136,152 @@ describe("сборы центра оценки", () => {
     expect(await deleteSession(seasonId, monday)).toMatchObject({ ok: true, invites: 1, groups: 1 });
     expect(await db.assessmentInvite.count()).toBe(0);
     expect(await db.assessmentGroup.count()).toBe(0);
+  });
+
+  it("поздняя анкета приглашается в ближайший будущий сбор с начатой рассылкой", async () => {
+    const reserve = await session("Резерв", [], { reserve: true, startsAt: "2026-10-27T09:00:00.000Z" });
+    await startMailing(reserve);
+    await session("Ещё не приглашали", ["МЭО"], { startsAt: "2026-10-28T09:00:00.000Z" });
+    const far = await session("Позже", ["МЭО"]);
+    await startMailing(far);
+    const near = await session("Ближе", ["МЭО"], { startsAt: "2026-10-29T09:00:00.000Z" });
+    const first = await startMailing(near);
+    const late = await candidate("МЭО");
+    await db.user.update({ where: { id: late.userId }, data: { telegramId: "12345" } });
+
+    expect(await autoInvite(late.id)).toBe(true);
+    const invite = await db.assessmentInvite.findUniqueOrThrow({ where: { applicationId: late.id } });
+    expect(invite.sessionId).toBe(near);
+    const notifications = await db.notification.findMany({ where: { userId: late.userId } });
+    const manual = await db.notification.findFirstOrThrow({ where: { userId: first.userId } });
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({
+      key: `assessment-invite:${invite.id}`,
+      url: "/cabinet/assessment",
+      title: manual.title,
+      body: manual.body,
+    });
+    const delivery = await db.notificationDelivery.findFirstOrThrow({ where: { userId: late.userId } });
+    expect(delivery.scheduledAt).toEqual(new Date(now.getTime() + 60_000));
+  });
+
+  it("до первой рассылки автоприглашения нет", async () => {
+    const id = await session("Пн", ["МЭО"]);
+    const late = await candidate("МЭО");
+    expect(await autoInvite(late.id)).toBe(false);
+    expect(await db.assessmentInvite.count()).toBe(0);
+    expect((await db.assessmentSession.findUniqueOrThrow({ where: { id } })).invitedAt).toBeNull();
+  });
+
+  it.each([
+    { reason: "без факультета", faculty: null, status: "SUBMITTED" as const, startsAt: "2026-11-02T15:00:00.000Z", reserve: false },
+    { reason: "чужой факультет", faculty: "ЮФ", status: "SUBMITTED" as const, startsAt: "2026-11-02T15:00:00.000Z", reserve: false },
+    { reason: "черновик", faculty: "МЭО", status: "DRAFT" as const, startsAt: "2026-11-02T15:00:00.000Z", reserve: false },
+    { reason: "сбор уже начался", faculty: "МЭО", status: "SUBMITTED" as const, startsAt: now.toISOString(), reserve: false },
+    { reason: "сбор в прошлом", faculty: "МЭО", status: "SUBMITTED" as const, startsAt: "2026-10-24T15:00:00.000Z", reserve: false },
+    { reason: "только резервный сбор", faculty: "МЭО", status: "SUBMITTED" as const, startsAt: "2026-11-02T15:00:00.000Z", reserve: true },
+  ])("автоприглашения нет: $reason", async ({ faculty, status, startsAt, reserve }) => {
+    const id = await session("Сбор", ["МЭО"], { startsAt, reserve });
+    await startMailing(id);
+    const late = await candidate(faculty, status);
+    expect(await autoInvite(late.id)).toBe(false);
+    expect(await db.assessmentInvite.count({ where: { applicationId: late.id } })).toBe(0);
+    expect(await db.notification.count({ where: { userId: late.userId } })).toBe(0);
+  });
+
+  it("не приглашает анкету другого сезона и заблокированного кандидата", async () => {
+    const id = await session("Пн", ["МЭО"]);
+    await startMailing(id);
+    const late = await candidate("МЭО");
+    await db.user.update({ where: { id: late.userId }, data: { status: "BLOCKED" } });
+    expect(await autoInvite(late.id)).toBe(false);
+    await db.user.update({ where: { id: late.userId }, data: { status: "ACTIVE" } });
+    await db.season.update({ where: { id: seasonId }, data: { isCurrent: false } });
+    expect(await autoInvite(late.id)).toBe(false);
+    expect(await autoInvite("несуществующая-анкета")).toBe(false);
+    expect(await db.assessmentInvite.count({ where: { applicationId: late.id } })).toBe(0);
+  });
+
+  it("уже приглашённого не переносит и не присылает повторное уведомление", async () => {
+    const later = await session("Пн", ["МЭО"]);
+    const first = await startMailing(later);
+    const before = await db.assessmentInvite.findUniqueOrThrow({ where: { applicationId: first.id } });
+    const nearer = await session("Раньше", ["МЭО"], { startsAt: "2026-10-29T09:00:00.000Z" });
+    await startMailing(nearer);
+    expect(await autoInvite(first.id)).toBe(false);
+    expect(await db.assessmentInvite.findUnique({ where: { applicationId: first.id } })).toEqual(before);
+    expect(await db.notification.count({ where: { userId: first.userId } })).toBe(1);
+  });
+
+  it("автоприглашение использует снимок и не публикует несообщённую правку места", async () => {
+    await db.stage.create({ data: { seasonId, kind: "ASSESSMENT", title: "Центр оценки", order: 3 } });
+    const id = await session("Пн", ["МЭО"]);
+    await startMailing(id);
+    const before = await db.assessmentSession.findUniqueOrThrow({ where: { id } });
+    await db.assessmentSession.update({ where: { id }, data: { building: "Новый корпус", room: "410", startsAt: new Date("2026-11-03T10:00:00.000Z"), note: "Новое место" } });
+    const late = await candidate("МЭО");
+
+    expect(await autoInvite(late.id)).toBe(true);
+    const after = await db.assessmentSession.findUniqueOrThrow({ where: { id } });
+    expect(after.invited).toEqual(before.invited);
+    expect(after.invitedAt).toEqual(before.invitedAt);
+    const view = await loadCandidateAssessment(late.userId, now);
+    expect(view!.invite!.day).toMatchObject({ building: "2", room: "Лекционная 305", startsAt: "2026-11-02T15:00:00.000Z" });
+    const note = await db.notification.findFirstOrThrow({ where: { userId: late.userId } });
+    expect(note.body).toContain("Лекционная 305");
+    expect(note.body).not.toContain("410");
+    expect((await loadOverview(seasonId)).sessions[0]!.stale).toBe(true);
+  });
+
+  it("повторное ручное приглашение не меняет снимок до сообщения об изменении", async () => {
+    const id = await session("Пн", ["МЭО"]);
+    await startMailing(id);
+    const before = await db.assessmentSession.findUniqueOrThrow({ where: { id } });
+    await db.assessmentSession.update({ where: { id }, data: { room: "410" } });
+    const late = await candidate("МЭО");
+
+    expect(await inviteSession(seasonId, id)).toEqual({
+      ok: false,
+      message: "Место или время сбора изменились после приглашения — сначала нажмите «Сообщить об изменении», потом приглашайте новых.",
+    });
+    const after = await db.assessmentSession.findUniqueOrThrow({ where: { id } });
+    expect(after.invited).toEqual(before.invited);
+    expect(after.invitedAt).toEqual(before.invitedAt);
+    expect(await db.assessmentInvite.count({ where: { applicationId: late.id } })).toBe(0);
+    expect(await notifyChange(seasonId, id)).toMatchObject({ ok: true, sent: 1 });
+    expect(await inviteSession(seasonId, id)).toMatchObject({ ok: true, invited: 1 });
+    expect((await db.notification.findFirstOrThrow({ where: { userId: late.userId } })).body).toContain("410");
+  });
+
+  it("одновременные автоприглашения создают одно приглашение и уведомление", async () => {
+    const id = await session("Пн", ["МЭО"]);
+    await startMailing(id);
+    const late = await candidate("МЭО");
+    expect((await Promise.all([autoInvite(late.id), autoInvite(late.id)])).sort()).toEqual([false, true]);
+    expect(await db.assessmentInvite.count({ where: { applicationId: late.id } })).toBe(1);
+    expect(await db.notification.count({ where: { userId: late.userId } })).toBe(1);
+  });
+
+  it("приглашение и изменение срочные, напоминание ночью ждёт утра", async () => {
+    const a = await candidate("МЭО");
+    await db.user.update({ where: { id: a.userId }, data: { telegramId: "12345" } });
+    const id = await session("Пн", ["МЭО"]);
+    await inviteSession(seasonId, id);
+    await remindSession(seasonId, id);
+    await db.assessmentSession.update({ where: { id }, data: { room: "410" } });
+    await notifyChange(seasonId, id);
+    const deliveries = await db.notificationDelivery.findMany({ where: { userId: a.userId }, include: { notification: true } });
+    expect(deliveries).toHaveLength(3);
+    const at = (prefix: string) => deliveries.find((item) => item.notification.key?.startsWith(prefix))!.scheduledAt;
+    expect(at("assessment-invite:")).toEqual(new Date(now.getTime() + 60_000));
+    expect(at("assessment-change:")).toEqual(new Date(now.getTime() + 60_000));
+    expect(at("assessment-remind:")).toEqual(new Date("2026-10-26T05:00:00.000Z"));
+  });
+
+  it("ошибка автоприглашения логируется и не выходит наружу", async () => {
+    vi.spyOn(db.application, "findFirst").mockRejectedValueOnce(new Error("База недоступна"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await autoInvite("application")).toBe(false);
+    expect(log).toHaveBeenCalledWith("Не удалось автоматически пригласить на центр оценки", expect.any(Error));
   });
 });

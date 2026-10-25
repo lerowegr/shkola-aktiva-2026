@@ -14,7 +14,7 @@ export async function notifySubmitted(applicationId: string, userId: string) {
       userId,
       category: "SELECTION",
       title: "Анкета отправлена",
-      body: "Её уже читает мастер отбора. Приглашение на центр оценки пришлём здесь.",
+      body: "Её уже читает мастер отбора. Приглашение на центр оценки ищите в уведомлениях и в разделе «Центр оценки» личного кабинета.",
       url: "/cabinet",
       key: `application:${applicationId}:submitted`,
     },
