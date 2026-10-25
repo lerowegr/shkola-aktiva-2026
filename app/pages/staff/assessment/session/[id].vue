@@ -38,6 +38,8 @@ interface Page {
     note: string | null;
     faculties: string[];
     reserve: boolean;
+    capacity: number;
+    occupied: number;
     invitedAt: string | null;
     stale: boolean;
     counts: { invited: number; going: number; reserve: number; cant: number; silent: number };
@@ -129,6 +131,9 @@ const LISTS = [
             <CalendarClock class="size-4" aria-hidden="true" />{{ mskDay(page.session.startsAt) }}, {{ mskTime(page.session.startsAt) }} МСК
           </span>
           <span>{{ page.session.reserve ? "Все факультеты" : page.session.faculties.join(", ") }}</span>
+          <span :class="page.session.occupied >= page.session.capacity ? 'text-danger font-medium' : ''">
+            Занято мест: {{ page.session.occupied }} / {{ page.session.capacity }}
+          </span>
         </div>
         <p v-if="page.session.stale" class="text-danger flex items-start gap-1.5 text-sm">
           <TriangleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />

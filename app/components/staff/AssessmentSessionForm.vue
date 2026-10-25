@@ -16,6 +16,7 @@ interface Session {
   note: string | null;
   faculties: string[];
   reserve: boolean;
+  capacity: number;
 }
 
 const props = defineProps<{ session: Session | null; hasReserve: boolean }>();
@@ -29,6 +30,7 @@ const form = reactive({
   note: props.session?.note ?? "",
   faculties: [...(props.session?.faculties ?? [])],
   reserve: props.session?.reserve ?? false,
+  capacity: props.session?.capacity ?? 50,
 });
 // Второй резервный день не завести — галочку показываем только там, где она может стоять.
 const reserveAllowed = computed(() => props.session?.reserve || !props.hasReserve);
@@ -51,6 +53,7 @@ async function save() {
         note: form.note,
         faculties: form.reserve ? [] : form.faculties,
         reserve: form.reserve,
+        capacity: form.capacity,
       },
       ignoreResponseError: true,
     }).catch((): ActionResult => ({ ok: false, message: "Нет связи с сайтом. Проверьте интернет." }));
@@ -82,6 +85,15 @@ const field = "border-line bg-paper focus:border-accent min-h-11 rounded-xl bord
       </label>
     </div>
     <UiDateTime v-model="form.startsAt" label="Начало — по Москве" size="md" />
+    <label class="flex flex-col gap-1.5 text-sm font-medium">
+      Лимит приглашений
+      <input v-model.number="form.capacity" type="number" min="1" max="10000" step="1" required :class="field" >
+      <span class="text-ink-soft text-xs font-normal">
+        Учитываются все приглашённые, включая тех, кто ещё не ответил или отказался.
+        <template v-if="form.reserve">Также учитываются кандидаты, перешедшие в резервный день.</template>
+        <template v-else>После заполнения новые кандидаты попадают в следующий созданный слот своего факультета.</template>
+      </span>
+    </label>
     <label class="flex flex-col gap-1.5 text-sm font-medium">
       Заметка для кандидатов — необязательно
       <textarea

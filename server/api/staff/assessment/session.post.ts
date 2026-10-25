@@ -13,6 +13,7 @@ const schema = z.object({
   note: z.string().max(1000).default(""),
   faculties: z.array(z.string().max(20)).max(20).default([]),
   reserve: z.boolean().default(false),
+  capacity: z.number({ error: "Лимит приглашений — число." }).int("Лимит должен быть целым числом.").min(1, "Лимит — не меньше 1.").max(10_000, "Лимит — не больше 10 000.").optional(),
 });
 
 /** Создать сбор ЦО или поправить его. */
@@ -25,7 +26,7 @@ export default defineAction(schema, async ({ body, event }) => {
     action: result.created ? "assessment.session.create" : "assessment.session.update",
     entityType: "assessment_session",
     entityId: result.id,
-    meta: { title: body.title.trim(), startsAt: body.startsAt, building: body.building.trim(), room: body.room.trim(), faculties: body.faculties, reserve: body.reserve },
+    meta: { title: body.title.trim(), startsAt: body.startsAt, building: body.building.trim(), room: body.room.trim(), faculties: body.faculties, reserve: body.reserve, capacity: body.capacity },
   });
   return { ok: true, id: result.id, message: result.created ? "Сбор создан. Теперь пригласите кандидатов." : "Сохранено." };
 });

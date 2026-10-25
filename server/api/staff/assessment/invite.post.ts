@@ -21,13 +21,17 @@ export default defineAction(schema, async ({ body, event }) => {
       action: "assessment.session.invite",
       entityType: "assessment_session",
       entityId: body.sessionId,
-      meta: { invited: result.invited, manual: Boolean(body.applicationIds) },
+      meta: { invited: result.invited, overflow: result.overflow, unplaced: result.unplaced, manual: Boolean(body.applicationIds) },
     });
   }
   const skipped = result.skipped ? ` Уже приглашены раньше: ${result.skipped}.` : "";
+  const overflow = result.overflow ? ` Из них в следующие слоты: ${result.overflow}.` : "";
+  const unplaced = result.unplaced ? ` Без приглашения из-за нехватки мест: ${result.unplaced}. Создайте следующий слот подходящего факультета и повторите приглашение.` : "";
   return {
     ok: true,
     invited: result.invited,
-    message: result.invited ? `Приглашено: ${result.invited}.${skipped}` : `Новых кандидатов для приглашения нет.${skipped}`,
+    unplaced: result.unplaced,
+    overflow: result.overflow,
+    message: result.invited ? `Приглашено: ${result.invited}.${overflow}${skipped}${unplaced}` : `${result.unplaced ? "Свободных мест в подходящих слотах нет." : "Новых кандидатов для приглашения нет."}${skipped}${unplaced}`,
   };
 });

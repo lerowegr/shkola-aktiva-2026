@@ -4,6 +4,7 @@ import { db } from "~~/lib/db";
 import { notify } from "~~/lib/notifications/notify";
 import { FACULTIES } from "~~/lib/profile/onboarding";
 
+import { lockAssessmentCapacity, usedAssessmentPlaces, type AssessmentTx } from "./capacity";
 import { dayOf, invitesFaculty, placeChanged, placeLine, placeOf, placeProblem, readPlace, type AssessmentAnswerKind, type Place } from "./rules";
 
 /**
@@ -32,6 +33,7 @@ export interface SessionInput {
   note: string;
   faculties: string[];
   reserve: boolean;
+  capacity?: number;
 }
 
 function when(date: Date | string): string {
@@ -64,38 +66,58 @@ export async function saveSession(seasonId: string, input: SessionInput): Promis
     return { ok: false, message: `Корпус и аудитория — до ${FIELD_MAX} знаков.` };
   }
   if (input.note.length > NOTE_MAX) return { ok: false, message: `Заметка — до ${NOTE_MAX} знаков.` };
+  if (input.capacity !== undefined && (!Number.isInteger(input.capacity) || input.capacity < 1 || input.capacity > 10_000)) {
+    return { ok: false, message: "Лимит приглашений — целое число от 1 до 10 000." };
+  }
   const startsAt = new Date(input.startsAt);
   if (Number.isNaN(startsAt.getTime())) return { ok: false, message: "Укажите дату и время сбора." };
 
   const faculties = [...new Set(input.faculties.filter((faculty) => (FACULTIES as readonly string[]).includes(faculty)))];
   if (!input.reserve && faculties.length === 0) return { ok: false, message: "Отметьте факультеты, которых приглашаете на этот сбор." };
 
-  if (input.reserve) {
-    const other = await db.assessmentSession.findFirst({
-      where: { seasonId, reserve: true, ...(input.id ? { id: { not: input.id } } : {}) },
-      select: { title: true },
+  return db.$transaction(async (tx) => {
+    await lockAssessmentCapacity(tx, seasonId);
+    if (input.reserve) {
+      const other = await tx.assessmentSession.findFirst({
+        where: { seasonId, reserve: true, ...(input.id ? { id: { not: input.id } } : {}) },
+        select: { title: true },
+      });
+      if (other) return { ok: false, message: `Резервный день уже есть — «${other.title}». Он один на сезон.` };
+    }
+
+    const data = {
+      title,
+      building: input.building.trim() || null,
+      room: input.room.trim() || null,
+      startsAt,
+      note: input.note.trim() || null,
+      faculties: input.reserve ? [] : faculties,
+      reserve: input.reserve,
+    };
+
+    if (input.id) {
+      const found = await tx.assessmentSession.findFirst({
+        where: { id: input.id, seasonId },
+        select: { id: true, seasonId: true, reserve: true, capacity: true },
+      });
+      if (!found) return { ok: false, message: "Сбор не найден — обновите страницу." };
+      const capacity = input.capacity ?? found.capacity;
+      const used = await usedAssessmentPlaces(tx, { ...found, reserve: found.reserve || input.reserve });
+      if (capacity < used) return { ok: false, message: `Уже приглашено ${used}. Лимит нельзя уменьшить ниже этого числа.` };
+      await tx.assessmentSession.update({ where: { id: found.id }, data: { ...data, capacity } });
+      return { ok: true, id: found.id, created: false };
+    }
+    const capacity = input.capacity ?? 50;
+    if (input.reserve) {
+      const moved = await tx.assessmentInvite.count({ where: { answer: "RESERVE", session: { seasonId } } });
+      if (capacity < moved) return { ok: false, message: `В резервный день уже перешли ${moved}. Лимит нельзя установить ниже этого числа.` };
+    }
+    const created = await tx.assessmentSession.create({
+      data: { ...data, seasonId, capacity },
+      select: { id: true },
     });
-    if (other) return { ok: false, message: `Резервный день уже есть — «${other.title}». Он один на сезон.` };
-  }
-
-  const data = {
-    title,
-    building: input.building.trim() || null,
-    room: input.room.trim() || null,
-    startsAt,
-    note: input.note.trim() || null,
-    faculties: input.reserve ? [] : faculties,
-    reserve: input.reserve,
-  };
-
-  if (input.id) {
-    const found = await db.assessmentSession.findFirst({ where: { id: input.id, seasonId }, select: { id: true } });
-    if (!found) return { ok: false, message: "Сбор не найден — обновите страницу." };
-    await db.assessmentSession.update({ where: { id: found.id }, data });
-    return { ok: true, id: found.id, created: false };
-  }
-  const created = await db.assessmentSession.create({ data: { ...data, seasonId }, select: { id: true } });
-  return { ok: true, id: created.id, created: true };
+    return { ok: true, id: created.id, created: true };
+  });
 }
 
 /** Удалить сбор — с его подгруппами и приглашениями. Пустые заготовки оценок уходят, начатые остаются. */
@@ -167,39 +189,99 @@ async function notifyInvites(
   );
 }
 
-/**
- * Поздняя анкета присоединяется к уже начатой рассылке своего факультета.
- * Не меняем опубликованное место и не мешаем отправке анкеты при ошибке.
- */
+type InvitePerson = { id: string; userId: string };
+type CapacitySession = {
+  id: string;
+  seasonId: string;
+  capacity: number;
+  reserve: boolean;
+  faculties: string[];
+  building: string | null;
+  room: string | null;
+  startsAt: Date;
+  note: string | null;
+  invited: unknown;
+  invitedAt: Date | null;
+};
+type InviteBatch = {
+  sessionId: string;
+  reserve: boolean;
+  place: Place;
+  invites: { id: string; application: { userId: string } }[];
+};
+const capacitySessionSelect = {
+  id: true,
+  seasonId: true,
+  capacity: true,
+  reserve: true,
+  faculties: true,
+  building: true,
+  room: true,
+  startsAt: true,
+  note: true,
+  invited: true,
+  invitedAt: true,
+} as const;
+
+/** Вызывается под замком сезона; снимок публикуется при первом приглашении. */
+async function claimInvites(tx: AssessmentTx, session: CapacitySession, people: InvitePerson[], now: Date): Promise<InviteBatch | null> {
+  const place = readPlace(session.invited) ?? placeOf(session);
+  if (placeProblem(place)) return null;
+  const free = Math.max(0, session.capacity - (await usedAssessmentPlaces(tx, session)));
+  const selected = people.slice(0, free);
+  if (!selected.length) return null;
+  const created = await tx.assessmentInvite.createManyAndReturn({
+    data: selected.map((item) => ({ sessionId: session.id, applicationId: item.id, invitedAt: now })),
+    skipDuplicates: true,
+    select: { id: true, applicationId: true },
+  });
+  if (!created.length) return null;
+  if (!session.invitedAt || !readPlace(session.invited)) {
+    await tx.assessmentSession.update({ where: { id: session.id }, data: { invited: { ...place }, invitedAt: now } });
+  }
+  const users = new Map(selected.map((item) => [item.id, item.userId]));
+  return {
+    sessionId: session.id,
+    reserve: session.reserve,
+    place,
+    invites: created.map((invite) => ({ id: invite.id, application: { userId: users.get(invite.applicationId)! } })),
+  };
+}
+
+/** Поздняя анкета занимает ближайшее свободное место после начала рассылки факультета. */
 export async function autoInvite(applicationId: string, now = new Date()): Promise<boolean> {
   try {
     const application = await db.application.findFirst({
       where: { id: applicationId, status: "SUBMITTED", season: { isCurrent: true }, user: { status: "ACTIVE" } },
-      select: { id: true, seasonId: true, user: { select: { faculty: true } }, assessmentInvite: { select: { id: true } } },
+      select: { id: true, userId: true, seasonId: true, user: { select: { faculty: true } }, assessmentInvite: { select: { id: true } } },
     });
     if (!application?.user.faculty || application.assessmentInvite) return false;
-
-    const sessions = await db.assessmentSession.findMany({
-      where: { seasonId: application.seasonId, reserve: false, invitedAt: { not: null }, startsAt: { gt: now } },
-      orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-      select: { id: true, faculties: true, reserve: true, invited: true },
-    });
-    const session = sessions.find((item) => invitesFaculty(item, application.user.faculty));
-    const place = session && readPlace(session.invited);
-    if (!session || !place || placeProblem(place)) return false;
-
-    // Вторая вкладка или одновременное ручное приглашение: выигрывает только одно создание.
-    const created = await db.assessmentInvite.createMany({
-      data: [{ sessionId: session.id, applicationId: application.id, invitedAt: now }],
-      skipDuplicates: true,
-    });
-    if (created.count === 0) return false;
-
-    const invite = await db.assessmentInvite.findUniqueOrThrow({
-      where: { applicationId: application.id },
-      select: { id: true, application: { select: { userId: true } } },
-    });
-    await notifyInvites([invite], place, await reserveOf(application.seasonId));
+    const batch = await db.$transaction(
+      async (tx) => {
+        await lockAssessmentCapacity(tx, application.seasonId);
+        if (await tx.assessmentInvite.findUnique({ where: { applicationId }, select: { id: true } })) return null;
+        const sessions = (
+          await tx.assessmentSession.findMany({
+            where: { seasonId: application.seasonId, reserve: false },
+            orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+            select: capacitySessionSelect,
+          })
+        ).filter((item) => invitesFaculty(item, application.user.faculty));
+        // Первую рассылку запускает организатор; следующие созданные слоты
+        // могут начать принимать переполнение без отдельного нажатия кнопки.
+        const firstStarted = sessions.find((item) => item.invitedAt !== null);
+        if (!firstStarted) return null;
+        for (const session of sessions) {
+          if (session.startsAt <= now || session.startsAt < firstStarted.startsAt) continue;
+          const claimed = await claimInvites(tx, session, [application], now);
+          if (claimed) return claimed;
+        }
+        return null;
+      },
+      { timeout: 30_000 },
+    );
+    if (!batch) return false;
+    await notifyInvites(batch.invites, batch.place, await reserveOf(application.seasonId));
     return true;
   } catch (error) {
     console.error("Не удалось автоматически пригласить на центр оценки", error);
@@ -207,56 +289,69 @@ export async function autoInvite(applicationId: string, now = new Date()): Promi
   }
 }
 
-/**
- * Пригласить на сбор. Без списка — всех с отправленной анкетой нужных
- * факультетов, кого ещё ни на один сбор не приглашали. Со списком — этих
- * (например, без факультета), тоже только ещё не приглашённых.
- */
+/** Заполняем выбранный слот, затем следующие подходящие. Выданные приглашения не переносим. */
 export async function inviteSession(
   seasonId: string,
   sessionId: string,
   applicationIds?: string[],
-): Promise<Result<{ invited: number; skipped: number }>> {
-  const session = await db.assessmentSession.findFirst({
-    where: { id: sessionId, seasonId },
-    select: { id: true, title: true, building: true, room: true, startsAt: true, note: true, faculties: true, reserve: true, invited: true },
-  });
-  if (!session) return { ok: false, message: "Сбор не найден — обновите страницу." };
-  const place = placeOf(session);
-  if (placeChanged(readPlace(session.invited), place)) {
-    return { ok: false, message: "Место или время сбора изменились после приглашения — сначала нажмите «Сообщить об изменении», потом приглашайте новых." };
-  }
-  const problem = placeProblem(place);
-  if (problem) return { ok: false, message: problem };
-
-  const candidates = await db.application.findMany({
-    where: {
-      seasonId,
-      status: "SUBMITTED",
-      user: { status: "ACTIVE" },
-      ...(applicationIds ? { id: { in: applicationIds } } : {}),
+): Promise<Result<{ invited: number; skipped: number; unplaced: number; overflow: number }>> {
+  const outcome = await db.$transaction(
+    async (tx) => {
+      await lockAssessmentCapacity(tx, seasonId);
+      const session = await tx.assessmentSession.findFirst({
+        where: { id: sessionId, seasonId },
+        select: capacitySessionSelect,
+      });
+      if (!session) return { ok: false as const, message: "Сбор не найден — обновите страницу." };
+      const place = placeOf(session);
+      if (placeChanged(readPlace(session.invited), place)) {
+        return {
+          ok: false as const,
+          message: "Место или время сбора изменились после приглашения — сначала нажмите «Сообщить об изменении», потом приглашайте новых.",
+        };
+      }
+      const problem = placeProblem(place);
+      if (problem) return { ok: false as const, message: problem };
+      const candidates = await tx.application.findMany({
+        where: { seasonId, status: "SUBMITTED", user: { status: "ACTIVE" }, ...(applicationIds ? { id: { in: applicationIds } } : {}) },
+        orderBy: [{ submittedAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, userId: true, user: { select: { faculty: true } }, assessmentInvite: { select: { id: true } } },
+      });
+      const wanted = applicationIds ? candidates : candidates.filter((item) => invitesFaculty(session, item.user.faculty));
+      let remaining = wanted.filter((item) => !item.assessmentInvite);
+      const skipped = wanted.length - remaining.length;
+      const now = new Date();
+      const following = session.reserve
+        ? []
+        : await tx.assessmentSession.findMany({
+            where: { seasonId, reserve: false, startsAt: { gt: new Date(Math.max(now.getTime(), session.startsAt.getTime())) } },
+            orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+            select: capacitySessionSelect,
+          });
+      const batches: InviteBatch[] = [];
+      for (const slot of [session, ...following]) {
+        if (!remaining.length) break;
+        const eligible = slot.id === session.id ? remaining : remaining.filter((item) => invitesFaculty(slot, item.user.faculty));
+        const batch = await claimInvites(tx, slot, eligible, now);
+        if (!batch) continue;
+        batches.push(batch);
+        const invitedUsers = new Set(batch.invites.map((invite) => invite.application.userId));
+        remaining = remaining.filter((item) => !invitedUsers.has(item.userId));
+      }
+      return { ok: true as const, batches, skipped, unplaced: remaining.length };
     },
-    select: { id: true, userId: true, user: { select: { faculty: true } }, assessmentInvite: { select: { id: true } } },
-  });
-  const wanted = applicationIds ? candidates : candidates.filter((item) => invitesFaculty(session, item.user.faculty));
-  const fresh = wanted.filter((item) => !item.assessmentInvite);
-  const skipped = wanted.length - fresh.length;
-  if (fresh.length === 0) {
-    return { ok: true, invited: 0, skipped };
-  }
-
-  const now = new Date();
-  await db.$transaction([
-    db.assessmentInvite.createMany({ data: fresh.map((item) => ({ sessionId: session.id, applicationId: item.id, invitedAt: now })), skipDuplicates: true }),
-    db.assessmentSession.update({ where: { id: session.id }, data: { invited: { ...place }, invitedAt: now } }),
-  ]);
-  const reserve = session.reserve ? null : await reserveOf(seasonId);
-  const invites = await db.assessmentInvite.findMany({
-    where: { sessionId: session.id, applicationId: { in: fresh.map((item) => item.id) } },
-    select: { id: true, application: { select: { userId: true } } },
-  });
-  await notifyInvites(invites, place, reserve);
-  return { ok: true, invited: invites.length, skipped };
+    { timeout: 30_000 },
+  );
+  if (!outcome.ok) return outcome;
+  const reserve = await reserveOf(seasonId);
+  for (const batch of outcome.batches) await notifyInvites(batch.invites, batch.place, batch.reserve ? null : reserve);
+  return {
+    ok: true,
+    invited: outcome.batches.reduce((count, batch) => count + batch.invites.length, 0),
+    skipped: outcome.skipped,
+    unplaced: outcome.unplaced,
+    overflow: outcome.batches.filter((batch) => batch.sessionId !== sessionId).reduce((count, batch) => count + batch.invites.length, 0),
+  };
 }
 
 /** Напомнить тем, кто не ответил. */
@@ -363,6 +458,8 @@ export interface SessionRow {
   note: string | null;
   faculties: string[];
   reserve: boolean;
+  capacity: number;
+  occupied: number;
   invitedAt: Date | null;
   /** Место изменилось после приглашения — сообщите снова. */
   stale: boolean;
@@ -429,6 +526,7 @@ export async function loadOverview(seasonId: string, onlyExpert?: string): Promi
         note: true,
         faculties: true,
         reserve: true,
+        capacity: true,
         invited: true,
         invitedAt: true,
         groups: {
@@ -462,6 +560,8 @@ export async function loadOverview(seasonId: string, onlyExpert?: string): Promi
       note: session.note,
       faculties: session.faculties,
       reserve: session.reserve,
+      capacity: session.capacity,
+      occupied: own.length + movedHere,
       invitedAt: session.invitedAt,
       stale: placeChanged(readPlace(session.invited), placeOf(session)),
       counts,
@@ -515,6 +615,7 @@ export async function loadSessionPage(seasonId: string, sessionId: string, manag
       note: true,
       faculties: true,
       reserve: true,
+      capacity: true,
       invited: true,
       invitedAt: true,
       groups: { orderBy: { createdAt: "asc" }, select: groupSelect },
@@ -601,6 +702,8 @@ export async function loadSessionPage(seasonId: string, sessionId: string, manag
       note: session.note,
       faculties: session.faculties,
       reserve: session.reserve,
+      capacity: session.capacity,
+      occupied: own.length + movedHere,
       invitedAt: session.invitedAt,
       stale: placeChanged(readPlace(session.invited), placeOf(session)),
       counts: {

@@ -1,6 +1,7 @@
 import { db } from "~~/lib/db";
 import { stageState, type StageState } from "~~/lib/stages";
 
+import { lockAssessmentCapacity, usedAssessmentPlaces } from "./capacity";
 import { canChangeAnswer, dayOf, placeOf, readPlace, type AssessmentAnswerKind, type Place } from "./rules";
 
 /**
@@ -42,10 +43,10 @@ function asDay(session: SessionLike): CandidateDay {
   return { ...place, title: session.title, reserve: session.reserve };
 }
 
-const sessionSelect = { id: true, title: true, reserve: true, building: true, room: true, startsAt: true, note: true, invited: true } as const;
+const sessionSelect = { id: true, title: true, reserve: true, capacity: true, building: true, room: true, startsAt: true, note: true, invited: true } as const;
 
-async function context(userId: string) {
-  return db.application.findFirst({
+async function context(userId: string, client: Pick<typeof db, "application"> = db) {
+  return client.application.findFirst({
     where: { userId, status: "SUBMITTED", season: { isCurrent: true } },
     select: {
       id: true,
@@ -103,22 +104,32 @@ const DONE: Record<AssessmentAnswerKind, string> = {
 
 /** Ответить на приглашение или поменять ответ, пока дни не начались. */
 export async function answerInvite(userId: string, answer: AssessmentAnswerKind, now = new Date()): Promise<AnswerResult> {
-  const application = await context(userId);
-  const invite = application?.assessmentInvite;
-  if (!application || !invite) return { ok: false, message: "Приглашения на центр оценки пока нет — пришлём уведомление." };
+  const initial = await context(userId);
+  if (!initial) return { ok: false, message: "Приглашения на центр оценки пока нет — пришлём уведомление." };
+  return db.$transaction(async (tx) => {
+    await lockAssessmentCapacity(tx, initial.seasonId);
+    const application = await context(userId, tx);
+    const invite = application?.assessmentInvite;
+    if (!application || !invite) return { ok: false, message: "Приглашения на центр оценки пока нет — пришлём уведомление." };
 
-  const reserve = application.season.assessmentSessions[0] ?? null;
-  if (answer === "RESERVE" && (!reserve || reserve.id === invite.sessionId)) {
-    return { ok: false, message: "Резервного дня нет — выберите «Буду» или «Не получится»." };
-  }
-  // Менять можно, пока не начался ни нынешний «свой день», ни тот, куда переходим.
-  const current = invite.answer === "RESERVE" ? reserve?.startsAt : invite.answer === "CANT" ? null : invite.session.startsAt;
-  const next = answer === "RESERVE" ? reserve?.startsAt : answer === "GOING" ? invite.session.startsAt : null;
-  if (!canChangeAnswer(now, current, next)) {
-    return { ok: false, message: "Центр оценки уже начался — поменять ответ можно только через организаторов в «Сообщениях»." };
-  }
-  if (invite.answer === answer) return { ok: true, message: DONE[answer] };
+    const reserve = application.season.assessmentSessions[0] ?? null;
+    if (answer === "RESERVE" && (!reserve || reserve.id === invite.sessionId)) {
+      return { ok: false, message: "Резервного дня нет — выберите «Буду» или «Не получится»." };
+    }
+    // Менять можно, пока не начался ни нынешний «свой день», ни тот, куда переходим.
+    const current = invite.answer === "RESERVE" ? reserve?.startsAt : invite.answer === "CANT" ? null : invite.session.startsAt;
+    const next = answer === "RESERVE" ? reserve?.startsAt : answer === "GOING" ? invite.session.startsAt : null;
+    if (!canChangeAnswer(now, current, next)) {
+      return { ok: false, message: "Центр оценки уже начался — поменять ответ можно только через организаторов в «Сообщениях»." };
+    }
+    if (invite.answer === answer) return { ok: true, message: DONE[answer] };
+    if (answer === "RESERVE" && reserve) {
+      const used = await usedAssessmentPlaces(tx, { ...reserve, seasonId: application.seasonId });
+      if (used >= reserve.capacity)
+        return { ok: false, message: "В резервном слоте мест больше нет. Напишите организаторам в «Сообщениях»." };
+    }
 
-  await db.assessmentInvite.update({ where: { id: invite.id }, data: { answer, answeredAt: now } });
-  return { ok: true, message: DONE[answer] };
+    await tx.assessmentInvite.update({ where: { id: invite.id }, data: { answer, answeredAt: now } });
+    return { ok: true, message: DONE[answer] };
+  });
 }

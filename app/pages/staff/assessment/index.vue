@@ -23,6 +23,8 @@ interface SessionRow {
   note: string | null;
   faculties: string[];
   reserve: boolean;
+  capacity: number;
+  occupied: number;
   invitedAt: string | null;
   stale: boolean;
   counts: { invited: number; going: number; reserve: number; cant: number; silent: number };
@@ -143,6 +145,9 @@ const canOpen = (group: SessionRow["groups"][number]) => data.value?.viewAll || 
               <CalendarClock class="size-4 shrink-0" aria-hidden="true" /> {{ when(session.startsAt) }}
             </p>
             <p class="text-ink-soft text-sm">{{ session.reserve ? "Все факультеты" : session.faculties.join(", ") }}</p>
+            <p class="text-sm font-medium" :class="session.occupied >= session.capacity ? 'text-danger' : 'text-ink-soft'">
+              Занято мест: {{ session.occupied }} / {{ session.capacity }}<span v-if="session.occupied >= session.capacity"> — слот заполнен</span>
+            </p>
           </div>
 
           <dl v-if="data?.manage || data?.viewAll" class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
