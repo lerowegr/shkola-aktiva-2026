@@ -33,16 +33,20 @@ const asking = computed(() =>
   ),
 );
 
-const pending = ref<Answer | null>(null);
+// Несколько времён в этот день — кандидат выбирает сам.
+const slots = computed(() => invite.value?.slots ?? []);
+const manySlots = computed(() => slots.value.length > 1 || (slots.value.length === 1 && !slots.value[0]!.current));
+
+const pending = ref<Answer | string | null>(null);
 const result = ref<ActionResult | null>(null);
-async function answer(value: Answer) {
-  pending.value = value;
+async function answer(value: Answer, sessionId?: string) {
+  pending.value = sessionId ?? value;
   try {
     result.value = await $fetch<ActionResult>(
       "/api/cabinet/assessment/answer",
       {
         method: "POST",
-        body: { answer: value },
+        body: { answer: value, ...(sessionId ? { sessionId } : {}) },
         ignoreResponseError: true,
       },
     ).catch((): ActionResult => ({
@@ -100,21 +104,54 @@ const button =
       v-else-if="asking"
       class="bg-card/80 flex flex-col gap-3 rounded-2xl p-4"
     >
-      <p class="text-sm">
-        Приглашаем на центр оценки:
-        <b>{{ when(invite.session.startsAt) }} МСК</b
-        ><template v-if="invite.session.building || invite.session.room"
-          >, {{ placeLine(invite.session) }}</template
-        >. Будете?
-      </p>
-      <p
-        v-if="invite.session.note"
-        class="text-ink/80 text-sm whitespace-pre-line"
-      >
-        {{ invite.session.note }}
-      </p>
+      <template v-if="manySlots">
+        <p class="text-sm">
+          Приглашаем на центр оценки. Выберите время, которое вам подходит:
+        </p>
+        <div class="grid gap-2">
+          <button
+            v-for="slot in slots"
+            :key="slot.id"
+            type="button"
+            :class="[
+              button,
+              slot.current && invite.answer !== 'CANT' && !invite.reserveQueued
+                ? 'bg-accent text-accent-ink hover:brightness-110'
+                : 'border-ink/15 bg-card hover:border-accent border',
+            ]"
+            :disabled="pending !== null"
+            @click="answer('GOING', slot.current ? undefined : slot.id)"
+          >
+            <span class="block">{{ when(slot.startsAt) }} МСК</span>
+            <span class="block text-xs font-normal opacity-80">
+              {{ slot.building || slot.room ? placeLine(slot) : slot.title }}
+              <template v-if="!slot.current && slot.free <= 5"> · осталось мест: {{ slot.free }}</template>
+            </span>
+          </button>
+        </div>
+        <p v-if="invite.session.note" class="text-ink/80 text-sm whitespace-pre-line">
+          {{ invite.session.note }}
+        </p>
+        <p class="text-ink/70 pt-1 text-xs">Ни одно время не подходит?</p>
+      </template>
+      <template v-else>
+        <p class="text-sm">
+          Приглашаем на центр оценки:
+          <b>{{ when(invite.session.startsAt) }} МСК</b
+          ><template v-if="invite.session.building || invite.session.room"
+            >, {{ placeLine(invite.session) }}</template
+          >. Будете?
+        </p>
+        <p
+          v-if="invite.session.note"
+          class="text-ink/80 text-sm whitespace-pre-line"
+        >
+          {{ invite.session.note }}
+        </p>
+      </template>
       <div class="grid gap-2">
         <button
+          v-if="!manySlots"
           type="button"
           :class="[button, 'bg-accent text-accent-ink hover:brightness-110']"
           :disabled="pending !== null"
