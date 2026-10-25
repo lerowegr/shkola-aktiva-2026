@@ -32,6 +32,17 @@ describe("сегменты рассылки", () => {
     expect(await segmentUserIds(seasonId, "submitted")).toEqual([sent.user.id]);
   });
 
+  it("отправили анкету, но не выбрали дату ЦО", async () => {
+    const waiting = await candidate("SUBMITTED");
+    const placed = await candidate("SUBMITTED");
+    await candidate("DRAFT");
+    const group = await db.assessmentGroup.create({ data: { seasonId, title: "Группа", capacity: 10 } });
+    await db.assessmentMember.create({ data: { groupId: group.id, applicationId: placed.application.id } });
+
+    expect(await segmentUserIds(seasonId, "no_assessment")).toEqual([waiting.user.id]);
+    expect(await segmentUserIds(seasonId, "in_assessment")).toEqual([placed.user.id]);
+  });
+
   it("прошли ДЗ, но не записались", async () => {
     const waiting = await candidate("SUBMITTED", { passedHomework: true });
     const booked = await candidate("SUBMITTED", { passedHomework: true });

@@ -42,6 +42,7 @@ export async function segmentUserIds(seasonId: string, segment: Segment): Promis
     submitted: { status: "SUBMITTED" as const },
     homework_submitted: { submissions: { some: { stageKind: "HOMEWORK" as const, replacedAt: null } } },
     in_assessment: { assessment: { isNot: null } },
+    no_assessment: { status: "SUBMITTED" as const, assessment: null },
     not_booked: { status: "SUBMITTED" as const, bookings: { none: { cancelledAt: null } } },
     booked: { bookings: { some: { cancelledAt: null } } },
     accepted: published("PASSED"),
