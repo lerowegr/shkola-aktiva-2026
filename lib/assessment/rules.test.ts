@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { balance, canChangeBooking, hasRoom, offeredTo, placeChanged, placeLine, placeOf, placeProblem, readPlace } from "./rules";
+import { balance, canChangeAnswer, dayOf, invitesFaculty, placeChanged, placeLine, placeOf, placeProblem, readPlace } from "./rules";
 
 describe("balance", () => {
   it("без групп — никого не раскладывает", () => {
@@ -55,34 +55,27 @@ describe("место", () => {
   });
 });
 
-describe("самозапись на ЦО", () => {
-  const now = new Date("2026-10-20T09:00:00Z");
-  const group = (extra: Partial<Parameters<typeof offeredTo>[0]> = {}) => ({
-    capacity: 20,
-    faculties: [] as string[],
-    startsAt: "2026-10-22T12:00:00Z",
-    taken: 0,
-    ...extra,
+describe("сборы ЦО", () => {
+  const now = new Date("2026-10-26T06:00:00Z");
+
+  it("приглашение — своим факультетам, резервный день — всем", () => {
+    expect(invitesFaculty({ faculties: ["СНиМК", "МЭО"], reserve: false }, "МЭО")).toBe(true);
+    expect(invitesFaculty({ faculties: ["СНиМК", "МЭО"], reserve: false }, "ЮФ")).toBe(false);
+    expect(invitesFaculty({ faculties: ["СНиМК"], reserve: false }, null)).toBe(false);
+    expect(invitesFaculty({ faculties: [], reserve: true }, null)).toBe(true);
   });
 
-  it("дату видят только свои факультеты; пустой список — все", () => {
-    expect(offeredTo(group(), "МЭО", now)).toBe(true);
-    expect(offeredTo(group(), null, now)).toBe(true);
-    expect(offeredTo(group({ faculties: ["МЭО", "ЮФ"] }), "ЮФ", now)).toBe(true);
-    expect(offeredTo(group({ faculties: ["МЭО"] }), "ФФ", now)).toBe(false);
-    expect(offeredTo(group({ faculties: ["МЭО"] }), null, now)).toBe(false);
+  it("свой день: резервный — резервный сбор, «не смогу» — никакой", () => {
+    expect(dayOf({ sessionId: "mon", answer: null }, "sat")).toBe("mon");
+    expect(dayOf({ sessionId: "mon", answer: "GOING" }, "sat")).toBe("mon");
+    expect(dayOf({ sessionId: "mon", answer: "RESERVE" }, "sat")).toBe("sat");
+    expect(dayOf({ sessionId: "mon", answer: "RESERVE" }, null)).toBeNull();
+    expect(dayOf({ sessionId: "mon", answer: "CANT" }, "sat")).toBeNull();
   });
 
-  it("без мест для записи, без времени и за 2 часа до начала — не предлагается", () => {
-    expect(offeredTo(group({ capacity: null }), "МЭО", now)).toBe(false);
-    expect(offeredTo(group({ startsAt: null }), "МЭО", now)).toBe(false);
-    expect(offeredTo(group({ startsAt: "2026-10-20T10:30:00Z" }), "МЭО", now)).toBe(false);
-  });
-
-  it("места и перенос", () => {
-    expect(hasRoom(group({ capacity: 2, taken: 1 }))).toBe(true);
-    expect(hasRoom(group({ capacity: 2, taken: 2 }))).toBe(false);
-    expect(canChangeBooking("2026-10-20T22:00:00Z", now)).toBe(true);
-    expect(canChangeBooking("2026-10-20T20:00:00Z", now)).toBe(false);
+  it("менять ответ — пока дни не начались", () => {
+    expect(canChangeAnswer(now, "2026-10-26T07:00:00Z", "2026-10-31T07:00:00Z")).toBe(true);
+    expect(canChangeAnswer(now, "2026-10-26T05:00:00Z")).toBe(false);
+    expect(canChangeAnswer(now, null)).toBe(true);
   });
 });

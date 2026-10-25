@@ -22,6 +22,7 @@ import {
   type DefaultMarker,
 } from "../lib/applications/defaults";
 import { PERMISSION_GROUPS, PERMISSION_KEYS } from "../lib/permissions";
+import { DEFAULT_ASSESSMENT_TASKS } from "../lib/assessment/rules";
 import { DEFAULT_INTERVIEW_QUESTIONS } from "../lib/interviews/questions";
 import { SHA_TEST_QUESTIONS } from "../app/games/sha-test-questions";
 
@@ -197,6 +198,13 @@ async function main() {
         text: question.text,
         intro: question.intro ?? false,
       })),
+    });
+  }
+
+  // Задания центра оценки — эксперты пишут по ним комментарии; правятся в админке.
+  if ((await db.assessmentTask.count({ where: { seasonId: season.id } })) === 0) {
+    await db.assessmentTask.createMany({
+      data: DEFAULT_ASSESSMENT_TASKS.map((title, index) => ({ seasonId: season.id, order: index + 1, title })),
     });
   }
 

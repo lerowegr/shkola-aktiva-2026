@@ -22,6 +22,7 @@ import { allowedScores, validScore } from "./review";
  */
 
 export const TEXT_MAX = 2000;
+const SCORE_COMMENT_MAX = 1000;
 const TEXT_AUDIT_EVERY_MS = 5 * 60 * 1000;
 
 export type SaveResult = { ok: true; updatedAt: Date } | { ok: false; message: string };
@@ -113,7 +114,7 @@ export async function saveScore(
   return { ok: true, updatedAt: review.updatedAt };
 }
 
-/** field — "comment" или id маркера. */
+/** field — "comment", "score:<id критерия>" (почему такой балл) или id маркера. */
 export async function saveText(
   params: { reviewId: string; actorId: string; field: string; value: string },
   context: AuditContext = {},
@@ -125,6 +126,10 @@ export async function saveText(
     return { ok: false, message: `Не длиннее ${TEXT_MAX} знаков — сократите текст.` };
   }
 
+  if (params.field.startsWith("score:") && params.value.length > SCORE_COMMENT_MAX) {
+    return { ok: false, message: `Комментарий к баллу — до ${SCORE_COMMENT_MAX} знаков.` };
+  }
+
   let label = "Комментарий";
 
   const review = await db.$transaction(async (tx) => {
@@ -132,6 +137,24 @@ export async function saveText(
       return tx.review.update({
         where: { id: params.reviewId },
         data: { comment: params.value, updatedById: params.actorId },
+        select: { updatedAt: true },
+      });
+    }
+
+    if (params.field.startsWith("score:")) {
+      const criterion = await tx.criterion.findFirst({
+        where: { id: params.field.slice(6), seasonId: own.review.application.seasonId, stageKind: own.review.stageKind },
+        select: { id: true, title: true },
+      });
+      if (!criterion) return null;
+      label = `Комментарий к баллу: ${criterion.title}`;
+      const key = { reviewId_criterionId: { reviewId: params.reviewId, criterionId: criterion.id } };
+      const score = await tx.reviewScore.findUnique({ where: key, select: { id: true } });
+      if (!score) return "noscore" as const;
+      await tx.reviewScore.update({ where: key, data: { comment: params.value.trim() === "" ? null : params.value } });
+      return tx.review.update({
+        where: { id: params.reviewId },
+        data: { updatedById: params.actorId },
         select: { updatedAt: true },
       });
     }
@@ -165,7 +188,8 @@ export async function saveText(
     });
   });
 
-  if (!review) return { ok: false, message: "Маркер не найден — обновите страницу." };
+  if (review === "noscore") return { ok: false, message: "Сначала поставьте балл — комментарий пишется к нему." };
+  if (!review) return { ok: false, message: "Маркер или критерий не найден — обновите страницу." };
 
   const recent = await db.auditLog.findFirst({
     where: {

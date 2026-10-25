@@ -1,0 +1,91 @@
+# Implementation Plan: Центр оценки — приглашения на сборы, подгруппы, комментарии
+
+**Branch**: `012-assessment-invitations` (работа в `main`) · **Date**: 2026-10-25 · **Spec**: [spec.md](spec.md)
+
+## Summary
+
+Новая сущность «Сбор ЦО» (дата, место, факультеты, резервный день) с приглашениями и ответами
+кандидатов. Нынешняя группа ЦО (`AssessmentGroup`) становится подгруппой сбора — её видят только
+организаторы и эксперты; кандидат видит место и время сбора. Самозапись (места и факультеты у
+группы, выбор даты в кабинете) убирается. На оценке ЦО добавляются комментарий к баллу (поле у
+`ReviewScore`), комментарии по заданиям ЦО (задания — таблица, правится в админке) и фоновый
+комментарий подгруппы; последние два — колонками экспертов с опросом раз в 2 секунды, как
+сценарий собеседования.
+
+## Technical Context
+
+**Language/Version**: TypeScript, Nuxt 4 (Nitro, Vite), Vue 3.5
+**Primary Dependencies**: Prisma 7 (PrismaPg), zod 4, Tailwind 4 — без новых зависимостей
+**Storage**: PostgreSQL 16 — миграция: `AssessmentSession`, `AssessmentInvite`,
+`AssessmentAnswer` (enum), `AssessmentTask`, `AssessmentTaskNote`, `AssessmentGroupNote`,
+`AssessmentGroup.sessionId`, `ReviewScore.comment`; удаляются `AssessmentGroup.capacity/faculties`
+**Testing**: Vitest на тестовой базе `sha_test` (правила — чистые, хранение — на базе)
+**Target Platform**: веб (кабинет кандидата, кабинет организатора), Mini App, 375px
+**Project Type**: веб-приложение (Nuxt full-stack)
+**Performance Goals**: приглашение 300 кандидатов — одним действием за секунды; опрос
+комментариев — раз в 2 с только на открытом экране подгруппы
+**Constraints**: кандидат не видит подгруппы/оценки; всё время — МСК; уведомления только `notify()`
+**Scale/Scope**: ~1000 кандидатов, 4–6 сборов, ~20 экспертов
+
+## Constitution Check
+
+- **I. Права на сервере** — все изменения через `defineAction`: сборы, приглашения, подгруппы,
+  распределение, задания — `requirePermission("applications.assign")`; ответ кандидата —
+  `requireProfile`; комментарии к баллу и заданиям — только свой эксперт (`review-store`);
+  фоновый комментарий — эксперт подгруппы. Чтение — эксперт подгруппы или `applications.view_all`. ✅
+- **II. Журнал** — `assessment.session.save|delete|invite|remind|notify_change`,
+  `assessment.attend`, `assessment.group.*`, `assessment.member`, `assessment.task.*`;
+  комментарий к баллу — как балл (`review.score`); заметки к заданиям и фон — по образцу
+  `interview.note` (не чаще раза в 5 минут). Ответ кандидата — не действие организатора, в
+  журнал не пишется. ✅
+- **III. Единый поток / вычисляемое состояние** — факультет только выбирает, кого пригласить;
+  состояние этапа — `stageState()`; «можно ли менять ответ» — чистое правило от времени сбора;
+  статус оценки — `reviewSummary()`. Кандидат не видит баллы и подгруппы:
+  `lib/assessment/candidate.ts` подгруппы не читает. ✅
+- **IV. Данные кандидатов** — новых файлов нет; комментарии — текст в базе с проверкой прав. ✅
+- **V. Русский, МСК, 375px, notify()** — все сообщения на русском; время через `mskFormat`/
+  `mskInputValue`; экраны проверяются на 375px; приглашения, напоминания, изменения — `notify()`. ✅
+- **VI. Проверка** — тесты на правила (кому приглашение, смена ответа, резервный день) и на
+  хранение (приглашение без дублей, ответы, распределение, комментарии, права); `npm run check`;
+  ручная проверка в браузере. ✅
+
+Нарушений нет.
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+specs/012-assessment-invitations/
+├── plan.md · research.md · data-model.md · quickstart.md
+├── contracts/api.md
+└── checklists/requirements.md
+```
+
+### Source Code
+
+```text
+prisma/schema.prisma, prisma/migrations/*_assessment_sessions/
+lib/assessment/
+├── rules.ts          + правила сборов: кому, смена ответа, «свой день» (чистый)
+├── sessions.ts       новое: сборы, приглашение, напоминание, ответы, явка
+├── groups.ts         подгруппы сбора (sessionId), без самозаписи и «поровну»
+├── candidate.ts      кабинет: приглашение, ответ, свой день — без подгрупп
+├── notes.ts          новое: задания ЦО, комментарии к заданиям, фон подгруппы
+└── sheet.ts          экран подгруппы + задания и колонки
+lib/applications/review-store.ts   комментарий к баллу (saveScoreComment)
+server/api/staff/assessment/       sessions.*, invite, remind, notify-change, attend, tasks.*, notes.*
+server/api/cabinet/assessment/     answer.post (book/cancel удаляются)
+app/pages/staff/assessment/        index (сборы), session/[id] (ответы, подгруппы, отбивка), [id] (подгруппа)
+app/pages/staff/admin/assessment-tasks.vue   задания ЦО
+app/components/staff/              SessionForm, TaskNotes, GroupNotes; ReviewPanel — комментарий к баллу
+app/pages/cabinet/assessment.vue, app/components/app/AssessmentCard.vue   приглашение и ответ
+lib/demo/scenario.ts               сборы, ответы, подгруппы, комментарии
+```
+
+**Structure Decision**: всё в существующем модуле `lib/assessment`; подгруппы — прежняя
+`AssessmentGroup` с `sessionId`, чтобы переиспользовать экспертов, оценки и экран группы.
+
+## Complexity Tracking
+
+Нет отступлений от конституции.

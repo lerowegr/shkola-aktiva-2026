@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "~~/lib/db";
 import { resetDatabase } from "~~/lib/test/db";
 
-import { deleteGroup, distribute, loadGroups, notifyGroup, placeMember, saveGroup, setExperts } from "./groups";
+import { deleteGroup, placeMember, saveGroup, setExperts } from "./groups";
 
-describe("группы центра оценки", () => {
+describe("подгруппы центра оценки", () => {
   let seasonId: string;
   let roleId: string;
   let criterionId: string;
+  let sessionId: string;
 
   beforeEach(async () => {
     await resetDatabase();
@@ -17,35 +18,52 @@ describe("группы центра оценки", () => {
     criterionId = (
       await db.criterion.create({ data: { seasonId, stageKind: "ASSESSMENT", order: 1, title: "Командность", maxScore: 2, levels: [] } })
     ).id;
+    sessionId = (await db.assessmentSession.create({ data: { seasonId, title: "Сбор", startsAt: new Date("2026-11-02T15:00:00Z"), faculties: ["МЭО"] } })).id;
   });
 
   const expert = (name: string) => db.user.create({ data: { firstName: name, roles: { create: { roleId } } } });
-  async function candidate(name: string) {
+  /** Кандидат, приглашённый на сбор и ответивший «буду». */
+  async function candidate(name: string, session = sessionId) {
     const user = await db.user.create({ data: { firstName: name } });
-    return db.application.create({ data: { seasonId, userId: user.id, firstName: name, status: "SUBMITTED", submittedAt: new Date() } });
+    const application = await db.application.create({ data: { seasonId, userId: user.id, firstName: name, status: "SUBMITTED", submittedAt: new Date() } });
+    await db.assessmentInvite.create({ data: { sessionId: session, applicationId: application.id, answer: "GOING" } });
+    return application;
   }
-  async function group(title: string, extra: Partial<{ building: string; room: string; startsAt: string }> = {}) {
-    const result = await saveGroup(seasonId, { title, building: "", room: "", startsAt: null, note: "", ...extra });
+  async function group(title: string, session = sessionId) {
+    const result = await saveGroup(seasonId, { sessionId: session, title });
     if (!result.ok) throw new Error(result.message);
     return result.id;
   }
 
-  it("раскладывает поровну и создаёт заготовки оценок экспертам", async () => {
-    const [g1, g2] = [await group("Группа 1"), await group("Группа 2")];
+  it("подгруппа — только в сборе этого сезона; заготовки оценок экспертам, отметка «пришёл»", async () => {
+    expect(await saveGroup(seasonId, { sessionId: "нет-такого", title: "Х" })).toMatchObject({ ok: false });
+    const g = await group("Подгруппа 1");
     const kate = await expert("Катя");
-    await setExperts(seasonId, g1, [kate.id], kate.id);
-    for (const name of ["А", "Б", "В"]) await candidate(name);
+    await setExperts(seasonId, g, [kate.id], kate.id);
+    const a = await candidate("А");
+    await placeMember(seasonId, a.id, g, kate.id);
+    expect(await db.review.count({ where: { stageKind: "ASSESSMENT", reviewerId: kate.id } })).toBe(1);
+    expect((await db.assessmentInvite.findUniqueOrThrow({ where: { applicationId: a.id } })).attended).toBe(true);
+  });
 
-    const result = await distribute(seasonId, kate.id);
-    expect(result).toMatchObject({ ok: true, placed: 3 });
+  it("класть можно только в подгруппу своего дня; резервный день — по ответу", async () => {
+    const other = (await db.assessmentSession.create({ data: { seasonId, title: "Другой", startsAt: new Date("2026-11-03T15:00:00Z"), faculties: ["ЮФ"] } })).id;
+    const reserve = (await db.assessmentSession.create({ data: { seasonId, title: "Резерв", startsAt: new Date("2026-10-31T09:00:00Z"), reserve: true } })).id;
+    const here = await group("Здесь");
+    const there = await group("Там", other);
+    const spare = await group("Резерв", reserve);
+    const a = await candidate("А");
 
-    const { groups, free } = await loadGroups(seasonId);
-    expect(free).toHaveLength(0);
-    expect(groups.map((row) => row.members.length).sort()).toEqual([1, 2]);
-    // Заготовки — только у кандидатов группы с экспертом.
-    const size = groups.find((row) => row.id === g1)!.members.length;
-    expect(await db.review.count({ where: { stageKind: "ASSESSMENT", reviewerId: kate.id } })).toBe(size);
-    expect(g2).toBeTruthy();
+    expect(await placeMember(seasonId, a.id, there, null)).toMatchObject({ ok: false });
+    expect(await placeMember(seasonId, a.id, here, null)).toMatchObject({ ok: true });
+
+    await db.assessmentInvite.update({ where: { applicationId: a.id }, data: { answer: "RESERVE" } });
+    expect(await placeMember(seasonId, a.id, spare, null)).toMatchObject({ ok: true, to: "Резерв" });
+
+    const uninvited = await db.application.create({
+      data: { seasonId, userId: (await db.user.create({ data: {} })).id, status: "SUBMITTED", submittedAt: new Date() },
+    });
+    expect(await placeMember(seasonId, uninvited.id, here, null)).toMatchObject({ ok: false });
   });
 
   it("эксперта с начатой оценкой снять нельзя, без оценок — можно", async () => {
@@ -81,7 +99,7 @@ describe("группы центра оценки", () => {
     expect(reviewers.sort()).toEqual([kate.id, olya.id].sort());
   });
 
-  it("группу удалить можно и с кандидатами: они — без группы, начатые оценки остаются", async () => {
+  it("подгруппу удалить можно и с кандидатами: они — нераспределённые, начатые оценки остаются", async () => {
     const g = await group("Группа");
     const kate = await expert("Катя");
     await setExperts(seasonId, g, [kate.id], kate.id);
@@ -92,37 +110,11 @@ describe("группы центра оценки", () => {
     const started = await db.review.findFirstOrThrow({ where: { applicationId: a.id, reviewerId: kate.id } });
     await db.review.update({ where: { id: started.id }, data: { comment: "Хорош в команде" } });
 
-    expect(await deleteGroup(seasonId, g)).toMatchObject({ ok: true, title: "Группа", members: 2, kept: 1, notified: false });
+    expect(await deleteGroup(seasonId, g)).toMatchObject({ ok: true, title: "Группа", members: 2, kept: 1 });
     expect(await db.assessmentGroup.count()).toBe(0);
     expect(await db.assessmentMember.count()).toBe(0);
     // Пустая заготовка Б убрана, начатая оценка А — на месте.
     expect((await db.review.findMany({ where: { stageKind: "ASSESSMENT" }, select: { applicationId: true } })).map((r) => r.applicationId)).toEqual([a.id]);
-    expect((await loadGroups(seasonId)).free).toHaveLength(2);
-  });
-
-  it("рассылка: нужно место и время; повтор — только после изменения", async () => {
-    const g = await group("Группа", { building: "2", room: "305", startsAt: "2026-10-15T15:00:00.000Z" });
-    const a = await candidate("А");
-    await placeMember(seasonId, a.id, g, null);
-
-    expect(await notifyGroup(seasonId, g)).toMatchObject({ ok: true, sent: 1, repeat: false });
-    expect(await notifyGroup(seasonId, g)).toMatchObject({ ok: false });
-
-    await saveGroup(seasonId, { id: g, title: "Группа", building: "2", room: "306", startsAt: "2026-10-15T15:00:00.000Z", note: "" });
-    expect((await loadGroups(seasonId)).groups[0]!.stale).toBe(true);
-    expect(await notifyGroup(seasonId, g)).toMatchObject({ ok: true, repeat: true });
-
-    const notes = await db.notification.findMany({ where: { userId: a.userId }, orderBy: { createdAt: "asc" } });
-    expect(notes).toHaveLength(2);
-    expect(notes[0]!.body).toContain("Корпус 2, аудитория 305");
-    expect(notes[0]!.body).toContain("15 октября");
-    expect(notes[0]!.body).toContain("18:00");
-  });
-
-  it("без места сообщать нельзя", async () => {
-    const g = await group("Группа");
-    const a = await candidate("А");
-    await placeMember(seasonId, a.id, g, null);
-    expect(await notifyGroup(seasonId, g)).toMatchObject({ ok: false });
+    expect(await db.assessmentInvite.count()).toBe(2);
   });
 });

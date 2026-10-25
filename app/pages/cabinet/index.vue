@@ -9,7 +9,7 @@ import type { CandidateInterview } from "~~/lib/interviews/booking";
 useHead({ title: "Кабинет" });
 
 const user = await useSession();
-const [{ data }, { data: application }, { data: assessment }, { data: interview }, { data: daily }] = await Promise.all([
+const [{ data }, { data: application }, { data: assessment, refresh: refreshAssessment }, { data: interview }, { data: daily }] = await Promise.all([
   useFetch("/api/season"),
   useFetch("/api/cabinet/application"),
   useFetch<{ assessment: CandidateAssessment | null }>("/api/cabinet/assessment"),
@@ -22,8 +22,8 @@ const co = computed(() => assessment.value?.assessment ?? null);
 
 const HOUR = 60 * 60 * 1000;
 const coOver = computed(() => {
-  const startsAt = co.value?.place?.startsAt;
-  return Boolean((startsAt && new Date(startsAt).getTime() + 4 * HOUR < Date.now()) || (co.value?.place && co.value.state === "closed"));
+  const startsAt = co.value?.invite?.day?.startsAt;
+  return Boolean(startsAt && new Date(startsAt).getTime() + 4 * HOUR < Date.now());
 });
 const ivOver = computed(() => Boolean(iv.value?.booking && new Date(iv.value.booking.endsAt).getTime() < Date.now()));
 const moment = (value: string | Date) => `${mskFormat(value, "d MMMM")}, ${mskTime(value)}`;
@@ -40,9 +40,10 @@ const personal = computed(() => {
 
   if (submitted && co.value) {
     if (coOver.value) result.ASSESSMENT = { label: "Пройден — ждём итогов", tone: "done" };
-    else if (co.value.place?.startsAt) result.ASSESSMENT = { label: `Ваша дата: ${moment(co.value.place.startsAt)}`, tone: "now", to: "/cabinet/assessment" };
-    else if (co.value.options.length) result.ASSESSMENT = { label: "Выберите дату", tone: "now", to: "/cabinet/assessment" };
-    else if (co.value.state === "open") result.ASSESSMENT = { label: "Распределяем по группам", tone: "wait" };
+    else if (co.value.invite && !co.value.invite.answer) result.ASSESSMENT = { label: "Приглашение — ответьте, будете ли", tone: "now", to: "/cabinet/assessment" };
+    else if (co.value.invite?.day?.startsAt) result.ASSESSMENT = { label: `Ждём вас: ${moment(co.value.invite.day.startsAt)}`, tone: "now", to: "/cabinet/assessment" };
+    else if (co.value.invite?.answer === "CANT") result.ASSESSMENT = { label: "Не сможете — организаторы свяжутся", tone: "wait", to: "/cabinet/assessment" };
+    else if (co.value.state === "open") result.ASSESSMENT = { label: "Приглашение пришлём", tone: "wait" };
   }
 
   if (iv.value?.allowed) {
@@ -74,7 +75,7 @@ const personal = computed(() => {
       </div>
 
       <AppInterviewCard v-if="iv && (iv.final || (iv.allowed && (iv.booking || iv.state !== 'upcoming')))" :iv="iv" />
-      <AppAssessmentCard v-if="co && (co.place || co.state === 'open' || co.options.length)" :co="co" />
+      <AppAssessmentCard v-if="co && (co.invite || co.state === 'open')" :co="co" @changed="refreshAssessment" />
       <AppApplicationCard v-if="app" :app="app" />
 
       <NuxtLink

@@ -41,8 +41,9 @@ export async function segmentUserIds(seasonId: string, segment: Segment): Promis
     drafts: { status: "DRAFT" as const },
     submitted: { status: "SUBMITTED" as const },
     homework_submitted: { submissions: { some: { stageKind: "HOMEWORK" as const, replacedAt: null } } },
-    in_assessment: { assessment: { isNot: null } },
-    no_assessment: { status: "SUBMITTED" as const, assessment: null },
+    in_assessment: { assessmentInvite: { is: { answer: { in: ["GOING" as const, "RESERVE" as const] } } } },
+    // Не приглашён вовсе или приглашён, но молчит.
+    no_assessment: { status: "SUBMITTED" as const, OR: [{ assessmentInvite: null }, { assessmentInvite: { is: { answer: null } } }] },
     not_booked: { status: "SUBMITTED" as const, bookings: { none: { cancelledAt: null } } },
     booked: { bookings: { some: { cancelledAt: null } } },
     accepted: published("PASSED"),

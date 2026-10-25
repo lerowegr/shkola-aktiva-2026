@@ -1,28 +1,20 @@
 import { db } from "~~/lib/db";
 import { stageState, type StageState } from "~~/lib/stages";
 
-import { syncMemberReviews } from "./groups";
-import { canChangeBooking, hasRoom, offeredTo, placeOf, readPlace, type Place } from "./rules";
+import { canChangeAnswer, dayOf, placeOf, readPlace, type AssessmentAnswerKind, type Place } from "./rules";
 
 /**
- * Центр оценки глазами кандидата: что это за этап, где и когда, и — если
- * организаторы открыли самозапись — какие даты можно выбрать.
+ * Центр оценки глазами кандидата: что это за этап, приглашение на сбор и
+ * ответ — «буду», «резервный день», «не смогу».
  *
- * Ни баллов, ни комментариев, ни «прошёл / не прошёл»: на ЦО оценивают всех,
- * а дальше кандидат просто ждёт следующего этапа. Этот файл не читает оценки
- * вовсе — так их точно не утащить в ответ.
- *
- * Два вида групп. Собранную организаторами (capacity = null) кандидат видит
- * после рассылки — снимком места. На группу с самозаписью (capacity — число)
- * он записывается сам, выбирая дату для своего факультета, и видит место сразу.
+ * Только сбор — место и время, где собираются все. Подгрупп, экспертов,
+ * баллов и комментариев этот файл не читает вовсе: так их точно не утащить
+ * в ответ кабинета. Место — снимок при приглашении (или последнем «сообщить
+ * об изменении»): правка без рассылки кандидату не видна.
  */
-export interface AssessmentOption {
-  id: string;
-  startsAt: Date;
-  building: string | null;
-  room: string | null;
-  note: string | null;
-  free: number;
+export interface CandidateDay extends Place {
+  title: string;
+  reserve: boolean;
 }
 
 export interface CandidateAssessment {
@@ -31,18 +23,26 @@ export interface CandidateAssessment {
   state: StageState;
   opensAt: Date | null;
   closesAt: Date | null;
-  /** Где и когда: снимок рассылки или, при самозаписи, текущее место. */
-  place: Place | null;
-  notifiedAt: Date | null;
-  /** Записался сам — значит, может перенести или отменить (до 12 часов). */
-  selfBooked: boolean;
-  canChange: boolean;
-  /** Даты, которые можно выбрать: свой факультет, есть места. */
-  options: AssessmentOption[];
+  invite: {
+    answer: AssessmentAnswerKind | null;
+    /** Сбор, на который пригласили. */
+    session: CandidateDay;
+    /** Резервный день сезона, если задан. */
+    reserve: CandidateDay | null;
+    /** Куда идти по ответу: сбор, резервный день или никуда («не смогу»). */
+    day: CandidateDay | null;
+    canChange: boolean;
+  } | null;
 }
 
-/** Тот же принцип, что у собеседований: запись и перенос — под замком. */
-const ASSESSMENT_LOCK = 918_275;
+type SessionLike = { id: string; title: string; reserve: boolean; building: string | null; room: string | null; startsAt: Date; note: string | null; invited: unknown };
+
+function asDay(session: SessionLike): CandidateDay {
+  const place = readPlace(session.invited) ?? placeOf(session);
+  return { ...place, title: session.title, reserve: session.reserve };
+}
+
+const sessionSelect = { id: true, title: true, reserve: true, building: true, room: true, startsAt: true, note: true, invited: true } as const;
 
 async function context(userId: string) {
   return db.application.findFirst({
@@ -50,22 +50,13 @@ async function context(userId: string) {
     select: {
       id: true,
       seasonId: true,
-      user: { select: { faculty: true } },
       season: {
         select: {
-          stages: {
-            where: { kind: "ASSESSMENT" },
-            select: { title: true, description: true, mode: true, opensAt: true, closesAt: true },
-          },
+          stages: { where: { kind: "ASSESSMENT" }, select: { title: true, description: true, mode: true, opensAt: true, closesAt: true } },
+          assessmentSessions: { where: { reserve: true }, select: sessionSelect, take: 1 },
         },
       },
-      assessment: {
-        select: {
-          group: {
-            select: { id: true, notified: true, notifiedAt: true, capacity: true, building: true, room: true, startsAt: true, note: true },
-          },
-        },
-      },
+      assessmentInvite: { select: { id: true, sessionId: true, answer: true, session: { select: sessionSelect } } },
     },
   });
 }
@@ -75,111 +66,59 @@ export async function loadCandidateAssessment(userId: string, now = new Date()):
   const stage = application?.season.stages[0];
   if (!application || !stage) return null;
 
-  // Отсева между этапами нет: ЦО — для каждого, кто отправил анкету (условие выше).
-  const group = application.assessment?.group ?? null;
-  const state = stageState(stage, now);
-  const selfBooked = group?.capacity != null;
-  const canChange = selfBooked && canChangeBooking(group!.startsAt, now);
-
-  // Выбор дат: этап не закрыт, и кандидат ещё без группы — или записан сам и может перенести.
-  const choosing = state !== "closed" && (!group || canChange);
-  const groups = choosing
-    ? await db.assessmentGroup.findMany({
-        where: { seasonId: application.seasonId, capacity: { not: null }, startsAt: { not: null } },
-        orderBy: { startsAt: "asc" },
-        select: {
-          id: true,
-          startsAt: true,
-          building: true,
-          room: true,
-          note: true,
-          capacity: true,
-          faculties: true,
-          _count: { select: { members: true } },
-        },
-      })
-    : [];
-  const faculty = application.user.faculty;
-  const options = groups
-    .map((item) => ({ ...item, taken: item._count.members }))
-    .filter((item) => item.id !== group?.id && offeredTo(item, faculty, now) && hasRoom(item))
-    .map((item) => ({
-      id: item.id,
-      startsAt: item.startsAt!,
-      building: item.building,
-      room: item.room,
-      note: item.note,
-      free: item.capacity! - item.taken,
-    }));
+  const invite = application.assessmentInvite;
+  const reserveSession = application.season.assessmentSessions[0] ?? null;
+  let view: CandidateAssessment["invite"] = null;
+  if (invite) {
+    const session = asDay(invite.session);
+    const reserve = reserveSession && reserveSession.id !== invite.sessionId ? asDay(reserveSession) : null;
+    const dayId = dayOf(invite, reserveSession?.id ?? null);
+    const day = dayId === invite.sessionId ? session : dayId && reserve ? reserve : null;
+    view = {
+      answer: invite.answer,
+      session,
+      reserve,
+      day,
+      canChange: canChangeAnswer(now, invite.session.startsAt, invite.answer === "RESERVE" ? reserveSession?.startsAt : null),
+    };
+  }
 
   return {
     title: stage.title,
     description: stage.description?.trim() || null,
-    state,
+    state: stageState(stage, now),
     opensAt: stage.opensAt,
     closesAt: stage.closesAt,
-    place: selfBooked ? placeOf(group!) : group?.notifiedAt ? readPlace(group.notified) : null,
-    notifiedAt: group?.notifiedAt ?? null,
-    selfBooked,
-    canChange,
-    options,
+    invite: view,
   };
 }
 
-export type AssessmentBookingResult = { ok: true; message: string } | { ok: false; message: string };
+export type AnswerResult = { ok: true; message: string } | { ok: false; message: string };
 
-/** Записаться на дату ЦО или перенести свою запись. */
-export async function bookAssessment(userId: string, groupId: string, now = new Date()): Promise<AssessmentBookingResult> {
+const DONE: Record<AssessmentAnswerKind, string> = {
+  GOING: "Ждём вас на центре оценки!",
+  RESERVE: "Ждём вас в резервный день.",
+  CANT: "Понятно. Организаторы с вами свяжутся.",
+};
+
+/** Ответить на приглашение или поменять ответ, пока дни не начались. */
+export async function answerInvite(userId: string, answer: AssessmentAnswerKind, now = new Date()): Promise<AnswerResult> {
   const application = await context(userId);
-  const stage = application?.season.stages[0];
-  if (!application || !stage) return { ok: false, message: "Сначала отправьте анкету — после неё откроется выбор даты." };
-  if (stageState(stage, now) === "closed") return { ok: false, message: "Запись на центр оценки закрыта." };
+  const invite = application?.assessmentInvite;
+  if (!application || !invite) return { ok: false, message: "Приглашения на центр оценки пока нет — пришлём уведомление." };
 
-  const current = application.assessment?.group ?? null;
-  if (current && current.capacity === null) {
-    return { ok: false, message: "Вас уже распределили в группу организаторы. Если дата не подходит — напишите им в «Сообщениях»." };
+  const reserve = application.season.assessmentSessions[0] ?? null;
+  if (answer === "RESERVE" && (!reserve || reserve.id === invite.sessionId)) {
+    return { ok: false, message: "Резервного дня нет — выберите «Буду» или «Не получится»." };
   }
-  if (current && !canChangeBooking(current.startsAt, now)) {
-    return { ok: false, message: "До центра оценки меньше 12 часов — перенести запись можно только через организаторов." };
+  // Менять можно, пока не начался ни нынешний «свой день», ни тот, куда переходим.
+  const current = invite.answer === "RESERVE" ? reserve?.startsAt : invite.answer === "CANT" ? null : invite.session.startsAt;
+  const next = answer === "RESERVE" ? reserve?.startsAt : answer === "GOING" ? invite.session.startsAt : null;
+  if (!canChangeAnswer(now, current, next)) {
+    return { ok: false, message: "Центр оценки уже начался — поменять ответ можно только через организаторов в «Сообщениях»." };
   }
-  if (current?.id === groupId) return { ok: true, message: "Вы уже записаны на эту дату." };
+  if (invite.answer === answer) return { ok: true, message: DONE[answer] };
 
-  const outcome = await db.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${ASSESSMENT_LOCK})`);
-    const group = await tx.assessmentGroup.findFirst({
-      where: { id: groupId, seasonId: application.seasonId },
-      select: { capacity: true, faculties: true, startsAt: true, _count: { select: { members: true } } },
-    });
-    if (!group) return "Такой даты нет — обновите страницу.";
-    const shape = { ...group, taken: group._count.members };
-    if (!offeredTo(shape, application.user.faculty, now)) return "Эта дата недоступна для вашего факультета или запись на неё закрыта.";
-    if (!hasRoom(shape)) return "На эту дату места закончились — выберите другую.";
-
-    await tx.assessmentMember.upsert({
-      where: { applicationId: application.id },
-      create: { applicationId: application.id, groupId },
-      update: { groupId, addedAt: now },
-    });
-    return null;
-  });
-  if (outcome) return { ok: false, message: outcome };
-
-  await syncMemberReviews(application.id, groupId, null);
-  return { ok: true, message: current ? "Запись перенесена." : "Вы записаны на центр оценки!" };
-}
-
-/** Отменить свою запись: снова «без группы», можно выбрать другую дату. */
-export async function cancelAssessment(userId: string, now = new Date()): Promise<AssessmentBookingResult> {
-  const application = await context(userId);
-  const current = application?.assessment?.group ?? null;
-  if (!application || !current) return { ok: false, message: "Вы пока не записаны на центр оценки." };
-  if (current.capacity === null) {
-    return { ok: false, message: "В группу вас распределили организаторы — отменить можно только через них." };
-  }
-  if (!canChangeBooking(current.startsAt, now)) {
-    return { ok: false, message: "До центра оценки меньше 12 часов — отменить запись можно только через организаторов." };
-  }
-  await db.assessmentMember.deleteMany({ where: { applicationId: application.id } });
-  await syncMemberReviews(application.id, null, null);
-  return { ok: true, message: "Запись отменена. Выберите другую дату." };
+  await db.assessmentInvite.update({ where: { id: invite.id }, data: { answer, answeredAt: now } });
+  return { ok: true, message: DONE[answer] };
 }

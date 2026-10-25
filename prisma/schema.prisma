@@ -181,6 +181,8 @@ model User {
   gameResults       GameResult[]
   dailySolutions    DailySolution[]
   interviewNotes    InterviewNote[]
+  assessmentTaskNotes  AssessmentTaskNote[]
+  assessmentGroupNotes AssessmentGroupNote[]
 
   @@index([status])
   @@map("users")
@@ -335,6 +337,8 @@ model Season {
   markers            Marker[]
   quizQuestions      QuizQuestion[]
   assessmentGroups   AssessmentGroup[]
+  assessmentSessions AssessmentSession[]
+  assessmentTasks    AssessmentTask[]
   siteContent        SiteContent?
   siteImages         SiteImage[]
   quizAttempts       QuizAttempt[]
@@ -457,6 +461,8 @@ model Application {
   bookings       InterviewBooking[]
   interviewNotes InterviewNote[]
   assessment     AssessmentMember?
+  assessmentInvite AssessmentInvite?
+  assessmentTaskNotes AssessmentTaskNote[]
 
   @@unique([seasonId, userId])
   @@index([seasonId, status])
@@ -559,6 +565,8 @@ model ReviewScore {
   reviewId    String
   criterionId String
   score       Int
+  /// Почему такой балл — пишет автор оценки (на ЦО).
+  comment     String?
 
   review    Review    @relation(fields: [reviewId], references: [id], onDelete: Cascade)
   criterion Criterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
@@ -1054,18 +1062,18 @@ model AssessmentGroup {
   /// правка без рассылки не должна молча менять ему аудиторию.
   notified   Json?
   notifiedAt DateTime?
-  /// Мест для самозаписи: кандидат сам выбирает эту дату в кабинете.
-  /// null — группу собирают организаторы, кандидатам она не предлагается.
-  capacity   Int?
-  /// Каким факультетам дата доступна. Пусто — всем.
-  faculties  String[]  @default([])
+  /// Сбор ЦО, внутри которого эта подгруппа. Подгруппу кандидат не видит:
+  /// ему показывают только сбор (место и время).
+  sessionId  String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   season  Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  session AssessmentSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   members AssessmentMember[]
   experts AssessmentExpert[]
+  notes   AssessmentGroupNote[]
 
   @@index([seasonId])
   @@map("assessment_groups")
@@ -1096,3 +1104,108 @@ model AssessmentExpert {
   @@id([groupId, userId])
   @@map("assessment_experts")
 }
+
+/// Ответ на приглашение на центр оценки.
+enum AssessmentAnswer {
+  GOING // «Да, буду»
+  RESERVE // «Приду в резервный день»
+  CANT // «Не получится ни в один из дней»
+}
+
+/// Сбор ЦО: день, общая аудитория, для каких факультетов. Кандидат видит
+/// только сбор; подгруппы внутри — для организаторов и экспертов.
+model AssessmentSession {
+  id        String    @id @default(cuid())
+  seasonId  String
+  title     String
+  building  String?
+  room      String?
+  startsAt  DateTime
+  note      String?
+  /// Кого приглашать. У резервного дня не важно — он для всех.
+  faculties String[]  @default([])
+  /// Резервный день: один на сезон, на него переходят ответившие «резервный день».
+  reserve   Boolean   @default(false)
+  /// Снимок места при последнем приглашении или «сообщить об изменении» —
+  /// его видит кандидат, правка без рассылки ему не видна.
+  invited   Json?
+  invitedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  season  Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  invites AssessmentInvite[]
+  groups  AssessmentGroup[]
+
+  @@index([seasonId, startsAt])
+  @@map("assessment_sessions")
+}
+
+/// Приглашение кандидата на сбор. Одно на анкету; «свой день» вычисляется:
+/// ответ «резервный день» — резервный сбор, иначе — сбор приглашения.
+model AssessmentInvite {
+  id            String            @id @default(cuid())
+  sessionId     String
+  applicationId String            @unique
+  invitedAt     DateTime          @default(now())
+  answer        AssessmentAnswer?
+  answeredAt    DateTime?
+  remindedAt    DateTime?
+  /// Отметка «пришёл» — ставит организатор в день ЦО.
+  attended      Boolean           @default(false)
+
+  session     AssessmentSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  application Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("assessment_invites")
+}
+
+/// Задание ЦО — эксперты пишут по нему комментарий о каждом кандидате.
+model AssessmentTask {
+  id       String  @id @default(cuid())
+  seasonId String
+  title    String
+  order    Int
+  active   Boolean @default(true)
+
+  season Season               @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  notes  AssessmentTaskNote[]
+
+  @@index([seasonId, order])
+  @@map("assessment_tasks")
+}
+
+/// Комментарий эксперта о кандидате по заданию ЦО.
+model AssessmentTaskNote {
+  id            String   @id @default(cuid())
+  taskId        String
+  applicationId String
+  authorId      String
+  text          String
+  updatedAt     DateTime @updatedAt
+
+  task        AssessmentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  application Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  author      User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, applicationId, authorId])
+  @@index([applicationId])
+  @@map("assessment_task_notes")
+}
+
+/// Фоновый комментарий подгруппы: как идёт ЦО — колонка каждого эксперта.
+model AssessmentGroupNote {
+  id        String   @id @default(cuid())
+  groupId   String
+  authorId  String
+  text      String
+  updatedAt DateTime @updatedAt
+
+  group  AssessmentGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  author User            @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, authorId])
+  @@map("assessment_group_notes")
+}
+

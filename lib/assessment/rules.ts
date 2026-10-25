@@ -76,36 +76,37 @@ export function readPlace(raw: unknown): Place | null {
 }
 
 // ---------------------------------------------------------------------------
-// Самозапись: кандидат сам выбирает дату ЦО
+// Сборы ЦО: приглашения и ответы
 // ---------------------------------------------------------------------------
 
-/** Записаться можно не позже чем за 2 часа до начала. */
-export const ASSESSMENT_BOOK_BEFORE_MS = 2 * 60 * 60 * 1000;
-/** Перенести или отменить свою запись — не позже чем за 12 часов. */
-export const ASSESSMENT_CHANGE_BEFORE_MS = 12 * 60 * 60 * 1000;
+/** Задания ЦО по умолчанию — сид досоздаёт их новому сезону. */
+export const DEFAULT_ASSESSMENT_TASKS = ["Представление инициативы", "Креативщики", "Поход на фильм", "Рефлексия"] as const;
 
-export interface BookableGroup {
-  /** null — группу собирают организаторы, записи нет. */
-  capacity: number | null;
-  /** Пусто — всем факультетам. */
-  faculties: readonly string[];
-  startsAt: Date | string | null;
-  /** Сколько уже в группе. */
-  taken: number;
+export type AssessmentAnswerKind = "GOING" | "RESERVE" | "CANT";
+
+export const ANSWER_LABEL: Record<AssessmentAnswerKind, string> = {
+  GOING: "Буду",
+  RESERVE: "Резервный день",
+  CANT: "Не смогут",
+};
+
+/** Приглашать ли кандидата этого факультета на сбор. Резервный день — для всех. */
+export function invitesFaculty(session: { faculties: readonly string[]; reserve: boolean }, faculty: string | null): boolean {
+  if (session.reserve) return true;
+  return faculty !== null && session.faculties.includes(faculty);
 }
 
-/** Предлагается ли дата этому кандидату (место — отдельно: см. hasRoom). */
-export function offeredTo(group: BookableGroup, faculty: string | null, now: Date): boolean {
-  if (group.capacity === null || !group.startsAt) return false;
-  if (new Date(group.startsAt).getTime() - now.getTime() < ASSESSMENT_BOOK_BEFORE_MS) return false;
-  return group.faculties.length === 0 || (faculty !== null && group.faculties.includes(faculty));
+/**
+ * «Свой день» кандидата: ответил «резервный день» — резервный сбор сезона,
+ * «не смогу» — никакой, иначе — сбор приглашения.
+ */
+export function dayOf(invite: { sessionId: string; answer: AssessmentAnswerKind | null }, reserveId: string | null): string | null {
+  if (invite.answer === "CANT") return null;
+  if (invite.answer === "RESERVE") return reserveId;
+  return invite.sessionId;
 }
 
-export function hasRoom(group: BookableGroup): boolean {
-  return group.capacity !== null && group.taken < group.capacity;
-}
-
-/** Свою запись можно поменять, пока до начала больше 12 часов. */
-export function canChangeBooking(startsAt: Date | string | null, now: Date): boolean {
-  return !startsAt || new Date(startsAt).getTime() - now.getTime() >= ASSESSMENT_CHANGE_BEFORE_MS;
+/** Ответ можно менять, пока «свой день» и день, на который переходит кандидат, не начались. */
+export function canChangeAnswer(now: Date, ...days: (Date | string | null | undefined)[]): boolean {
+  return days.every((day) => !day || new Date(day).getTime() > now.getTime());
 }

@@ -1,18 +1,15 @@
-import { fullName } from "~~/lib/applications/staff";
 import { displayName } from "~~/lib/auth/actor";
 import { db } from "~~/lib/db";
-import { notify } from "~~/lib/notifications/notify";
 
-import { FACULTIES } from "~~/lib/profile/onboarding";
-
-import { balance, placeChanged, placeLine, placeOf, placeProblem, readPlace } from "./rules";
+import { dayOf } from "./rules";
 
 /**
- * Группы центра оценки: место и время, эксперты, кандидаты.
+ * Подгруппы центра оценки: внутри сбора, эксперты, кандидаты. Их видят только
+ * организаторы и эксперты — кандидату показывают сбор (lib/assessment/sessions.ts).
  *
  * Оценка — обычная Review этапа ASSESSMENT, по одной на пару «эксперт
- * группы × кандидат группы». Заготовки создаются, как только пара
- * появилась: «моя группа» на экране эксперта — это и есть его оценки.
+ * подгруппы × кандидат подгруппы». Заготовки создаются, как только пара
+ * появилась: «моя подгруппа» на экране эксперта — это и есть его оценки.
  * Заготовку без единого балла и слова можно убрать молча, начатую — нет:
  * спор «кто поставил балл» решается записью.
  */
@@ -20,20 +17,12 @@ import { balance, placeChanged, placeLine, placeOf, placeProblem, readPlace } fr
 type Result<T = object> = ({ ok: true } & T) | { ok: false; message: string };
 
 const TITLE_MAX = 80;
-const FIELD_MAX = 120;
-const NOTE_MAX = 500;
 
 export interface GroupInput {
   id?: string;
+  /** Сбор — для новой подгруппы. */
+  sessionId: string;
   title: string;
-  building: string;
-  room: string;
-  startsAt: string | null;
-  note: string;
-  /** Мест для самозаписи; null — группу собирают организаторы. */
-  capacity?: number | null;
-  /** Каким факультетам дата доступна; пусто — всем. */
-  faculties?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -81,57 +70,34 @@ async function dropStaleReviews(applicationId: string, keepReviewers: string[]) 
 
 export async function saveGroup(seasonId: string, input: GroupInput): Promise<Result<{ id: string; created: boolean }>> {
   const title = input.title.trim();
-  if (!title) return { ok: false, message: "Назовите группу — например, «Группа 1»." };
+  if (!title) return { ok: false, message: "Назовите подгруппу — например, «Подгруппа 1»." };
   if (title.length > TITLE_MAX) return { ok: false, message: `Название — до ${TITLE_MAX} знаков.` };
-  if (input.building.length > FIELD_MAX || input.room.length > FIELD_MAX) {
-    return { ok: false, message: `Корпус и аудитория — до ${FIELD_MAX} знаков.` };
-  }
-  if (input.note.length > NOTE_MAX) return { ok: false, message: `Заметка — до ${NOTE_MAX} знаков.` };
-
-  const startsAt = input.startsAt ? new Date(input.startsAt) : null;
-  if (startsAt && Number.isNaN(startsAt.getTime())) return { ok: false, message: "Дата и время указаны неверно." };
-
-  const capacity = input.capacity ?? null;
-  if (capacity !== null && (!Number.isInteger(capacity) || capacity < 1 || capacity > 500)) {
-    return { ok: false, message: "Мест для записи — от 1 до 500, или оставьте пустым." };
-  }
-  if (capacity !== null && !startsAt) return { ok: false, message: "Чтобы кандидаты записывались сами, укажите дату и время." };
-  const faculties = [...new Set((input.faculties ?? []).filter((faculty) => (FACULTIES as readonly string[]).includes(faculty)))];
-
-  const data = {
-    title,
-    building: input.building.trim() || null,
-    room: input.room.trim() || null,
-    startsAt,
-    note: input.note.trim() || null,
-    capacity,
-    faculties,
-  };
 
   if (input.id) {
     const found = await db.assessmentGroup.findFirst({ where: { id: input.id, seasonId }, select: { id: true } });
-    if (!found) return { ok: false, message: "Группа не найдена — обновите страницу." };
-    await db.assessmentGroup.update({ where: { id: found.id }, data });
+    if (!found) return { ok: false, message: "Подгруппа не найдена — обновите страницу." };
+    await db.assessmentGroup.update({ where: { id: found.id }, data: { title } });
     return { ok: true, id: found.id, created: false };
   }
 
-  const created = await db.assessmentGroup.create({ data: { ...data, seasonId }, select: { id: true } });
+  const session = await db.assessmentSession.findFirst({ where: { id: input.sessionId, seasonId }, select: { id: true } });
+  if (!session) return { ok: false, message: "Сбор не найден — обновите страницу." };
+  const created = await db.assessmentGroup.create({ data: { seasonId, sessionId: session.id, title }, select: { id: true } });
   return { ok: true, id: created.id, created: true };
 }
 
 /**
- * Удалить группу — и с кандидатами. Как при переносе: кандидаты уходят в
- * «Без группы», пустые заготовки оценок убираются, начатые остаются (баллы
- * не пропадают — их видно в карточке). Если группе уже сообщали место,
- * кандидаты его больше не видят: им нужно сообщить новое.
+ * Удалить подгруппу — и с кандидатами. Как при переносе: кандидаты становятся
+ * нераспределёнными, пустые заготовки оценок убираются, начатые остаются
+ * (баллы не пропадают — их видно в карточке).
  */
 export async function deleteGroup(
   seasonId: string,
   groupId: string,
-): Promise<Result<{ title: string; members: number; kept: number; notified: boolean }>> {
+): Promise<Result<{ title: string; members: number; kept: number }>> {
   const group = await db.assessmentGroup.findFirst({
     where: { id: groupId, seasonId },
-    select: { id: true, title: true, notifiedAt: true, experts: { select: { userId: true } }, members: { select: { applicationId: true } } },
+    select: { id: true, title: true, experts: { select: { userId: true } }, members: { select: { applicationId: true } } },
   });
   if (!group) return { ok: false, message: "Группа не найдена — обновите страницу." };
 
@@ -146,7 +112,7 @@ export async function deleteGroup(
   ]);
   const kept = await db.review.count({ where: { stageKind: "ASSESSMENT", applicationId: { in: applicationIds }, reviewerId: { in: experts } } });
 
-  return { ok: true, title: group.title, members: applicationIds.length, kept, notified: group.notifiedAt !== null };
+  return { ok: true, title: group.title, members: applicationIds.length, kept };
 }
 
 /** Эксперты группы целиком: кого нет в списке — снимается. */
@@ -212,7 +178,11 @@ export async function setExperts(
 // Кандидаты
 // ---------------------------------------------------------------------------
 
-/** Положить кандидата в группу, перенести или убрать (groupId = null). */
+/**
+ * Положить кандидата в подгруппу, перенести или убрать (groupId = null).
+ * Кладут вживую в день ЦО — значит, кандидат пришёл: отметка «пришёл»
+ * ставится сама. Пришедшего без ответа «Буду» тоже можно распределить.
+ */
 export async function placeMember(
   seasonId: string,
   applicationId: string,
@@ -228,11 +198,25 @@ export async function placeMember(
   const from = application.assessment?.group ?? null;
   let to: { id: string; title: string; experts: { userId: string }[] } | null = null;
   if (groupId) {
-    to = await db.assessmentGroup.findFirst({
+    const found = await db.assessmentGroup.findFirst({
       where: { id: groupId, seasonId },
-      select: { id: true, title: true, experts: { select: { userId: true } } },
+      select: { id: true, title: true, sessionId: true, experts: { select: { userId: true } } },
     });
-    if (!to) return { ok: false, message: "Группа не найдена — обновите страницу." };
+    if (!found) return { ok: false, message: "Подгруппа не найдена — обновите страницу." };
+    // В подгруппу — только своего дня: сбор, на который пригласили, или резервный.
+    if (found.sessionId) {
+      const [invite, reserve] = await Promise.all([
+        db.assessmentInvite.findUnique({ where: { applicationId }, select: { sessionId: true, answer: true } }),
+        db.assessmentSession.findFirst({ where: { seasonId, reserve: true }, select: { id: true } }),
+      ]);
+      if (!invite) return { ok: false, message: "Кандидат не приглашён на центр оценки — сначала пригласите его на сбор." };
+      // Ответивший «не смогу», но пришедший, — в подгруппу своего сбора.
+      const day = invite.answer === "CANT" ? invite.sessionId : dayOf(invite, reserve?.id ?? null);
+      if (day !== found.sessionId) {
+        return { ok: false, message: "Этот кандидат придёт в другой день — положите его в подгруппу того сбора." };
+      }
+    }
+    to = found;
   }
   if (from?.id === to?.id) return { ok: true, from: from?.title ?? null, to: to?.title ?? null, kept: 0 };
 
@@ -247,7 +231,10 @@ export async function placeMember(
   }
 
   await dropStaleReviews(applicationId, to?.experts.map((expert) => expert.userId) ?? []);
-  if (to) await ensureReviews(to.id, actorId);
+  if (to) {
+    await ensureReviews(to.id, actorId);
+    await db.assessmentInvite.updateMany({ where: { applicationId }, data: { attended: true } });
+  }
 
   // Начатые оценки прежних экспертов остаются — организатор должен это знать.
   const kept = await db.review.count({
@@ -255,210 +242,4 @@ export async function placeMember(
   });
 
   return { ok: true, from: from?.title ?? null, to: to?.title ?? null, kept };
-}
-
-/** Кандидаты без группы — поровну по группам. */
-export async function distribute(seasonId: string, actorId: string): Promise<Result<{ placed: number }>> {
-  // Только по группам организаторов: в группы с самозаписью кандидаты идут сами.
-  const groups = await db.assessmentGroup.findMany({
-    where: { seasonId, capacity: null },
-    orderBy: [{ startsAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
-    select: { id: true, _count: { select: { members: true } } },
-  });
-  if (groups.length === 0) {
-    return {
-      ok: false,
-      message: "Нет групп без самозаписи. В группы с местами для записи кандидаты записываются сами; чтобы раскладывать, создайте группу без мест.",
-    };
-  }
-
-  const free = await db.application.findMany({
-    where: { seasonId, status: "SUBMITTED", assessment: null },
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
-    select: { id: true },
-  });
-  if (free.length === 0) return { ok: false, message: "Все кандидаты уже в группах." };
-
-  const placed = balance(
-    groups.map((group) => ({ id: group.id, size: group._count.members })),
-    free.map((application) => application.id),
-  );
-  await db.assessmentMember.createMany({
-    data: [...placed].map(([applicationId, groupId]) => ({ applicationId, groupId })),
-    skipDuplicates: true,
-  });
-  for (const group of groups) await ensureReviews(group.id, actorId);
-
-  return { ok: true, placed: placed.size };
-}
-
-// ---------------------------------------------------------------------------
-// Рассылка места
-// ---------------------------------------------------------------------------
-
-function when(iso: string): string {
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "numeric",
-    month: "long",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/Moscow",
-  }).format(new Date(iso));
-}
-
-/** Сообщить кандидатам группы место и время. Снимок места — то, что они увидят. */
-export async function notifyGroup(seasonId: string, groupId: string): Promise<Result<{ sent: number; repeat: boolean; title: string }>> {
-  const group = await db.assessmentGroup.findFirst({
-    where: { id: groupId, seasonId },
-    select: {
-      id: true,
-      title: true,
-      building: true,
-      room: true,
-      startsAt: true,
-      note: true,
-      notified: true,
-      members: { select: { application: { select: { userId: true } } } },
-    },
-  });
-  if (!group) return { ok: false, message: "Группа не найдена — обновите страницу." };
-
-  const place = placeOf(group);
-  const problem = placeProblem(place);
-  if (problem) return { ok: false, message: problem };
-  if (group.members.length === 0) return { ok: false, message: "В группе пока нет кандидатов — сообщать некому." };
-
-  const previous = readPlace(group.notified);
-  if (previous && !placeChanged(previous, place)) {
-    return { ok: false, message: "Группе уже сообщили ровно это место и время." };
-  }
-
-  const now = new Date();
-  await db.assessmentGroup.update({ where: { id: group.id }, data: { notified: { ...place }, notifiedAt: now } });
-
-  const body = [`${placeLine(place)}. ${when(place.startsAt!)} (МСК).`, place.note].filter(Boolean).join("\n");
-  const sent = await notify(
-    group.members.map((member) => ({
-      userId: member.application.userId,
-      category: "SELECTION" as const,
-      title: previous ? "Центр оценки: изменилось место или время" : "Центр оценки: где и когда",
-      body,
-      url: "/cabinet",
-      key: `assessment:${group.id}:${now.getTime()}:${member.application.userId}`,
-    })),
-  );
-
-  return { ok: true, sent, repeat: Boolean(previous), title: group.title };
-}
-
-// ---------------------------------------------------------------------------
-// Чтение
-// ---------------------------------------------------------------------------
-
-export interface AssessmentGroupRow {
-  id: string;
-  title: string;
-  building: string | null;
-  room: string | null;
-  startsAt: Date | null;
-  note: string | null;
-  notifiedAt: Date | null;
-  /** Место поменялось после рассылки. */
-  stale: boolean;
-  experts: { id: string; name: string }[];
-  members: { applicationId: string; name: string; faculty: string | null; done: number; total: number }[];
-  capacity: number | null;
-  faculties: string[];
-}
-
-export interface AssessmentOverview {
-  groups: AssessmentGroupRow[];
-  free: { applicationId: string; name: string; faculty: string | null }[];
-}
-
-/** Все группы сезона, или только те, где viewer — эксперт. */
-export async function loadGroups(seasonId: string, onlyExpert?: string): Promise<AssessmentOverview> {
-  const [groups, criteria] = await Promise.all([
-    db.assessmentGroup.findMany({
-      where: { seasonId, ...(onlyExpert ? { experts: { some: { userId: onlyExpert } } } : {}) },
-      orderBy: [{ startsAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
-      select: {
-        id: true,
-        title: true,
-        building: true,
-        room: true,
-        startsAt: true,
-        note: true,
-        notified: true,
-        notifiedAt: true,
-        capacity: true,
-        faculties: true,
-        experts: { select: { user: { select: { id: true, firstName: true, lastName: true, email: true, telegramUsername: true } } } },
-        members: {
-          orderBy: [{ application: { lastName: "asc" } }, { application: { firstName: "asc" } }],
-          select: {
-            application: {
-              select: {
-                id: true,
-                lastName: true,
-                firstName: true,
-                middleName: true,
-                user: { select: { faculty: true } },
-                reviews: {
-                  where: { stageKind: "ASSESSMENT" },
-                  select: { reviewerId: true, _count: { select: { scores: true } } },
-                },
-              },
-            },
-          },
-        },
-      },
-    }),
-    db.criterion.count({ where: { seasonId, stageKind: "ASSESSMENT" } }),
-  ]);
-
-  const rows = groups.map((group) => {
-    const experts = group.experts.map((expert) => expert.user.id);
-    return {
-      id: group.id,
-      title: group.title,
-      building: group.building,
-      room: group.room,
-      startsAt: group.startsAt,
-      note: group.note,
-      notifiedAt: group.notifiedAt,
-      capacity: group.capacity,
-      faculties: group.faculties,
-      stale: placeChanged(readPlace(group.notified), placeOf(group)),
-      experts: group.experts
-        .map((expert) => ({ id: expert.user.id, name: displayName(expert.user) }))
-        .sort((a, b) => a.name.localeCompare(b.name, "ru")),
-      members: group.members.map(({ application }) => {
-        // «Оценён» — полностью, по каждому критерию, и только экспертами этой группы.
-        const relevant = application.reviews.filter((review) =>
-          onlyExpert ? review.reviewerId === onlyExpert : experts.includes(review.reviewerId),
-        );
-        return {
-          applicationId: application.id,
-          name: fullName(application),
-          faculty: application.user.faculty,
-          done: relevant.filter((review) => criteria > 0 && review._count.scores >= criteria).length,
-          total: relevant.length,
-        };
-      }),
-    };
-  });
-
-  if (onlyExpert) return { groups: rows, free: [] };
-
-  const free = await db.application.findMany({
-    where: { seasonId, status: "SUBMITTED", assessment: null },
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
-    select: { id: true, lastName: true, firstName: true, middleName: true, user: { select: { faculty: true } } },
-  });
-
-  return {
-    groups: rows,
-    free: free.map((application) => ({ applicationId: application.id, name: fullName(application), faculty: application.user.faculty })),
-  };
 }

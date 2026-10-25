@@ -1,18 +1,20 @@
 import { displayName } from "~~/lib/auth/actor";
-import { loadGroups } from "~~/lib/assessment/groups";
+import { loadOverview } from "~~/lib/assessment/sessions";
 import { db } from "~~/lib/db";
 import { can } from "~~/lib/permissions";
 import { currentSeason } from "~~/lib/stages";
 import { requireUser } from "~~/server/utils/session";
 
 /**
- * Центр оценки для организатора: все группы, кандидаты без группы и кого
- * можно назначить экспертом. Эксперту без права распределения — только его
- * группы.
+ * Центр оценки для организатора: сборы со счётчиками ответов и подгруппами,
+ * кто ещё не приглашён и кого можно назначить экспертом. Эксперту без права
+ * распределения — только сборы с его подгруппами и только они.
  */
 export default defineEventHandler(async (event) => {
   const user = await requireUser(event);
   const manage = can(user, "applications.assign");
+  // «Все анкеты» видят все сборы, но только смотрят.
+  const viewAll = manage || can(user, "applications.view_all");
   if (!manage && !can(user, "applications.review")) {
     throw createError({ statusCode: 403, statusMessage: "Центр оценки — для мастеров отбора и распределяющих." });
   }
@@ -22,7 +24,7 @@ export default defineEventHandler(async (event) => {
   const stage = season.stages.find((item) => item.kind === "ASSESSMENT") ?? null;
 
   const [overview, people, criteria] = await Promise.all([
-    loadGroups(season.id, manage ? undefined : user.id),
+    loadOverview(season.id, viewAll ? undefined : user.id),
     manage
       ? db.user.findMany({
           where: { status: "ACTIVE", roles: { some: { role: { permissions: { has: "applications.review" } } } } },
@@ -34,6 +36,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     manage,
+    viewAll,
     me: user.id,
     stage: stage ? { title: stage.title, state: stage.state, opensAt: stage.opensAt, closesAt: stage.closesAt } : null,
     criteria,

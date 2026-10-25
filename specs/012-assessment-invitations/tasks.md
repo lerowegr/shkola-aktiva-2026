@@ -1,0 +1,70 @@
+# Tasks: Центр оценки — приглашения на сборы, подгруппы, комментарии
+
+**Input**: [spec.md](spec.md), [plan.md](plan.md), [data-model.md](data-model.md), [contracts/api.md](contracts/api.md)
+
+## Phase 1: Setup
+
+- [X] T001 Модель данных в prisma/schema.prisma: `AssessmentSession` (title 1–80, building/room до 120, startsAt обязательно, note до 500, faculties String[], reserve Boolean, invited Json?, invitedAt?), enum `AssessmentAnswer { GOING RESERVE CANT }`, `AssessmentInvite` (applicationId **unique**, answer?, answeredAt?, remindedAt?, attended Boolean), `AssessmentTask` (title 1–80, order, active), `AssessmentTaskNote` (taskId×applicationId×authorId unique, text до 2000), `AssessmentGroupNote` (groupId×authorId unique, text до 4000); `AssessmentGroup.sessionId String?` (cascade), удалить `capacity`/`faculties`; `ReviewScore.comment String?` (до 1000)
+- [X] T002 Миграция prisma/migrations/*_assessment_sessions/migration.sql и `npm run db:migrate`
+- [X] T003 Сид четырёх заданий ЦО по умолчанию в prisma/seed.ts («Представление инициативы», «Креативщики», «Поход на фильм», «Рефлексия»), только если заданий сезона нет
+
+## Phase 2: Foundational
+
+- [X] T004 Чистые правила сборов в lib/assessment/rules.ts: кому приглашение (факультет ∈ faculties сбора, резервный — всем), «свой день» (RESERVE → резервный сбор), можно ли менять ответ (свой день ещё не начался), снимок места сбора; убрать правила самозаписи (`offeredTo`, `hasRoom`, `canChangeBooking`, константы)
+- [X] T005 [P] Тесты правил в lib/assessment/rules.test.ts (заменить тесты самозаписи)
+- [X] T006 Удалить самозапись: lib/assessment/candidate.ts (book/cancel), server/api/cabinet/assessment/book.post.ts, cancel.post.ts, lib/assessment/booking.test.ts, поля capacity/faculties в lib/assessment/groups.ts, server/api/staff/assessment/group.post.ts, app/components/staff/AssessmentGroupForm.vue, приглашение выбрать дату в lib/applications/notifications.ts; убрать `distribute` (lib/assessment/groups.ts, server/api/staff/assessment/distribute.post.ts, тесты)
+
+## Phase 3: US1 — сбор и приглашение (P1)
+
+- [X] T007 [US1] lib/assessment/sessions.ts: `saveSession` (валидация, один резервный на сезон), `deleteSession` (подгруппы и приглашения каскадом, пустые оценки убрать), `inviteSession(sessionId, applicationIds?)` — кандидаты факультетов с SUBMITTED, ещё нигде не приглашённые; `notify` с ключом `assessment-invite:{inviteId}`; снимок `invited`
+- [X] T008 [P] [US1] Тесты lib/assessment/sessions.test.ts: приглашаются только свои факультеты и отправившие; повтор — 0; уже приглашённый на другой сбор — пропуск; резервный — один
+- [X] T009 [US1] Ручки server/api/staff/assessment/session.post.ts, session-delete.post.ts, invite.post.ts (`applications.assign`, аудит `assessment.session.save|delete|invite`)
+- [X] T010 [US1] Обзор для организатора: `loadOverview` в lib/assessment/sessions.ts + server/api/staff/assessment/index.get.ts — сборы со счётчиками и подгруппами; эксперт без права распределять — только свои подгруппы
+- [X] T011 [US1] Страница сборов app/pages/staff/assessment/index.vue + форма app/components/staff/AssessmentSessionForm.vue (дата/время МСК, корпус, аудитория, заметка, факультеты, «резервный день»), кнопка «Пригласить на центр оценки» с итогом
+
+## Phase 4: US2 — ответ кандидата (P1)
+
+- [X] T012 [US2] Переписать lib/assessment/candidate.ts: `loadCandidateAssessment` — этап, приглашение (answer, canChange, место своего дня, сбора и резервного) **без подгрупп**; `answerInvite(userId, answer)`
+- [X] T013 [P] [US2] Тесты lib/assessment/candidate.test.ts: ответы и смена, резервный день → место резервного, поздно — отказ, в ответе кабинета нет полей подгрупп
+- [X] T014 [US2] Ручка server/api/cabinet/assessment/answer.post.ts (`requireProfile`)
+- [X] T015 [US2] Кабинет: app/components/app/AssessmentCard.vue (приглашение с тремя кнопками / «Вы придёте …» / «Организаторы свяжутся»), app/pages/cabinet/assessment.vue, статусы ленты в app/pages/cabinet/index.vue
+
+## Phase 5: US4 — подгруппы и отбивка (P1)
+
+- [X] T016 [US4] lib/assessment/groups.ts: подгруппа с `sessionId`; `placeMember` — только в подгруппу своего дня кандидата; `setAttended`; загрузка страницы сбора `loadSessionPage` в lib/assessment/sessions.ts (списки ответов, подгруппы с участниками и экспертами, нераспределённые пришедшие/ответившие «буду», `stale`)
+- [X] T017 [P] [US4] Тесты в lib/assessment/groups.test.ts: подгруппа в сборе, распределение только в свой день, перенос сохраняет начатые оценки
+- [X] T018 [US4] Ручки server/api/staff/assessment/session/[id].get.ts, attend.post.ts; group.post.ts принимает `sessionId`
+- [X] T019 [US4] Страница сбора app/pages/staff/assessment/session/[id].vue: ответы, подгруппы блоками с заголовками (отбивка), нераспределённые сверху с выбором подгруппы и «пришёл», создание подгрупп
+
+## Phase 6: US5 — оценка с комментариями (P1)
+
+- [X] T020 [US5] Комментарий к баллу: `saveScoreComment` в lib/applications/review-store.ts, ручка server/api/staff/reviews/score-comment.post.ts, поле в app/components/staff/ReviewPanel.vue (для этапа ЦО); `comment` в данных оценки lib/applications/staff.ts
+- [X] T021 [US5] lib/assessment/notes.ts: задания сезона, заметки к заданиям (load/save, права: эксперт подгруппы пишет своё, читают эксперты подгруппы и `applications.view_all`), аудит не чаще раза в 5 минут
+- [X] T022 [P] [US5] Тесты lib/assessment/notes.test.ts и комментарий к баллу в lib/applications/review-store.test.ts (только свой)
+- [X] T023 [US5] Ручки server/api/staff/assessment/task-note.post.ts, notes.get.ts; задания в данных экрана lib/assessment/sheet.ts
+- [X] T024 [US5] Экран подгруппы app/pages/staff/assessment/[id].vue + app/components/staff/AssessmentTaskNotes.vue: под каждым заданием колонки экспертов, своя — с автосохранением, опрос раз в 2 с
+- [X] T025 [US5] Админка заданий: app/pages/staff/admin/assessment-tasks.vue, server/api/admin/assessment-tasks*.ts (`forms.manage`, удаление с комментариями — отказ), пункт в app/composables/useAdminSections.ts
+
+## Phase 7: US3 — ответы и напоминание (P2)
+
+- [X] T026 [US3] `remindSession` (неответившим, не чаще раза в час) и `notifyChange` (изменение места — всем своего дня кроме CANT) в lib/assessment/sessions.ts + ручки remind.post.ts, notify-change.post.ts; кнопки и счётчики на страницах сборов
+- [X] T027 [P] [US3] Тесты напоминания и уведомления об изменении в lib/assessment/sessions.test.ts
+
+## Phase 8: US6 — фон подгруппы (P2)
+
+- [X] T028 [US6] Фоновый комментарий: save/load в lib/assessment/notes.ts, ручка group-note.post.ts, колонки на экране подгруппы (app/components/staff/AssessmentGroupNotes.vue), опрос вместе с заданиями
+
+## Phase 9: US7 и полировка
+
+- [X] T029 [US7] Демо-сценарий lib/demo/scenario.ts: сбор понедельника (СНиМК+МЭО), сбор другой даты, резервная суббота, ответы всех видов, две подгруппы с экспертами, комментарии
+- [X] T030 Документация: CLAUDE.md (раздел ЦО), docs при необходимости
+- [X] T031 `npm run check`, ручная проверка по quickstart.md в браузере (включая 375px), выкат, сброс демо на сервере
+
+## Dependencies
+
+Phase 1 → 2 → US1 → US2 → US4 → US5 → US3/US6 (параллельно) → полировка.
+US2 зависит от US1 (приглашение), US4 — от US1/US2 (кого распределять), US5 — от US4 (экран подгруппы).
+
+## Implementation Strategy
+
+MVP — US1+US2 (сбор, приглашение, ответ). Затем подгруппы (US4) и комментарии (US5) — к дню ЦО.

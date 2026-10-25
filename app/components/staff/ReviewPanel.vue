@@ -25,6 +25,9 @@ const emit = defineEmits<{ changed: [] }>();
 // Снятый балл — undefined, а не удалённый ключ: так реактивность не теряет поле.
 const scores = reactive<Record<string, number | undefined>>({ ...props.review.scores });
 const markers = reactive<Record<string, string>>({ ...props.review.markers });
+// Почему такой балл — на ЦО у каждого балла свой комментарий.
+const scoreComments = reactive<Record<string, string>>({ ...(props.review.scoreComments ?? {}) });
+const withScoreComments = computed(() => props.card.stage === "ASSESSMENT");
 const comment = ref(props.review.comment);
 const savedAt = ref<Date | null>(props.review.touched ? new Date(props.review.updatedAt) : null);
 const savedBy = ref<string | null>(props.review.updatedBy);
@@ -71,6 +74,7 @@ function setScore(criterionId: string, score: number) {
 function setText(field: string, value: string) {
   if (!props.canEdit) return;
   if (field === "comment") comment.value = value;
+  else if (field.startsWith("score:")) scoreComments[field.slice(6)] = value;
   else markers[field] = value;
 
   autosave.schedule(`text:${field}`, async () =>
@@ -170,6 +174,23 @@ function when(date: Date) {
             <span class="whitespace-pre-line">{{ level.text }}</span>
           </li>
         </ul>
+
+        <template v-if="withScoreComments">
+          <p v-if="!canEdit" class="text-sm whitespace-pre-line" :class="scoreComments[criterion.id] ? '' : 'text-ink-soft'">
+            {{ scoreComments[criterion.id] ? `Почему: ${scoreComments[criterion.id]}` : "Без комментария к баллу" }}
+          </p>
+          <textarea
+            v-else
+            :value="scoreComments[criterion.id] ?? ''"
+            rows="2"
+            maxlength="1000"
+            :disabled="scores[criterion.id] === undefined"
+            :aria-label="`Почему такой балл: ${criterion.title}`"
+            :placeholder="scores[criterion.id] === undefined ? 'Поставьте балл — потом объясните его' : 'Почему такой балл: что сделал, что сказал'"
+            class="border-line bg-paper focus:border-accent focus:ring-accent/20 rounded-xl border px-3 py-2 text-sm outline-none focus:ring-4 disabled:opacity-60"
+            @input="setText(`score:${criterion.id}`, ($event.target as HTMLTextAreaElement).value)"
+          />
+        </template>
       </div>
 
       <!-- Маркеры -->

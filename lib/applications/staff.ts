@@ -208,6 +208,8 @@ export interface StaffReview {
   /** Возвращена на биржу с сохранением: заморожена, только чтение. */
   released: boolean;
   scores: Record<string, number>;
+  /** Комментарии к баллам: почему такой балл (на ЦО). */
+  scoreComments: Record<string, string>;
   markers: Record<string, string>;
   comment: string;
   summary: ReviewSummary;
@@ -328,7 +330,7 @@ export async function loadStaffApplication(
           comment: true,
           updatedAt: true,
           updatedById: true,
-          scores: { select: { criterionId: true, score: true } },
+          scores: { select: { criterionId: true, score: true, comment: true } },
           markers: { select: { markerId: true, note: true } },
         },
       },
@@ -428,6 +430,7 @@ export async function loadStaffApplication(
       isMine: review.reviewerId === viewerId,
       released: review.releasedAt !== null,
       scores: Object.fromEntries(review.scores.map((score) => [score.criterionId, score.score])),
+      scoreComments: Object.fromEntries(review.scores.flatMap((score) => (score.comment ? [[score.criterionId, score.comment]] : []))),
       markers: Object.fromEntries(review.markers.map((marker) => [marker.markerId, marker.note])),
       comment: review.comment ?? "",
       summary: reviewSummary(criteria, review.scores),

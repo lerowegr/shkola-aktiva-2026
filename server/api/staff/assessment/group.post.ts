@@ -6,16 +6,11 @@ import { requirePermission } from "~~/server/utils/session";
 
 const schema = z.object({
   id: z.string().min(1).optional(),
+  sessionId: z.string().min(1, "Выберите сбор."),
   title: z.string().max(200),
-  building: z.string().max(200).default(""),
-  room: z.string().max(200).default(""),
-  startsAt: z.iso.datetime({ offset: true, error: "Дата и время указаны неверно." }).nullable().default(null),
-  note: z.string().max(1000).default(""),
-  capacity: z.number().int().nullable().default(null),
-  faculties: z.array(z.string().max(20)).max(20).default([]),
 });
 
-/** Создать группу или поправить место и время. */
+/** Создать подгруппу сбора или переименовать. */
 export default defineAction(schema, async ({ body, event }) => {
   const actor = await requirePermission(event, "applications.assign");
   const seasonId = await requireCurrentSeasonId();
@@ -28,8 +23,8 @@ export default defineAction(schema, async ({ body, event }) => {
     action: result.created ? "assessment.group.create" : "assessment.group.update",
     entityType: "assessment_group",
     entityId: result.id,
-    meta: { title: body.title.trim(), building: body.building.trim(), room: body.room.trim(), startsAt: body.startsAt, capacity: body.capacity, faculties: body.faculties },
+    meta: { title: body.title.trim(), sessionId: body.sessionId },
   });
 
-  return { ok: true, id: result.id, message: result.created ? "Группа создана." : "Сохранено." };
+  return { ok: true, id: result.id, message: result.created ? "Подгруппа создана." : "Сохранено." };
 });

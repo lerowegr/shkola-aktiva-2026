@@ -1,73 +1,50 @@
 <script setup lang="ts">
-import { BellRing, CalendarClock, ChevronDown, ChevronRight, MapPin, Pencil, Plus, Shuffle, Trash2, TriangleAlert, UsersRound } from "lucide-vue-next";
+import { BellRing, CalendarClock, ChevronRight, MailPlus, MapPin, Pencil, Plus, Trash2, TriangleAlert, UsersRound } from "lucide-vue-next";
 
 import type { ActionResult } from "~/composables/useAction";
 import { placeLine } from "~~/lib/assessment/rules";
-import { facultyMatches, NO_FACULTY } from "~~/lib/profile/faculty";
 
 /**
- * «Центр оценки»: очный групповой этап. Распределяющий собирает группы
- * (где, когда, кто оценивает, кто приходит) и сообщает кандидатам место.
- * Эксперт видит свои группы и уходит оценивать на экран группы.
+ * «Центр оценки»: очный групповой этап. Организатор заводит сборы (где и
+ * когда собираются все, каких факультетов зовём) и приглашает кандидатов —
+ * они отвечают «буду», «в резервный день» или «не смогу». Подгруппы с
+ * экспертами — внутри сбора, на его странице; кандидат их не видит.
+ * Эксперт видит здесь свои подгруппы и уходит оценивать на их экран.
  */
 definePageMeta({ layout: "staff" });
 useHead({ title: "Центр оценки" });
 
-interface Group {
+interface SessionRow {
   id: string;
   title: string;
   building: string | null;
   room: string | null;
-  startsAt: string | null;
+  startsAt: string;
   note: string | null;
-  notifiedAt: string | null;
-  stale: boolean;
-  experts: { id: string; name: string }[];
-  members: { applicationId: string; name: string; faculty: string | null; done: number; total: number }[];
-  capacity: number | null;
   faculties: string[];
+  reserve: boolean;
+  invitedAt: string | null;
+  stale: boolean;
+  counts: { invited: number; going: number; reserve: number; cant: number; silent: number };
+  groups: { id: string; title: string; experts: { id: string; name: string }[]; members: number; done: number }[];
 }
 interface Overview {
   manage: boolean;
+  viewAll: boolean;
   me: string;
-  stage: { title: string; state: "upcoming" | "open" | "closed"; opensAt: string | null; closesAt: string | null } | null;
   criteria: number;
-  groups: Group[];
-  free: { applicationId: string; name: string; faculty: string | null }[];
-  experts: { id: string; name: string }[];
+  sessions: SessionRow[];
+  notInvited: number;
+  noFaculty: number;
+  hasReserve: boolean;
 }
 
 const { data, refresh } = await useFetch<Overview>("/api/staff/assessment");
 
-// Факультет: в группах и «Без группы» — только кандидаты с него; группы без
-// них прячем. Только просмотр — состав групп не меняется.
-const faculty = useFacultyFilter();
-const facultyCounts = computed(() => {
-  const counts: Record<string, number> = {};
-  const people = [...(data.value?.groups ?? []).flatMap((group) => group.members), ...(data.value?.free ?? [])];
-  for (const person of people) {
-    const key = person.faculty || NO_FACULTY;
-    counts[key] = (counts[key] ?? 0) + 1;
-  }
-  return counts;
-});
-const shownGroups = computed(() =>
-  (data.value?.groups ?? [])
-    .map((group) => ({ group, members: group.members.filter((member) => facultyMatches(member.faculty, faculty.value)) }))
-    .filter((item) => !faculty.value || item.members.length > 0),
-);
-const shownFree = computed(() => (data.value?.free ?? []).filter((person) => facultyMatches(person.faculty, faculty.value)));
-
 const editing = ref<string | "new" | null>(null);
 const notice = ref<ActionResult | null>(null);
 const busy = ref<string | null>(null);
-
-// Удаление — с подтверждением прямо в карточке группы.
 const confirmDelete = ref<string | null>(null);
-async function removeGroup(group: Group) {
-  confirmDelete.value = null;
-  await act(`d:${group.id}`, "/api/staff/assessment/group-delete", { id: group.id });
-}
 
 async function act(key: string, url: string, body: Record<string, unknown>) {
   busy.value = key;
@@ -86,23 +63,19 @@ async function act(key: string, url: string, body: Record<string, unknown>) {
 }
 
 async function saved() {
+  const created = editing.value === "new";
   editing.value = null;
-  notice.value = { ok: true, message: "Группа сохранена." };
+  notice.value = { ok: true, message: created ? "Сбор создан. Теперь пригласите кандидатов." : "Сбор сохранён." };
   await refresh();
 }
 
-function move(applicationId: string, value: string) {
-  void act(`m:${applicationId}`, "/api/staff/assessment/member", { applicationId, groupId: value || null });
+async function removeSession(session: SessionRow) {
+  confirmDelete.value = null;
+  await act(`d:${session.id}`, "/api/staff/assessment/session-delete", { id: session.id });
 }
 
-const placed = computed(() => (data.value?.groups ?? []).reduce((sum, group) => sum + group.members.length, 0));
-const suggestedTitle = computed(() => `Группа ${(data.value?.groups.length ?? 0) + 1}`);
-
-function progress(group: Group) {
-  const done = group.members.filter((member) => member.total > 0 && member.done === member.total).length;
-  return `${done} из ${group.members.length}`;
-}
-const canOpen = (group: Group) => data.value?.manage || group.experts.some((expert) => expert.id === data.value?.me);
+const when = (value: string) => `${mskDay(value)}, ${mskTime(value)} МСК`;
+const canOpen = (group: SessionRow["groups"][number]) => data.value?.viewAll || group.experts.some((expert) => expert.id === data.value?.me);
 </script>
 
 <template>
@@ -110,8 +83,8 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
     <div class="flex flex-col gap-1">
       <h1 class="font-display text-3xl">Центр оценки</h1>
       <p class="text-ink-soft max-w-2xl text-sm">
-        Очный групповой этап. Кандидаты приходят группами, эксперты группы оценивают каждого по критериям ЦО. Кандидат
-        видит только описание этапа и место с временем — после того как группе сообщили. Оценок и результатов он не видит.
+        Очный групповой этап. Кандидатов приглашают на сбор — место и время, где собираются все. Внутри сбора организатор
+        делит пришедших на подгруппы с экспертами. Кандидат видит только сбор; подгрупп, оценок и комментариев — никогда.
       </p>
     </div>
 
@@ -119,144 +92,150 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
       У этапа нет критериев — добавьте их в «Админка → Анкета и оценка → Оценка ЦО».
     </div>
 
-    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-      <StaffFacultyFilter v-model="faculty" :counts="facultyCounts" />
-      <p v-if="faculty && shownGroups.length === 0 && shownFree.length === 0" class="text-ink-soft text-sm">
-        С этого факультета здесь никого нет.
-      </p>
-    </div>
-
-    <!-- Распределяющий -->
     <template v-if="data?.manage">
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p class="text-ink-soft text-sm">
-          Групп: {{ data.groups.length }} · в группах: {{ placed }} · без группы: {{ data.free.length }}
+          Сборов: {{ data.sessions.length }} · ещё не приглашены: {{ data.notInvited }}<template v-if="data.noFaculty">
+            (из них без факультета: {{ data.noFaculty }} — пригласите на странице сбора)</template>
         </p>
-        <div class="flex flex-col gap-2 sm:flex-row">
-          <UiButton
-            variant="ghost"
-            :pending="busy === 'distribute'"
-            :disabled="data.free.length === 0 || data.groups.length === 0"
-            @click="act('distribute', '/api/staff/assessment/distribute', {})"
-          >
-            <Shuffle class="size-4" aria-hidden="true" /> Разложить поровну
-          </UiButton>
-          <UiButton @click="editing = 'new'"><Plus class="size-4" aria-hidden="true" /> Новая группа</UiButton>
+        <div class="shrink-0">
+          <UiButton @click="editing = 'new'"><Plus class="size-4" aria-hidden="true" /> Новый сбор</UiButton>
         </div>
       </div>
+      <p v-if="!data.hasReserve && data.sessions.length" class="bg-brand-yellow-soft rounded-2xl p-3 text-sm">
+        Резервного дня нет — ответ «Приду в резервный день» кандидатам недоступен. Создайте сбор с галочкой «резервный день».
+      </p>
 
       <UiNotice :ok="notice?.ok" :message="notice?.message" />
 
       <section v-if="editing === 'new'" class="bg-card border-line rounded-3xl border p-5">
-        <h2 class="font-display mb-4 text-xl">Новая группа</h2>
-        <StaffAssessmentGroupForm :group="null" :pool="data.experts" :suggested-title="suggestedTitle" @saved="saved" @cancel="editing = null" />
+        <h2 class="font-display mb-4 text-xl">Новый сбор</h2>
+        <StaffAssessmentSessionForm :session="null" :has-reserve="data.hasReserve" @saved="saved" @cancel="editing = null" />
       </section>
     </template>
 
-    <p v-if="data && data.groups.length === 0" class="bg-card border-line text-ink-soft rounded-3xl border p-5 text-sm">
-      {{ data.manage ? "Групп пока нет. Создайте первую — с корпусом, аудиторией, временем и экспертами." : "Вас пока не назначили экспертом ни в одну группу." }}
+    <p v-if="data && data.sessions.length === 0" class="bg-card border-line text-ink-soft rounded-3xl border p-5 text-sm">
+      {{
+        data.manage
+          ? "Сборов пока нет. Создайте первый — корпус, общая аудитория, время и факультеты, — потом пригласите кандидатов."
+          : "Вас пока не назначили экспертом ни в одну подгруппу."
+      }}
     </p>
 
     <div class="grid gap-4 lg:grid-cols-2">
-      <article v-for="{ group, members } in shownGroups" :key="group.id" class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-5">
-        <template v-if="editing === group.id && data?.manage">
-          <h2 class="font-display text-xl">{{ group.title }}</h2>
-          <StaffAssessmentGroupForm :group="group" :pool="data.experts" :suggested-title="group.title" @saved="saved" @cancel="editing = null" />
+      <article v-for="session in data?.sessions ?? []" :key="session.id" class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-5">
+        <template v-if="editing === session.id && data?.manage">
+          <h2 class="font-display text-xl">{{ session.title }}</h2>
+          <StaffAssessmentSessionForm :session="session" :has-reserve="data.hasReserve" @saved="saved" @cancel="editing = null" />
         </template>
 
         <template v-else>
-          <div class="flex items-start justify-between gap-3">
-            <div class="flex min-w-0 flex-col gap-1.5">
-              <h2 class="font-display text-xl">{{ group.title }}</h2>
-              <p class="flex items-center gap-1.5 text-sm" :class="group.building || group.room ? '' : 'text-ink-soft'">
-                <MapPin class="size-4 shrink-0" aria-hidden="true" />
-                {{ group.building || group.room ? placeLine(group) : "Место не указано" }}
-              </p>
-              <p class="flex items-center gap-1.5 text-sm" :class="group.startsAt ? '' : 'text-ink-soft'">
-                <CalendarClock class="size-4 shrink-0" aria-hidden="true" />
-                {{ group.startsAt ? `${mskDay(group.startsAt)}, ${mskTime(group.startsAt)} МСК` : "Время не указано" }}
-              </p>
+          <div class="flex flex-col gap-1.5">
+            <div class="flex flex-wrap items-center gap-2">
+              <h2 class="font-display text-xl">{{ session.title }}</h2>
+              <span v-if="session.reserve && !/резерв/i.test(session.title)" class="bg-brand-yellow-soft rounded-lg px-2 py-0.5 text-xs font-semibold">Резервный день</span>
             </div>
-            <span class="bg-paper text-ink-soft shrink-0 rounded-xl px-2.5 py-1 text-xs" title="Оценено полностью">
-              Оценено {{ progress(group) }}
-            </span>
+            <p class="flex items-center gap-1.5 text-sm" :class="session.building || session.room ? '' : 'text-ink-soft'">
+              <MapPin class="size-4 shrink-0" aria-hidden="true" />
+              {{ session.building || session.room ? placeLine(session) : "Место не указано" }}
+            </p>
+            <p class="flex items-center gap-1.5 text-sm">
+              <CalendarClock class="size-4 shrink-0" aria-hidden="true" /> {{ when(session.startsAt) }}
+            </p>
+            <p class="text-ink-soft text-sm">{{ session.reserve ? "Все факультеты" : session.faculties.join(", ") }}</p>
           </div>
 
-          <p v-if="group.capacity !== null" class="bg-brand-green-soft/60 self-start rounded-xl px-2.5 py-1 text-sm">
-            Самозапись: {{ group.members.length }} из {{ group.capacity }}
-            · {{ group.faculties.length ? group.faculties.join(", ") : "все факультеты" }}
-          </p>
+          <dl v-if="data?.manage || data?.viewAll" class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+            <div class="bg-paper rounded-2xl px-3 py-2">
+              <dt class="text-ink-soft text-xs">Будут</dt>
+              <dd class="font-display text-xl">{{ session.counts.going }}</dd>
+            </div>
+            <div class="bg-paper rounded-2xl px-3 py-2">
+              <dt class="text-ink-soft text-xs">{{ session.reserve ? "Отказались" : "В резервный" }}</dt>
+              <dd class="font-display text-xl">{{ session.reserve ? session.counts.cant : session.counts.reserve }}</dd>
+            </div>
+            <div v-if="!session.reserve" class="bg-paper rounded-2xl px-3 py-2">
+              <dt class="text-ink-soft text-xs">Не смогут</dt>
+              <dd class="font-display text-xl">{{ session.counts.cant }}</dd>
+            </div>
+            <div class="bg-paper rounded-2xl px-3 py-2">
+              <dt class="text-ink-soft text-xs">Не ответили</dt>
+              <dd class="font-display text-xl">{{ session.counts.silent }}</dd>
+            </div>
+          </dl>
 
-          <p class="text-sm">
-            <span class="text-ink-soft">Эксперты: </span>
-            {{ group.experts.length ? group.experts.map((expert) => expert.name).join(", ") : "не назначены" }}
-          </p>
-
-          <p v-if="group.stale" class="text-danger flex items-start gap-1.5 text-sm">
+          <p v-if="session.stale" class="text-danger flex items-start gap-1.5 text-sm">
             <TriangleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            Место или время изменились после рассылки — кандидаты видят прежние. Сообщите группе снова.
+            Место или время изменились после приглашения — кандидаты видят прежние. Сообщите об изменении.
           </p>
-          <p v-else-if="group.notifiedAt" class="text-ok text-sm">Группе сообщили {{ mskFormat(group.notifiedAt, "d MMMM, HH:mm") }}</p>
-          <p v-else-if="data?.manage" class="text-ink-soft text-sm">Кандидатам ещё не сообщили место.</p>
+          <p v-else-if="session.invitedAt" class="text-ok text-sm">
+            Приглашено: {{ session.counts.invited }}, последнее приглашение {{ mskFormat(session.invitedAt, "d MMMM, HH:mm") }}
+          </p>
+          <p v-else-if="data?.manage && !session.reserve" class="text-ink-soft text-sm">Кандидатов ещё не приглашали.</p>
 
-          <details class="group/members">
-            <summary class="flex min-h-10 cursor-pointer items-center gap-2 text-sm font-medium">
-              <UsersRound class="size-4" aria-hidden="true" /> Кандидаты: {{ faculty ? `${members.length} из ${group.members.length}` : group.members.length }}
-              <ChevronDown class="text-ink-soft size-4 transition-transform group-open/members:rotate-180" aria-hidden="true" />
-            </summary>
-            <ul class="mt-2 flex flex-col divide-y divide-line">
-              <li v-for="member in members" :key="member.applicationId" class="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
-                <span class="text-sm">
-                  {{ member.name }}
-                  <span class="text-ink-soft text-xs">· {{ [member.faculty, `оценок ${member.done} из ${member.total}`].filter(Boolean).join(" · ") }}</span>
-                </span>
-                <UiSelect
-                  v-if="data?.manage"
-                  size="sm"
-                  :model-value="group.id"
-                  :disabled="busy === `m:${member.applicationId}`"
-                  :aria-label="`Группа: ${member.name}`"
-                  @change="move(member.applicationId, ($event.target as HTMLSelectElement).value)"
+          <div v-if="session.groups.length" class="flex flex-col gap-2">
+            <p class="text-ink-soft flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase">
+              <UsersRound class="size-3.5" aria-hidden="true" /> Подгруппы
+            </p>
+            <ul class="flex flex-col gap-1.5">
+              <li v-for="group in session.groups" :key="group.id" class="bg-paper flex items-center justify-between gap-3 rounded-2xl px-3 py-2">
+                <div class="min-w-0 text-sm">
+                  <p class="font-semibold">{{ group.title }}</p>
+                  <p class="text-ink-soft text-xs">
+                    {{ group.experts.map((expert) => expert.name).join(", ") || "эксперты не назначены" }} · оценено {{ group.done }} из {{ group.members }}
+                  </p>
+                </div>
+                <NuxtLink
+                  v-if="canOpen(group)"
+                  :to="`/staff/assessment/${group.id}`"
+                  class="text-accent flex shrink-0 items-center gap-1 text-sm font-semibold"
                 >
-                  <option v-for="option in data.groups" :key="option.id" :value="option.id">{{ option.title }}</option>
-                  <option value="">Убрать из групп</option>
-                </UiSelect>
+                  Оценивать <ChevronRight class="size-4" aria-hidden="true" />
+                </NuxtLink>
               </li>
-              <li v-if="group.members.length === 0" class="text-ink-soft py-2 text-sm">Пока никого.</li>
             </ul>
-          </details>
+          </div>
 
-          <div class="mt-auto grid gap-2 sm:grid-cols-2">
-            <UiButton v-if="canOpen(group)" class="sm:col-span-2" :href="`/staff/assessment/${group.id}`">
-              Оценивать <ChevronRight class="size-4" aria-hidden="true" />
+          <div v-if="data?.manage || data?.viewAll" class="mt-auto grid gap-2 sm:grid-cols-2">
+            <UiButton class="sm:col-span-2" :href="`/staff/assessment/session/${session.id}`">
+              Ответы и подгруппы <ChevronRight class="size-4" aria-hidden="true" />
             </UiButton>
             <template v-if="data?.manage">
               <UiButton
-                variant="ghost"
-                :pending="busy === `n:${group.id}`"
-                :disabled="group.members.length === 0 || (Boolean(group.notifiedAt) && !group.stale)"
-                @click="act(`n:${group.id}`, '/api/staff/assessment/notify', { groupId: group.id })"
+                v-if="!session.reserve"
+                :pending="busy === `i:${session.id}`"
+                @click="act(`i:${session.id}`, '/api/staff/assessment/invite', { sessionId: session.id })"
               >
-                <BellRing class="size-4" aria-hidden="true" /> {{ group.stale ? "Сообщить об изменении" : "Сообщить группе" }}
+                <MailPlus class="size-4" aria-hidden="true" /> Пригласить на центр оценки
               </UiButton>
-              <UiButton variant="ghost" @click="editing = group.id"><Pencil class="size-4" aria-hidden="true" /> Изменить</UiButton>
               <UiButton
-                v-if="confirmDelete !== group.id"
                 variant="ghost"
-                :pending="busy === `d:${group.id}`"
-                @click="confirmDelete = group.id"
+                :pending="busy === `r:${session.id}`"
+                :disabled="session.counts.silent === 0"
+                @click="act(`r:${session.id}`, '/api/staff/assessment/remind', { sessionId: session.id })"
               >
+                <BellRing class="size-4" aria-hidden="true" /> Напомнить неответившим
+              </UiButton>
+              <UiButton
+                v-if="session.stale"
+                variant="ghost"
+                :pending="busy === `c:${session.id}`"
+                @click="act(`c:${session.id}`, '/api/staff/assessment/notify-change', { sessionId: session.id })"
+              >
+                <BellRing class="size-4" aria-hidden="true" /> Сообщить об изменении
+              </UiButton>
+              <UiButton variant="ghost" @click="editing = session.id"><Pencil class="size-4" aria-hidden="true" /> Изменить</UiButton>
+              <UiButton v-if="confirmDelete !== session.id" variant="ghost" :pending="busy === `d:${session.id}`" @click="confirmDelete = session.id">
                 <Trash2 class="size-4" aria-hidden="true" /> Удалить
               </UiButton>
-              <div v-else class="bg-brand-red-soft flex flex-col gap-2 rounded-2xl p-3 text-sm sm:col-span-2" role="alertdialog" :aria-label="`Удалить ${group.title}?`">
-                <p class="font-semibold">Удалить «{{ group.title }}»?</p>
-                <p v-if="group.members.length">
-                  Кандидаты ({{ group.members.length }}) вернутся в «Без группы». Начатые оценки экспертов сохранятся, пустые
-                  уберутся.<template v-if="group.notifiedAt"> Группе уже сообщили место — после переноса сообщите новое.</template>
+              <div v-else class="bg-brand-red-soft flex flex-col gap-2 rounded-2xl p-3 text-sm sm:col-span-2" role="alertdialog" :aria-label="`Удалить ${session.title}?`">
+                <p class="font-semibold">Удалить «{{ session.title }}»?</p>
+                <p>
+                  Уйдут подгруппы и приглашения<template v-if="session.counts.invited"> ({{ session.counts.invited }})</template>. Начатые
+                  оценки экспертов сохранятся, пустые уберутся. Кандидатам ничего не придёт.
                 </p>
-                <p v-else>В группе никого нет.</p>
                 <div class="flex flex-wrap gap-2">
-                  <button type="button" class="bg-danger rounded-xl px-4 py-2 font-semibold text-white" @click="removeGroup(group)">Да, удалить</button>
+                  <button type="button" class="bg-danger rounded-xl px-4 py-2 font-semibold text-white" @click="removeSession(session)">Да, удалить</button>
                   <button type="button" class="text-ink-soft rounded-xl px-4 py-2" @click="confirmDelete = null">Отмена</button>
                 </div>
               </div>
@@ -265,27 +244,5 @@ const canOpen = (group: Group) => data.value?.manage || group.experts.some((expe
         </template>
       </article>
     </div>
-
-    <!-- Без группы -->
-    <section v-if="data?.manage && shownFree.length" class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5">
-      <h2 class="font-display text-xl">Без группы: {{ faculty ? `${shownFree.length} из ${data.free.length}` : data.free.length }}</h2>
-      <p class="text-ink-soft text-sm">Все, кто отправил анкету. «Разложить поровну» добавит их в самые маленькие группы.</p>
-      <ul class="flex flex-col divide-y divide-line">
-        <li v-for="person in shownFree" :key="person.applicationId" class="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
-          <span class="text-sm">{{ person.name }}<span v-if="person.faculty" class="text-ink-soft text-xs"> · {{ person.faculty }}</span></span>
-          <UiSelect
-            v-if="data.groups.length"
-            size="sm"
-            model-value=""
-            :disabled="busy === `m:${person.applicationId}`"
-            :aria-label="`В группу: ${person.name}`"
-            @change="move(person.applicationId, ($event.target as HTMLSelectElement).value)"
-          >
-            <option value="" disabled>В группу…</option>
-            <option v-for="option in data.groups" :key="option.id" :value="option.id">{{ option.title }}</option>
-          </UiSelect>
-        </li>
-      </ul>
-    </section>
   </main>
 </template>

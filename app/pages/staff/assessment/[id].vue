@@ -5,9 +5,10 @@ import type { StaffCriterion, StaffReview } from "~~/lib/applications/staff";
 import { placeLine } from "~~/lib/assessment/rules";
 
 /**
- * Экран группы ЦО: все кандидаты группы на одной странице. Слева —
+ * Экран подгруппы ЦО: все кандидаты подгруппы на одной странице. Слева —
  * переключатель кандидатов с отметкой «оценён», справа — своя оценка
- * и, ниже, оценки других экспертов только для чтения.
+ * с комментариями к баллам, комментарии к заданиям ЦО, фон подгруппы и,
+ * ниже, оценки других экспертов только для чтения.
  *
  * Панели рисуются все сразу и прячутся v-show: панель оценки ждёт сессию
  * в setup, и появившаяся после загрузки зависла бы в Suspense. Заодно
@@ -15,9 +16,16 @@ import { placeLine } from "~~/lib/assessment/rules";
  */
 definePageMeta({ layout: "staff" });
 
+interface GroupNotes {
+  columns: { id: string; name: string; isMine: boolean; expert: boolean }[];
+  tasks: { id: string; title: string }[];
+  taskNotes: { taskId: string; applicationId: string; authorId: string; text: string }[];
+  groupNotes: { authorId: string; text: string }[];
+}
 interface Sheet {
   id: string;
   title: string;
+  session: { id: string; title: string } | null;
   building: string | null;
   room: string | null;
   startsAt: string | null;
@@ -26,14 +34,15 @@ interface Sheet {
   criteria: StaffCriterion[];
   markers: { id: string; title: string; example: string | null }[];
   members: { applicationId: string; name: string; reviews: StaffReview[] }[];
+  notes: GroupNotes;
 }
 
 const route = useRoute();
 const router = useRouter();
-const { data, refresh, error } = await useFetch<{ sheet: Sheet; isExpert: boolean; manage: boolean }>(
+const { data, refresh, error } = await useFetch<{ sheet: Sheet; isExpert: boolean; manage: boolean; me: string }>(
   () => `/api/staff/assessment/${route.params.id}`,
 );
-useHead({ title: () => data.value?.sheet.title ?? "Группа ЦО" });
+useHead({ title: () => data.value?.sheet.title ?? "Подгруппа ЦО" });
 
 const sheet = computed(() => data.value?.sheet ?? null);
 const selected = computed(() => {
@@ -69,11 +78,12 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
     </NuxtLink>
 
     <p v-if="error" class="bg-card border-line rounded-3xl border p-5 text-sm">
-      {{ error.statusMessage || "Группа недоступна." }}
+      {{ error.statusMessage || "Подгруппа недоступна." }}
     </p>
 
     <template v-if="sheet">
       <div class="flex flex-col gap-2">
+        <p v-if="sheet.session" class="text-ink-soft text-sm">{{ sheet.session.title }}</p>
         <h1 class="font-display text-3xl">{{ sheet.title }}</h1>
         <div class="text-ink-soft flex flex-col gap-1 text-sm sm:flex-row sm:gap-4">
           <span v-if="sheet.building || sheet.room" class="flex items-center gap-1.5"><MapPin class="size-4" aria-hidden="true" />{{ placeLine(sheet) }}</span>
@@ -83,15 +93,15 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
           <span>Эксперты: {{ sheet.experts.map((expert) => expert.name).join(", ") || "не назначены" }}</span>
         </div>
         <p v-if="data?.isExpert" class="text-sm">Вы оценили полностью: <b>{{ doneCount }} из {{ sheet.members.length }}</b></p>
-        <p v-else class="text-ink-soft text-sm">Вы не эксперт этой группы — оценки только для просмотра.</p>
+        <p v-else class="text-ink-soft text-sm">Вы не эксперт этой подгруппы — оценки и комментарии только для просмотра.</p>
       </div>
 
       <p v-if="sheet.members.length === 0" class="bg-card border-line text-ink-soft rounded-3xl border p-5 text-sm">
-        В группе пока нет кандидатов.
+        В подгруппе пока нет кандидатов.
       </p>
 
       <div v-else class="grid gap-6 lg:grid-cols-[18rem_1fr]">
-        <nav aria-label="Кандидаты группы" class="lg:sticky lg:top-4 lg:self-start">
+        <nav aria-label="Кандидаты подгруппы" class="lg:sticky lg:top-4 lg:self-start">
           <ul class="bg-card border-line flex flex-col gap-1 rounded-3xl border p-2">
             <li v-for="(member, index) in sheet.members" :key="member.applicationId">
               <button
@@ -130,7 +140,7 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
               @changed="changed"
             />
             <p v-if="data?.isExpert && !mine(member)" class="bg-card border-line text-ink-soft rounded-3xl border p-5 text-sm">
-              Вашей оценки у этого кандидата нет — обновите страницу или попросите распределяющего проверить группу.
+              Вашей оценки у этого кандидата нет — обновите страницу или попросите распределяющего проверить подгруппу.
             </p>
 
             <details v-if="member.reviews.some((item) => !item.isMine)" class="group flex flex-col gap-3" :open="!data?.isExpert">
@@ -149,6 +159,15 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
               </div>
             </details>
           </section>
+
+          <StaffAssessmentNotes
+            :group-id="sheet.id"
+            :initial="sheet.notes"
+            :application-id="selected?.applicationId ?? null"
+            :candidate-name="selected?.name ?? null"
+            :can-write="Boolean(data?.isExpert)"
+            :my-id="data?.me ?? null"
+          />
         </div>
       </div>
     </template>

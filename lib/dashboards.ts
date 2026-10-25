@@ -30,7 +30,7 @@ export async function funnel(seasonId: string): Promise<FunnelStep[]> {
     count({}),
     count({ status: "SUBMITTED" }),
     count({ submissions: { some: { stageKind: "HOMEWORK", replacedAt: null } } }),
-    count({ assessment: { isNot: null } }),
+    count({ assessmentInvite: { is: { answer: { in: ["GOING", "RESERVE"] } } } }),
     count({ bookings: { some: { cancelledAt: null } } }),
     count(published("INTERVIEW", "PASSED")),
   ]);
@@ -40,7 +40,7 @@ export async function funnel(seasonId: string): Promise<FunnelStep[]> {
     { key: "started", label: "Начали анкету", count: started },
     { key: "submitted", label: "Отправили анкету", count: submitted },
     { key: "homework", label: "Сдали ДЗ", count: homework },
-    { key: "assessment", label: "В группах ЦО", count: assessment },
+    { key: "assessment", label: "Придут на ЦО", count: assessment },
     { key: "booked", label: "Записались на собеседование", count: booked },
     { key: "accepted", label: "Прошли отбор", count: accepted },
   ];

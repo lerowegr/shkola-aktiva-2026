@@ -1,7 +1,8 @@
 import { fullName } from "~~/lib/applications/staff";
 import { homeworkText } from "~~/lib/applications/homework";
 import { publishDecisions, setDecision } from "~~/lib/applications/decisions";
-import { notifyGroup, placeMember, saveGroup, setExperts } from "~~/lib/assessment/groups";
+import { placeMember, saveGroup, setExperts } from "~~/lib/assessment/groups";
+import { inviteSession, saveSession } from "~~/lib/assessment/sessions";
 import { db } from "~~/lib/db";
 import { createSlots } from "~~/lib/interviews/slots";
 
@@ -37,10 +38,10 @@ export const DEMO_STAFF: DemoPerson[] = [
 export const DEMO_CANDIDATES: DemoPerson[] = [
   { key: "masha", firstName: "Маша", lastName: "Новикова", about: "Только зарегистрировалась — экран знакомства" },
   { key: "anya", firstName: "Аня", lastName: "Смирнова", about: "Заполняет анкету — черновик" },
-  { key: "boris", firstName: "Борис", lastName: "Козлов", about: "Отправил анкету — ждёт проверки" },
-  { key: "vika", firstName: "Вика", lastName: "Морозова", about: "Анкета и ДЗ оценены, ждёт центра оценки" },
-  { key: "gleb", firstName: "Глеб", lastName: "Волков", about: "Слабая анкета — но идёт дальше: отсева между этапами нет" },
-  { key: "dasha", firstName: "Даша", lastName: "Лебедева", about: "Отправила анкету, в группе ЦО — место и время" },
+  { key: "boris", firstName: "Борис", lastName: "Козлов", about: "Приглашён на ЦО, выбрал резервный день" },
+  { key: "vika", firstName: "Вика", lastName: "Морозова", about: "Приглашена на центр оценки — ещё не ответила" },
+  { key: "gleb", firstName: "Глеб", lastName: "Волков", about: "На ЦО не сможет ни в один из дней — отсева между этапами нет" },
+  { key: "dasha", firstName: "Даша", lastName: "Лебедева", about: "Придёт на центр оценки — видит место и время сбора" },
   { key: "egor", firstName: "Егор", lastName: "Соколов", about: "Прошёл ЦО, эксперты его оценили" },
   { key: "zhenya", firstName: "Женя", lastName: "Попова", about: "Записана на собеседование" },
   { key: "igor", firstName: "Игорь", lastName: "Кузнецов", about: "Собеседование прошло, итог не объявлен" },
@@ -78,6 +79,7 @@ export async function resetDemo(now = new Date()): Promise<{ staff: number; cand
   const seasonId = season.id;
 
   // --- Чистим прошлое демо -----------------------------------------------------
+  await db.assessmentSession.deleteMany({ where: { seasonId } });
   await db.assessmentGroup.deleteMany({ where: { seasonId } });
   await db.interviewSlot.deleteMany({ where: { seasonId } });
   await db.user.deleteMany({ where: { email: { endsWith: `@${DEMO_DOMAIN}` } } });
@@ -225,50 +227,76 @@ export async function resetDemo(now = new Date()): Promise<{ staff: number; cand
 
   // Решений по анкете и ДЗ нет: отсева между этапами нет, итог — один, в конце.
 
-  // Центр оценки: две группы, место сообщено. Время — ровные часы по Москве.
+  // Центр оценки: прошедший сбор (оценён), предстоящий с ответами всех видов
+  // и резервный день. Время — ровные часы по Москве.
   const at = (offsetDays: number, hour: number) => {
     const date = new Date(now.getTime() + offsetDays * DAY);
     date.setUTCHours(hour - 3, 0, 0, 0);
     return date.toISOString();
   };
-  const first = await saveGroup(seasonId, {
-    title: "Группа 1",
-    building: "2",
-    room: "305",
-    startsAt: at(2, 18),
-    note: "Возьмите студенческий и визуальные материалы к инициативе.",
+  const pastKeys = ["egor", "zhenya", "igor", "kira", "lyova"];
+  const pastFaculties = await db.user.findMany({
+    where: { applications: { some: { id: { in: pastKeys.map(app) } } } },
+    select: { faculty: true },
   });
-  const second = await saveGroup(seasonId, {
-    title: "Группа 2",
+  const past = await saveSession(seasonId, {
+    title: "Первый сбор",
     building: "Главный",
     room: "Актовый зал",
     startsAt: at(-2, 15),
     note: "",
+    faculties: [...new Set(pastFaculties.map((item) => item.faculty).filter((item): item is string => Boolean(item)))],
+    reserve: false,
   });
-  if (first.ok && second.ok) {
-    await setExperts(seasonId, first.id, [staff.katya!, staff.ilya!], staff.lead!);
-    await setExperts(seasonId, second.id, [staff.katya!], staff.lead!);
-    await placeMember(seasonId, app("dasha"), first.id, staff.lead!);
-    for (const key of ["egor", "zhenya", "igor", "kira", "lyova"]) await placeMember(seasonId, app(key), second.id, staff.lead!);
-    await notifyGroup(seasonId, first.id);
-    await notifyGroup(seasonId, second.id);
-    // Вторая группа уже прошла ЦО — эксперт её оценил.
-    for (const key of ["egor", "zhenya", "igor", "kira", "lyova"]) await review(app(key), "ASSESSMENT", staff.katya!, key === "lyova" ? "low" : "high");
-  }
-  // Даты с самозаписью: Борис, Вика и Глеб выбирают дату сами (Вика и Борис —
-  // ещё и свою, для ЮФ и ФЭБ).
-  const own = await saveGroup(seasonId, {
-    title: "ЦО для ЮФ и ФЭБ",
+  const next = await saveSession(seasonId, {
+    title: "Второй сбор: все факультеты",
     building: "2",
-    room: "410",
-    startsAt: at(5, 12),
-    note: "Возьмите студенческий",
-    capacity: 15,
-    faculties: ["ЮФ", "ФЭБ"],
+    room: "Лекционная 305",
+    startsAt: at(2, 18),
+    note: "Возьмите студенческий и визуальные материалы к инициативе.",
+    faculties: [...FACULTIES],
+    reserve: false,
   });
-  const forAll = await saveGroup(seasonId, { title: "ЦО для всех", building: "Главный", room: "Актовый зал", startsAt: at(6, 15), note: "", capacity: 30 });
-  if (own.ok) await setExperts(seasonId, own.id, [staff.ilya!], staff.lead!);
-  if (forAll.ok) await setExperts(seasonId, forAll.id, [staff.katya!], staff.lead!);
+  await saveSession(seasonId, { title: "Резервный день", building: "2", room: "410", startsAt: at(5, 12), note: "", faculties: [], reserve: true });
+
+  const answer = (key: string, value: "GOING" | "RESERVE" | "CANT") =>
+    db.assessmentInvite.update({ where: { applicationId: app(key) }, data: { answer: value, answeredAt: now } });
+  if (past.ok) {
+    await inviteSession(seasonId, past.id, pastKeys.map(app));
+    for (const key of pastKeys) await answer(key, "GOING");
+    const group = await saveGroup(seasonId, { sessionId: past.id, title: "Подгруппа 1" });
+    if (group.ok) {
+      await setExperts(seasonId, group.id, [staff.katya!], staff.lead!);
+      for (const key of pastKeys) await placeMember(seasonId, app(key), group.id, staff.lead!);
+      // Подгруппа уже прошла ЦО — эксперт её оценил и оставил комментарии.
+      for (const key of pastKeys) await review(app(key), "ASSESSMENT", staff.katya!, key === "lyova" ? "low" : "high");
+      const tasks = await db.assessmentTask.findMany({ where: { seasonId, active: true }, orderBy: { order: "asc" }, take: 2 });
+      const notes = ["Предложил идею первым, команда подхватила.", "Взял на себя роль ведущего, следил за временем."];
+      for (const [index, task] of tasks.entries()) {
+        await db.assessmentTaskNote.create({ data: { taskId: task.id, applicationId: app("egor"), authorId: staff.katya!, text: notes[index]! } });
+      }
+      const egor = await db.review.findFirst({ where: { applicationId: app("egor"), stageKind: "ASSESSMENT", reviewerId: staff.katya! }, select: { id: true } });
+      if (egor) {
+        const score = await db.reviewScore.findFirst({ where: { reviewId: egor.id }, select: { id: true } });
+        if (score) await db.reviewScore.update({ where: { id: score.id }, data: { comment: "Собрал команду вокруг своей идеи и довёл до показа." } });
+      }
+      await db.assessmentGroupNote.create({
+        data: { groupId: group.id, authorId: staff.katya!, text: "Группа быстро разогрелась, на «Креативщиках» все включились. Лёва держался в стороне." },
+      });
+    }
+  }
+  if (next.ok) {
+    // По факультетам — все, кто отправил анкету и ещё не приглашён.
+    await inviteSession(seasonId, next.id);
+    await answer("dasha", "GOING");
+    await answer("boris", "RESERVE");
+    await answer("gleb", "CANT");
+    const first = await saveGroup(seasonId, { sessionId: next.id, title: "Подгруппа А" });
+    const second = await saveGroup(seasonId, { sessionId: next.id, title: "Подгруппа Б" });
+    if (first.ok) await setExperts(seasonId, first.id, [staff.katya!, staff.ilya!], staff.lead!);
+    if (second.ok) await setExperts(seasonId, second.id, [staff.ilya!], staff.lead!);
+    if (first.ok) await placeMember(seasonId, app("dasha"), first.id, staff.lead!);
+  }
 
   // Собеседования: прошедшие — вчера, Женя — послезавтра.
   const slot = (offsetDays: number, hour: number) => {

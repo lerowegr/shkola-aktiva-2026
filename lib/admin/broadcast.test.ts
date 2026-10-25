@@ -32,15 +32,23 @@ describe("сегменты рассылки", () => {
     expect(await segmentUserIds(seasonId, "submitted")).toEqual([sent.user.id]);
   });
 
-  it("отправили анкету, но не выбрали дату ЦО", async () => {
-    const waiting = await candidate("SUBMITTED");
-    const placed = await candidate("SUBMITTED");
+  it("ЦО: не ответили на приглашение и придут", async () => {
+    const silent = await candidate("SUBMITTED");
+    const going = await candidate("SUBMITTED");
+    const cant = await candidate("SUBMITTED");
+    const notInvited = await candidate("SUBMITTED");
     await candidate("DRAFT");
-    const group = await db.assessmentGroup.create({ data: { seasonId, title: "Группа", capacity: 10 } });
-    await db.assessmentMember.create({ data: { groupId: group.id, applicationId: placed.application.id } });
+    const session = await db.assessmentSession.create({ data: { seasonId, title: "Сбор", startsAt: new Date(), faculties: ["МЭО"] } });
+    await db.assessmentInvite.createMany({
+      data: [
+        { sessionId: session.id, applicationId: silent.application.id },
+        { sessionId: session.id, applicationId: going.application.id, answer: "GOING" },
+        { sessionId: session.id, applicationId: cant.application.id, answer: "CANT" },
+      ],
+    });
 
-    expect(await segmentUserIds(seasonId, "no_assessment")).toEqual([waiting.user.id]);
-    expect(await segmentUserIds(seasonId, "in_assessment")).toEqual([placed.user.id]);
+    expect((await segmentUserIds(seasonId, "no_assessment")).sort()).toEqual([silent.user.id, notInvited.user.id].sort());
+    expect(await segmentUserIds(seasonId, "in_assessment")).toEqual([going.user.id]);
   });
 
   it("прошли ДЗ, но не записались", async () => {

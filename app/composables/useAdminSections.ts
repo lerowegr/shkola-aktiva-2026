@@ -11,6 +11,7 @@ export async function useAdminSections() {
       { to: "/staff/admin/forms", label: "Анкета и оценка", about: "Вопросы, разделы, критерии и маркеры", show: can.forms },
       { to: "/staff/admin/quiz", label: "Тест про ША", about: "Вопросы теста и результаты", show: can.forms },
       { to: "/staff/admin/guide", label: "Сценарий собеса", about: "Блоки и вопросы собеседования", show: can.forms },
+      { to: "/staff/admin/assessment-tasks", label: "Задания ЦО", about: "Задания центра оценки для комментариев экспертов", show: can.forms },
       { to: "/staff/admin/site", label: "Сайт", about: "Тексты и фото главной страницы", show: can.content },
       { to: "/staff/admin/broadcast", label: "Рассылки", about: "Сообщения кандидатам по сегментам", show: can.broadcast },
       { to: "/staff/admin/audit", label: "Журнал", about: "Кто что менял", show: can.audit },
