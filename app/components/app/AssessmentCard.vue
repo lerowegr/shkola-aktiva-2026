@@ -17,21 +17,38 @@ type Answer = "GOING" | "RESERVE" | "CANT";
 const invite = computed(() => props.co.invite);
 const day = computed(() => invite.value?.day ?? null);
 // День прошёл — дальше ждём итогов, а не идём в аудиторию.
-const over = computed(() => Boolean(day.value?.startsAt && new Date(day.value.startsAt).getTime() + 4 * 60 * 60 * 1000 < Date.now()));
+const over = computed(() =>
+  Boolean(
+    day.value?.startsAt &&
+    new Date(day.value.startsAt).getTime() + 4 * 60 * 60 * 1000 < Date.now(),
+  ),
+);
 
 const changing = ref(false);
-const asking = computed(() => Boolean(invite.value && invite.value.canChange && (!invite.value.answer || changing.value)));
+const asking = computed(() =>
+  Boolean(
+    invite.value &&
+    invite.value.canChange &&
+    (!invite.value.answer || changing.value),
+  ),
+);
 
 const pending = ref<Answer | null>(null);
 const result = ref<ActionResult | null>(null);
 async function answer(value: Answer) {
   pending.value = value;
   try {
-    result.value = await $fetch<ActionResult>("/api/cabinet/assessment/answer", {
-      method: "POST",
-      body: { answer: value },
-      ignoreResponseError: true,
-    }).catch((): ActionResult => ({ ok: false, message: "Нет связи с сайтом. Проверьте интернет и попробуйте ещё раз." }));
+    result.value = await $fetch<ActionResult>(
+      "/api/cabinet/assessment/answer",
+      {
+        method: "POST",
+        body: { answer: value },
+        ignoreResponseError: true,
+      },
+    ).catch((): ActionResult => ({
+      ok: false,
+      message: "Нет связи с сайтом. Проверьте интернет и попробуйте ещё раз.",
+    }));
     if (result.value.ok) {
       changing.value = false;
       emit("changed");
@@ -41,37 +58,61 @@ async function answer(value: Answer) {
   }
 }
 
-const when = (value: Date | string | null) => (value ? `${mskDay(value)}, ${mskTime(value)}` : "время уточним");
-const button = "min-h-11 rounded-2xl px-4 py-2.5 text-left text-sm font-semibold transition disabled:opacity-60";
+const when = (value: Date | string | null) =>
+  value ? `${mskDay(value)}, ${mskTime(value)}` : "время уточним";
+const button =
+  "min-h-11 rounded-2xl px-4 py-2.5 text-left text-sm font-semibold transition disabled:opacity-60";
 </script>
 
 <template>
-  <section class="bg-brand-orange-soft border-ink/10 flex flex-col gap-4 rounded-3xl border p-5" aria-labelledby="co-title">
+  <section
+    class="bg-brand-orange-soft border-ink/10 flex flex-col gap-4 rounded-3xl border p-5"
+    aria-labelledby="co-title"
+  >
     <div class="flex items-start gap-4">
-      <span class="grid size-12 shrink-0 place-items-center rounded-2xl bg-white/60">
+      <span
+        class="grid size-12 shrink-0 place-items-center rounded-2xl bg-white/60"
+      >
         <UsersRound class="size-6" aria-hidden="true" />
       </span>
       <div class="flex min-w-0 flex-1 flex-col gap-1">
         <h2 id="co-title" class="font-display text-xl">{{ co.title }}</h2>
         <p class="text-ink/80 text-sm whitespace-pre-line">
-          {{ co.description ?? "Очный групповой этап: задания в команде вместе с другими кандидатами." }}
+          {{
+            co.description ??
+            "Очный групповой этап: задания в команде вместе с другими кандидатами."
+          }}
         </p>
       </div>
     </div>
 
-    <p v-if="!invite" class="text-ink/70 text-sm">Приглашение с местом и временем пришлём уведомлением.</p>
+    <p v-if="!invite" class="text-ink/70 text-sm">
+      Приглашение с местом и временем пришлём уведомлением.
+    </p>
 
     <p v-else-if="over" class="bg-card/80 rounded-2xl p-4 text-sm">
-      Вы уже были на центре оценки ✨ Спасибо! Дальше — собеседование, а итоги отбора объявим в конце.
+      Вы уже были на центре оценки ✨ Спасибо! Дальше — собеседование, а итоги
+      отбора объявим в конце.
     </p>
 
     <!-- Вопрос: будете? -->
-    <div v-else-if="asking" class="bg-card/80 flex flex-col gap-3 rounded-2xl p-4">
+    <div
+      v-else-if="asking"
+      class="bg-card/80 flex flex-col gap-3 rounded-2xl p-4"
+    >
       <p class="text-sm">
-        Приглашаем на центр оценки: <b>{{ when(invite.session.startsAt) }} МСК</b><template v-if="invite.session.building || invite.session.room">,
-          {{ placeLine(invite.session) }}</template>. Будете?
+        Приглашаем на центр оценки:
+        <b>{{ when(invite.session.startsAt) }} МСК</b
+        ><template v-if="invite.session.building || invite.session.room"
+          >, {{ placeLine(invite.session) }}</template
+        >. Будете?
       </p>
-      <p v-if="invite.session.note" class="text-ink/80 text-sm whitespace-pre-line">{{ invite.session.note }}</p>
+      <p
+        v-if="invite.session.note"
+        class="text-ink/80 text-sm whitespace-pre-line"
+      >
+        {{ invite.session.note }}
+      </p>
       <div class="grid gap-2">
         <button
           type="button"
@@ -82,14 +123,18 @@ const button = "min-h-11 rounded-2xl px-4 py-2.5 text-left text-sm font-semibold
           Да, буду
         </button>
         <button
-          v-if="invite.reserve"
+          v-if="!invite.session.reserve"
           type="button"
           :class="[button, 'border-ink/15 bg-card hover:border-accent border']"
           :disabled="pending !== null"
           @click="answer('RESERVE')"
         >
-          Нет, приду в резервный день — {{ when(invite.reserve.startsAt) }} МСК
+          Нет, приду в резервный день
         </button>
+        <p v-if="!invite.session.reserve" class="text-ink/70 text-xs">
+          Запишем вас в очередь. Дату, время и место пришлём отдельным
+          уведомлением.
+        </p>
         <button
           type="button"
           :class="[button, 'border-ink/15 bg-card hover:border-accent border']"
@@ -99,34 +144,72 @@ const button = "min-h-11 rounded-2xl px-4 py-2.5 text-left text-sm font-semibold
           Не получится ни в один из дней
         </button>
       </div>
-      <button v-if="changing" type="button" class="text-ink/70 hover:text-ink self-start text-sm underline" @click="changing = false">
+      <button
+        v-if="changing"
+        type="button"
+        class="text-ink/70 hover:text-ink self-start text-sm underline"
+        @click="changing = false"
+      >
         Оставить как было
       </button>
     </div>
 
     <!-- Ответил «не смогу» -->
-    <div v-else-if="invite.answer === 'CANT'" class="bg-card/80 flex flex-col gap-1 rounded-2xl p-4 text-sm">
+    <div
+      v-else-if="invite.reserveQueued"
+      class="bg-card/80 flex flex-col gap-1 rounded-2xl p-4 text-sm"
+      role="status"
+    >
+      <p class="font-semibold">Вы в очереди на резервный день.</p>
+      <p class="text-ink/80">
+        Дату, время и место пришлём отдельным уведомлением. Пока приходить на
+        сбор не нужно — ждите приглашения.
+      </p>
+    </div>
+
+    <div
+      v-else-if="invite.answer === 'CANT'"
+      class="bg-card/80 flex flex-col gap-1 rounded-2xl p-4 text-sm"
+    >
       <p class="font-semibold">Вы ответили, что не сможете прийти.</p>
-      <p class="text-ink/80">Организаторы с вами свяжутся. Если планы поменялись — поменяйте ответ.</p>
+      <p class="text-ink/80">
+        Организаторы с вами свяжутся. Если планы поменялись — поменяйте ответ.
+      </p>
     </div>
 
     <!-- Свой день -->
-    <dl v-else-if="day" class="bg-card/80 grid gap-3 rounded-2xl p-4 text-sm sm:grid-cols-2">
+    <dl
+      v-else-if="day"
+      class="bg-card/80 grid gap-3 rounded-2xl p-4 text-sm sm:grid-cols-2"
+    >
       <div v-if="day.building || day.room" class="flex items-start gap-2.5">
-        <MapPin class="text-ink-soft mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <MapPin
+          class="text-ink-soft mt-0.5 size-4 shrink-0"
+          aria-hidden="true"
+        />
         <div>
           <dt class="text-ink-soft">Где</dt>
           <dd class="font-semibold">{{ placeLine(day) }}</dd>
         </div>
       </div>
       <div class="flex items-start gap-2.5">
-        <CalendarClock class="text-ink-soft mt-0.5 size-4 shrink-0" aria-hidden="true" />
+        <CalendarClock
+          class="text-ink-soft mt-0.5 size-4 shrink-0"
+          aria-hidden="true"
+        />
         <div>
-          <dt class="text-ink-soft">{{ day.reserve ? "Когда — резервный день" : "Когда" }}</dt>
-          <dd class="font-semibold">{{ when(day.startsAt) }} <span class="text-ink-soft font-normal">МСК</span></dd>
+          <dt class="text-ink-soft">
+            {{ day.reserve ? "Когда — резервный день" : "Когда" }}
+          </dt>
+          <dd class="font-semibold">
+            {{ when(day.startsAt) }}
+            <span class="text-ink-soft font-normal">МСК</span>
+          </dd>
         </div>
       </div>
-      <p v-if="day.note" class="text-ink/80 whitespace-pre-line sm:col-span-2">{{ day.note }}</p>
+      <p v-if="day.note" class="text-ink/80 whitespace-pre-line sm:col-span-2">
+        {{ day.note }}
+      </p>
     </dl>
 
     <UiNotice :ok="result?.ok" :message="result?.message" />
@@ -135,7 +218,7 @@ const button = "min-h-11 rounded-2xl px-4 py-2.5 text-left text-sm font-semibold
       v-if="invite && invite.answer && invite.canChange && !changing && !over"
       type="button"
       class="text-ink/70 hover:text-ink self-start text-sm underline"
-      @click="(changing = true), (result = null)"
+      @click="((changing = true), (result = null))"
     >
       Поменять ответ
     </button>

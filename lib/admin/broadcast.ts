@@ -3,7 +3,6 @@ import { randomBytes } from "node:crypto";
 import { db } from "~~/lib/db";
 import { notify } from "~~/lib/notifications/notify";
 
-
 /**
  * Рассылки по сегментам: «всем, кто не отправил анкету — до дедлайна
  * сутки», «отправившим анкету, но не записавшимся на собеседование».
@@ -17,13 +16,27 @@ import { SEGMENTS, type Segment } from "./segments";
 export { SEGMENTS, type Segment };
 
 function published(outcome: "PASSED" | "REJECTED") {
-  return { decisions: { some: { stageKind: "INTERVIEW" as const, outcome, publishedAt: { not: null } } } };
+  return {
+    decisions: {
+      some: {
+        stageKind: "INTERVIEW" as const,
+        outcome,
+        publishedAt: { not: null },
+      },
+    },
+  };
 }
 
-export async function segmentUserIds(seasonId: string, segment: Segment): Promise<string[]> {
+export async function segmentUserIds(
+  seasonId: string,
+  segment: Segment,
+): Promise<string[]> {
   if (segment === "staff") {
     const staff = await db.user.findMany({
-      where: { status: "ACTIVE", OR: [{ isOwner: true }, { roles: { some: {} } }] },
+      where: {
+        status: "ACTIVE",
+        OR: [{ isOwner: true }, { roles: { some: {} } }],
+      },
       select: { id: true },
     });
     return staff.map((user) => user.id);
@@ -40,11 +53,31 @@ export async function segmentUserIds(seasonId: string, segment: Segment): Promis
   const where = {
     drafts: { status: "DRAFT" as const },
     submitted: { status: "SUBMITTED" as const },
-    homework_submitted: { submissions: { some: { stageKind: "HOMEWORK" as const, replacedAt: null } } },
-    in_assessment: { assessmentInvite: { is: { answer: { in: ["GOING" as const, "RESERVE" as const] } } } },
+    homework_submitted: {
+      submissions: {
+        some: { stageKind: "HOMEWORK" as const, replacedAt: null },
+      },
+    },
+    in_assessment: {
+      assessmentInvite: {
+        is: {
+          answer: { in: ["GOING" as const, "RESERVE" as const] },
+          reserveQueued: false,
+        },
+      },
+    },
     // Не приглашён вовсе или приглашён, но молчит.
-    no_assessment: { status: "SUBMITTED" as const, OR: [{ assessmentInvite: null }, { assessmentInvite: { is: { answer: null } } }] },
-    not_booked: { status: "SUBMITTED" as const, bookings: { none: { cancelledAt: null } } },
+    no_assessment: {
+      status: "SUBMITTED" as const,
+      OR: [
+        { assessmentInvite: null },
+        { assessmentInvite: { is: { answer: null } } },
+      ],
+    },
+    not_booked: {
+      status: "SUBMITTED" as const,
+      bookings: { none: { cancelledAt: null } },
+    },
     booked: { bookings: { some: { cancelledAt: null } } },
     accepted: published("PASSED"),
     rejected: published("REJECTED"),

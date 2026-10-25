@@ -18,7 +18,10 @@ export interface Place {
  * поэтому размеры после раскладки отличаются не больше чем на одного, только
  * если до неё группы были ровными, — иначе догоняются маленькие.
  */
-export function balance(groups: readonly { id: string; size: number }[], candidates: readonly string[]): Map<string, string> {
+export function balance(
+  groups: readonly { id: string; size: number }[],
+  candidates: readonly string[],
+): Map<string, string> {
   const sizes = groups.map((group) => ({ id: group.id, size: group.size }));
   const placed = new Map<string, string>();
   if (sizes.length === 0) return placed;
@@ -32,7 +35,12 @@ export function balance(groups: readonly { id: string; size: number }[], candida
   return placed;
 }
 
-export function placeOf(group: { building: string | null; room: string | null; startsAt: Date | string | null; note: string | null }): Place {
+export function placeOf(group: {
+  building: string | null;
+  room: string | null;
+  startsAt: Date | string | null;
+  note: string | null;
+}): Place {
   return {
     building: group.building?.trim() || null,
     room: group.room?.trim() || null,
@@ -54,14 +62,18 @@ export function placeChanged(notified: Place | null, current: Place): boolean {
 
 /** Чего не хватает, чтобы сообщить группе место. */
 export function placeProblem(place: Place): string | null {
-  if (!place.building && !place.room) return "Укажите корпус или аудиторию — без них кандидатам некуда идти.";
+  if (!place.building && !place.room)
+    return "Укажите корпус или аудиторию — без них кандидатам некуда идти.";
   if (!place.startsAt) return "Укажите дату и время начала.";
   return null;
 }
 
 /** «Корпус 2, аудитория 305» — для уведомления и кабинета. */
 export function placeLine(place: Pick<Place, "building" | "room">): string {
-  return [place.building && `корпус ${place.building}`, place.room && `аудитория ${place.room}`]
+  return [
+    place.building && `корпус ${place.building}`,
+    place.room && `аудитория ${place.room}`,
+  ]
     .filter(Boolean)
     .join(", ")
     .replace(/^./, (first) => first.toUpperCase());
@@ -71,8 +83,16 @@ export function placeLine(place: Pick<Place, "building" | "room">): string {
 export function readPlace(raw: unknown): Place | null {
   if (!raw || typeof raw !== "object") return null;
   const value = raw as Record<string, unknown>;
-  const field = (key: string) => (typeof value[key] === "string" && value[key] ? (value[key] as string) : null);
-  return { building: field("building"), room: field("room"), startsAt: field("startsAt"), note: field("note") };
+  const field = (key: string) =>
+    typeof value[key] === "string" && value[key]
+      ? (value[key] as string)
+      : null;
+  return {
+    building: field("building"),
+    room: field("room"),
+    startsAt: field("startsAt"),
+    note: field("note"),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +100,12 @@ export function readPlace(raw: unknown): Place | null {
 // ---------------------------------------------------------------------------
 
 /** Задания ЦО по умолчанию — сид досоздаёт их новому сезону. */
-export const DEFAULT_ASSESSMENT_TASKS = ["Представление инициативы", "Креативщики", "Поход на фильм", "Рефлексия"] as const;
+export const DEFAULT_ASSESSMENT_TASKS = [
+  "Представление инициативы",
+  "Креативщики",
+  "Поход на фильм",
+  "Рефлексия",
+] as const;
 
 export type AssessmentAnswerKind = "GOING" | "RESERVE" | "CANT";
 
@@ -91,7 +116,10 @@ export const ANSWER_LABEL: Record<AssessmentAnswerKind, string> = {
 };
 
 /** Приглашать ли кандидата этого факультета на сбор. Резервный день — для всех. */
-export function invitesFaculty(session: { faculties: readonly string[]; reserve: boolean }, faculty: string | null): boolean {
+export function invitesFaculty(
+  session: { faculties: readonly string[]; reserve: boolean },
+  faculty: string | null,
+): boolean {
   if (session.reserve) return true;
   return faculty !== null && session.faculties.includes(faculty);
 }
@@ -100,13 +128,24 @@ export function invitesFaculty(session: { faculties: readonly string[]; reserve:
  * «Свой день» кандидата: ответил «резервный день» — резервный сбор сезона,
  * «не смогу» — никакой, иначе — сбор приглашения.
  */
-export function dayOf(invite: { sessionId: string; answer: AssessmentAnswerKind | null }, reserveId: string | null): string | null {
+export function dayOf(
+  invite: {
+    sessionId: string;
+    answer: AssessmentAnswerKind | null;
+    reserveQueued?: boolean;
+  },
+  reserveId: string | null,
+): string | null {
+  if (invite.reserveQueued) return null;
   if (invite.answer === "CANT") return null;
   if (invite.answer === "RESERVE") return reserveId;
   return invite.sessionId;
 }
 
 /** Ответ можно менять, пока «свой день» и день, на который переходит кандидат, не начались. */
-export function canChangeAnswer(now: Date, ...days: (Date | string | null | undefined)[]): boolean {
+export function canChangeAnswer(
+  now: Date,
+  ...days: (Date | string | null | undefined)[]
+): boolean {
   return days.every((day) => !day || new Date(day).getTime() > now.getTime());
 }

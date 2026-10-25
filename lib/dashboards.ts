@@ -12,7 +12,9 @@ import { displayName } from "./auth/actor";
 type Evaluated = Extract<StageKind, "APPLICATION" | "HOMEWORK" | "INTERVIEW">;
 
 const published = (stage: Evaluated, outcome: "PASSED" | "REJECTED") => ({
-  decisions: { some: { stageKind: stage, outcome, publishedAt: { not: null } } },
+  decisions: {
+    some: { stageKind: stage, outcome, publishedAt: { not: null } },
+  },
 });
 
 export interface FunnelStep {
@@ -22,15 +24,30 @@ export interface FunnelStep {
 }
 
 export async function funnel(seasonId: string): Promise<FunnelStep[]> {
-  const count = (where: object) => db.application.count({ where: { seasonId, ...where } });
+  const count = (where: object) =>
+    db.application.count({ where: { seasonId, ...where } });
 
   // Отсева между этапами нет: воронка — кто дошёл до какого шага.
-  const [registered, started, submitted, homework, assessment, booked, accepted] = await Promise.all([
+  const [
+    registered,
+    started,
+    submitted,
+    homework,
+    assessment,
+    booked,
+    accepted,
+  ] = await Promise.all([
     db.user.count({ where: { isOwner: false, roles: { none: {} } } }),
     count({}),
     count({ status: "SUBMITTED" }),
-    count({ submissions: { some: { stageKind: "HOMEWORK", replacedAt: null } } }),
-    count({ assessmentInvite: { is: { answer: { in: ["GOING", "RESERVE"] } } } }),
+    count({
+      submissions: { some: { stageKind: "HOMEWORK", replacedAt: null } },
+    }),
+    count({
+      assessmentInvite: {
+        is: { answer: { in: ["GOING", "RESERVE"] }, reserveQueued: false },
+      },
+    }),
     count({ bookings: { some: { cancelledAt: null } } }),
     count(published("INTERVIEW", "PASSED")),
   ]);
@@ -53,7 +70,11 @@ export interface DailyPoint {
 }
 
 /** Входы новых кандидатов и отправленные анкеты по дням за последние N дней. */
-export async function daily(seasonId: string, days = 30, now = new Date()): Promise<DailyPoint[]> {
+export async function daily(
+  seasonId: string,
+  days = 30,
+  now = new Date(),
+): Promise<DailyPoint[]> {
   const from = new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 
   const [registered, submitted] = await Promise.all([
@@ -75,10 +96,14 @@ export async function daily(seasonId: string, days = 30, now = new Date()): Prom
 
   const points: DailyPoint[] = [];
   for (let i = days - 1; i >= 0; i--) {
-    const day = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow" }).format(
-      new Date(now.getTime() - i * 24 * 60 * 60 * 1000),
-    );
-    points.push({ day, registered: reg.get(day) ?? 0, submitted: sub.get(day) ?? 0 });
+    const day = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Moscow",
+    }).format(new Date(now.getTime() - i * 24 * 60 * 60 * 1000));
+    points.push({
+      day,
+      registered: reg.get(day) ?? 0,
+      submitted: sub.get(day) ?? 0,
+    });
   }
   return points;
 }
@@ -101,14 +126,31 @@ export interface StageStats {
   overall: number | null;
 }
 
-export async function stageStats(seasonId: string, stage: Evaluated): Promise<StageStats> {
+export async function stageStats(
+  seasonId: string,
+  stage: Evaluated,
+): Promise<StageStats> {
   const [criteria, reviews] = await Promise.all([
-    db.criterion.findMany({ where: { seasonId, stageKind: stage }, select: { id: true, maxScore: true } }),
+    db.criterion.findMany({
+      where: { seasonId, stageKind: stage },
+      select: { id: true, maxScore: true },
+    }),
     db.review.findMany({
-      where: { stageKind: stage, application: { seasonId, status: "SUBMITTED" } },
+      where: {
+        stageKind: stage,
+        application: { seasonId, status: "SUBMITTED" },
+      },
       select: {
         reviewerId: true,
-        reviewer: { select: { firstName: true, lastName: true, telegramUsername: true, email: true, avatarKey: true } },
+        reviewer: {
+          select: {
+            firstName: true,
+            lastName: true,
+            telegramUsername: true,
+            email: true,
+            avatarKey: true,
+          },
+        },
         scores: { select: { criterionId: true, score: true } },
       },
     }),
@@ -120,13 +162,17 @@ export async function stageStats(seasonId: string, stage: Evaluated): Promise<St
 
   for (const review of reviews) {
     const summary = reviewSummary(criteria, review.scores);
-    const row =
-      byReviewer.get(review.reviewerId) ??
-      {
-        id: review.reviewerId,
-        name: displayName(review.reviewer),
-        avatar: review.reviewer.avatarKey ? `/api/avatars/${review.reviewer.avatarKey}` : null,
-        assigned: 0, done: 0, average: null, totals: [] };
+    const row = byReviewer.get(review.reviewerId) ?? {
+      id: review.reviewerId,
+      name: displayName(review.reviewer),
+      avatar: review.reviewer.avatarKey
+        ? `/api/avatars/${review.reviewer.avatarKey}`
+        : null,
+      assigned: 0,
+      done: 0,
+      average: null,
+      totals: [],
+    };
     row.assigned++;
     if (summary.status === "done" && summary.total !== null) {
       row.done++;
@@ -137,7 +183,10 @@ export async function stageStats(seasonId: string, stage: Evaluated): Promise<St
   }
 
   const mean = (values: number[]) =>
-    values.length ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10 : null;
+    values.length
+      ? Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) /
+        10
+      : null;
   const all = [...byReviewer.values()].flatMap((row) => row.totals);
 
   return {
@@ -158,23 +207,36 @@ export interface Breakdown {
 /** Разрезы по вопросам с выбором (курс, форма обучения, откуда узнали) — по отправленным анкетам. */
 export async function breakdowns(seasonId: string): Promise<Breakdown[]> {
   const questions = await db.formQuestion.findMany({
-    where: { seasonId, stageKind: "APPLICATION", type: { in: ["SINGLE_CHOICE", "MULTI_CHOICE"] } },
+    where: {
+      seasonId,
+      stageKind: "APPLICATION",
+      type: { in: ["SINGLE_CHOICE", "MULTI_CHOICE"] },
+    },
     orderBy: { order: "asc" },
     select: {
       label: true,
       options: true,
-      answers: { where: { application: { status: "SUBMITTED" } }, select: { value: true } },
+      answers: {
+        where: { application: { status: "SUBMITTED" } },
+        select: { value: true },
+      },
     },
   });
 
   return questions.map((question) => {
     const counts = new Map(question.options.map((option) => [option, 0]));
     for (const answer of question.answers) {
-      for (const value of Array.isArray(answer.value) ? answer.value : [answer.value]) {
-        if (typeof value === "string" && counts.has(value)) counts.set(value, counts.get(value)! + 1);
+      for (const value of Array.isArray(answer.value)
+        ? answer.value
+        : [answer.value]) {
+        if (typeof value === "string" && counts.has(value))
+          counts.set(value, counts.get(value)! + 1);
       }
     }
-    return { question: question.label, rows: [...counts.entries()].map(([label, count]) => ({ label, count })) };
+    return {
+      question: question.label,
+      rows: [...counts.entries()].map(([label, count]) => ({ label, count })),
+    };
   });
 }
 
@@ -182,7 +244,13 @@ export interface ChannelStats {
   candidates: number;
   telegram: number;
   push: number;
-  deliveries: { channel: "TELEGRAM" | "PUSH"; sent: number; skipped: number; failed: number; pending: number }[];
+  deliveries: {
+    channel: "TELEGRAM" | "PUSH";
+    sent: number;
+    skipped: number;
+    failed: number;
+    pending: number;
+  }[];
 }
 
 export async function channels(): Promise<ChannelStats> {
@@ -191,12 +259,23 @@ export async function channels(): Promise<ChannelStats> {
     db.user.count({ where: candidate }),
     db.user.count({ where: { ...candidate, telegramId: { not: null } } }),
     db.pushSubscription.groupBy({ by: ["userId"], where: { user: candidate } }),
-    db.notificationDelivery.groupBy({ by: ["channel", "status"], _count: { _all: true } }),
+    db.notificationDelivery.groupBy({
+      by: ["channel", "status"],
+      _count: { _all: true },
+    }),
   ]);
 
   const deliveries = (["TELEGRAM", "PUSH"] as const).map((channel) => {
-    const of = (status: string) => grouped.find((row) => row.channel === channel && row.status === status)?._count._all ?? 0;
-    return { channel, sent: of("SENT"), skipped: of("SKIPPED"), failed: of("FAILED"), pending: of("PENDING") };
+    const of = (status: string) =>
+      grouped.find((row) => row.channel === channel && row.status === status)
+        ?._count._all ?? 0;
+    return {
+      channel,
+      sent: of("SENT"),
+      skipped: of("SKIPPED"),
+      failed: of("FAILED"),
+      pending: of("PENDING"),
+    };
   });
 
   return { candidates, telegram, push: pushUsers.length, deliveries };

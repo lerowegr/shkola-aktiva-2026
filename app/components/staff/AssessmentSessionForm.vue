@@ -108,7 +108,7 @@ const field = "border-line bg-paper focus:border-accent min-h-11 rounded-xl bord
     <fieldset class="bg-paper flex flex-col gap-3 rounded-2xl p-3">
       <UiCheckbox v-if="reserveAllowed" v-model="form.reserve">Это резервный день — для всех факультетов</UiCheckbox>
       <p v-if="form.reserve" class="text-ink-soft -mt-1 text-xs">
-        Сюда автоматически попадают ответившие «Приду в резервный день». Кого-то ещё можно пригласить сюда напрямую.
+        Ответившие «Приду в резервный день» ждут в очереди. После создания сбора нажмите «Пригласить из очереди» в обзоре ЦО.
       </p>
       <div v-else class="flex flex-col gap-1.5">
         <p class="text-sm font-medium">Каких факультетов приглашаем</p>

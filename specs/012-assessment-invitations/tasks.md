@@ -1,5 +1,17 @@
 # Tasks: Центр оценки — приглашения на сборы, подгруппы, комментарии
 
+## Phase 12: Очередь резервного дня
+
+- [x] T045 Уточнить RQ-001–RQ-006 в spec.md и plan.md; сверить конституцию.
+- [x] T046 Добавить reserveQueued в prisma/schema.prisma, применить миграцию и синхронизировать sha_test.
+- [x] T047 Покрыть очередь, отмену, FIFO, создание без рассылки и гонки тестами в lib/assessment/*.test.ts.
+- [x] T048 Реализовать очередь в lib/assessment/candidate.ts, rules.ts, capacity.ts, sessions.ts, groups.ts; API reserve-invite с правами и аудитом.
+- [x] T049 Обновить app/components/app/AssessmentCard.vue, app/pages/cabinet/index.vue и app/pages/staff/assessment/index.vue: кнопка, статус, список, рассылка.
+- [x] T050 Выполнить npm run check и проверку браузером на 375px, сверить RQ-001–RQ-006, обновить CLAUDE.md.
+
+Проверка очереди: финальный `npm run check` — типы, линтер без замечаний, 457 тестов в 72 файлах.
+В браузере на sha_test: выбор без резервного дня, сохранение после перезагрузки, отдельный список организатора, создание сбора без автоматической рассылки, ручная рассылка одному кандидату. На 375px ширина документа 375px и у кандидата, и у организатора. Временные аккаунты/сборы удалены, сервер остановлен. RQ-001–RQ-006 и конституция I–VI сверены с итоговым кодом: недоработок не выявлено. Живым кандидатам тестовые уведомления не отправлялись.
+
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [data-model.md](data-model.md), [contracts/api.md](contracts/api.md)
 
 ## Phase 1: Setup

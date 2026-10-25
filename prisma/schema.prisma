@@ -1151,6 +1151,8 @@ model AssessmentInvite {
   applicationId String            @unique
   invitedAt     DateTime          @default(now())
   answer        AssessmentAnswer?
+  /// Ожидает отдельной рассылки на резервный день, конкретный день ещё не назначен.
+  reserveQueued Boolean           @default(false)
   answeredAt    DateTime?
   remindedAt    DateTime?
   /// Отметка «пришёл» — ставит организатор в день ЦО.

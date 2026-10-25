@@ -44,3 +44,11 @@
   ключ `assessment-invite:{inviteId}`;
 - напоминание: «Ответьте на приглашение на центр оценки», ключ с датой;
 - изменение места: «Центр оценки: изменилось место или время», ключ со снимком.
+
+## Дополнение: очередь резервного дня
+
+`POST /api/cabinet/assessment/answer { answer: "RESERVE" }` сохраняет reserveQueued=true даже без резервного сбора; GET кандидата возвращает этот флаг и day=null до рассылки.
+
+`GET /api/staff/assessment` возвращает reserveQueue (applicationId, name, faculty, queuedAt), FIFO; обычному эксперту — пустой список.
+
+`POST /api/staff/assessment/reserve-invite {}` требует applications.assign и текущий сезон. Выбирает первых ожидающих до capacity существующего будущего резервного сбора, сохраняет исходные приглашения, шлёт срочное уведомление. `{ ok, message }`; журнал assessment.reserve.invite содержит sessionId и числа приглашённых/оставшихся. Нет сбора, мест или очередь пуста — новых назначений нет.
