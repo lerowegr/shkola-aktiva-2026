@@ -193,7 +193,7 @@ const canOpen = (group: SessionRow["groups"][number]) =>
       <div
         class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
       >
-        <div class="min-w-0">
+        <div class="min-w-0 flex-1">
           <h2 id="reserve-queue-title" class="font-display text-xl">
             Очередь на резервный день · {{ data.reserveQueue.length }}
           </h2>
@@ -202,9 +202,8 @@ const canOpen = (group: SessionRow["groups"][number]) =>
             Приглашаем по порядку записи, в пределах свободных мест.
           </p>
         </div>
+        <div v-if="data.manage" class="shrink-0">
         <UiButton
-          v-if="data.manage"
-          class="shrink-0"
           :pending="busy === 'reserve-queue'"
           :disabled="
             !data.hasReserve || !data.reserveQueue.length || busy !== null
@@ -215,6 +214,7 @@ const canOpen = (group: SessionRow["groups"][number]) =>
         >
           <MailPlus class="size-4" aria-hidden="true" /> Пригласить из очереди
         </UiButton>
+        </div>
       </div>
       <p v-if="!data.hasReserve" class="text-ink-soft text-sm">
         Чтобы отправить приглашения, создайте сбор с галочкой «Резервный день».
