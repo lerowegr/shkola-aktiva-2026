@@ -77,8 +77,21 @@ describe("выбор другого времени ЦО того же дня", (
     // Молчащий не держит 17:20 — его занимает тот, кто выбрал первым.
     expect(await chooseSlot(mover, early.id, now)).toMatchObject({ ok: true });
     const slots = (await loadCandidateAssessment(silent, now))!.invite!.slots;
-    expect(slots.find((slot) => slot.id === early.id)).toMatchObject({ current: true, free: 0 });
+    expect(slots.find((slot) => slot.id === early.id)).toMatchObject({ current: true, full: true });
     expect(await answerInvite(silent, "GOING", now)).toMatchObject({ ok: false });
     expect(await chooseSlot(silent, late.id, now)).toMatchObject({ ok: true });
+  });
+
+  it("приглашение на день с несколькими временами зовёт выбрать время и не называет число мест", async () => {
+    const { inviteSession } = await import("./sessions");
+    const first = await session("17:20", "2030-10-27T14:20:00Z", ["НАБ"], 50);
+    await session("18:50", "2030-10-27T15:50:00Z", ["НАБ"], 20);
+    const user = await db.user.create({ data: { faculty: "НАБ" } });
+    await db.application.create({ data: { seasonId, userId: user.id, status: "SUBMITTED", submittedAt: now } });
+    expect(await inviteSession(seasonId, first.id)).toMatchObject({ ok: true, invited: 1 });
+    const note = await db.notification.findFirstOrThrow({ where: { userId: user.id } });
+    expect(note.title).toBe("Центр оценки — выберите время");
+    expect(note.body).toContain("17:20, 18:50");
+    expect(note.body).not.toMatch(/\b(50|20) мест/);
   });
 });

@@ -30,8 +30,8 @@ export interface CandidateSlot extends CandidateDay {
   id: string;
   /** Сбор, на который сейчас приглашён. */
   current: boolean;
-  /** Свободных мест (своё место, если уже «буду», учтено как свободное). 0 — все заняты. */
-  free: number;
+  /** Все места заняты. Сколько их — кандидату не показываем. */
+  full: boolean;
 }
 
 export interface CandidateAssessment {
@@ -166,7 +166,7 @@ async function slotsFor(
       const current = session.id === invite.sessionId;
       // Свой сбор: себя из занятых не вычитаем дважды.
       const mine = current && invite.answer === "GOING" ? 1 : 0;
-      return { ...asDay(session), id: session.id, current, free: session.capacity - (used.get(session.id) ?? 0) + mine };
+      return { ...asDay(session), id: session.id, current, full: session.capacity - (used.get(session.id) ?? 0) + mine <= 0 };
     });
 }
 
@@ -250,7 +250,7 @@ export async function chooseSlot(userId: string, sessionId: string, now = new Da
     }
     const slot = (await slotsFor(tx, application, now)).find((item) => item.id === sessionId && !item.current);
     if (!slot) return { ok: false, message: "Это время недоступно — обновите страницу и выберите другое." };
-    if (slot.free <= 0) return { ok: false, message: "На это время все места заняты — выберите другое или резервный день." };
+    if (slot.full) return { ok: false, message: "На это время все места заняты — выберите другое или резервный день." };
 
     await tx.assessmentInvite.update({
       where: { id: invite.id },

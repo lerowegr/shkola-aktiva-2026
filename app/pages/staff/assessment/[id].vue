@@ -59,6 +59,11 @@ const mine = (member: Sheet["members"][number]) => member.reviews.find((review) 
 const done = (member: Sheet["members"][number]) => mine(member)?.summary.status === "done";
 const doneCount = computed(() => (sheet.value?.members ?? []).filter(done).length);
 
+// Комментарии экспертов — одно состояние и один опрос: фон сверху, задания под кандидатом.
+const notes = data.value
+  ? useAssessmentNotes({ groupId: data.value.sheet.id, initial: data.value.sheet.notes, canWrite: data.value.isExpert, myId: data.value.me })
+  : null;
+
 // Отметки «оценён» — по свежим данным, но не на каждое нажатие.
 let timer: ReturnType<typeof setTimeout> | null = null;
 function changed() {
@@ -95,6 +100,8 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
         <p v-if="data?.isExpert" class="text-sm">Вы оценили полностью: <b>{{ doneCount }} из {{ sheet.members.length }}</b></p>
         <p v-else class="text-ink-soft text-sm">Вы не эксперт этой подгруппы — оценки и комментарии только для просмотра.</p>
       </div>
+
+      <StaffAssessmentNotes v-if="notes" :store="notes" part="group" />
 
       <p v-if="sheet.members.length === 0" class="bg-card border-line text-ink-soft rounded-3xl border p-5 text-sm">
         В подгруппе пока нет кандидатов.
@@ -161,12 +168,11 @@ onBeforeUnmount(() => timer && clearTimeout(timer));
           </section>
 
           <StaffAssessmentNotes
-            :group-id="sheet.id"
-            :initial="sheet.notes"
+            v-if="notes"
+            :store="notes"
+            part="tasks"
             :application-id="selected?.applicationId ?? null"
             :candidate-name="selected?.name ?? null"
-            :can-write="Boolean(data?.isExpert)"
-            :my-id="data?.me ?? null"
           />
         </div>
       </div>

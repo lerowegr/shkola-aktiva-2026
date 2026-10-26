@@ -271,18 +271,55 @@ function inviteText(place: Place, reserve: { startsAt: Date | string } | null) {
   return lines.join("\n");
 }
 
+const MSK_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" });
+const MSK_TIME = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" });
+const MSK_DATE = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", weekday: "long", day: "numeric", month: "long" });
+
+/**
+ * Все будущие обычные сборы того же дня (по Москве), что и этот, с общими
+ * факультетами — время на выбор. Один — выбирать не из чего.
+ */
+async function dayTimes(sessionId: string, now = new Date()): Promise<Date[]> {
+  const session = await db.assessmentSession.findUnique({
+    where: { id: sessionId },
+    select: { seasonId: true, startsAt: true, faculties: true, reserve: true },
+  });
+  if (!session || session.reserve) return [];
+  const day = MSK_DAY.format(session.startsAt);
+  const siblings = await db.assessmentSession.findMany({
+    where: { seasonId: session.seasonId, reserve: false, startsAt: { gt: now }, faculties: { hasSome: session.faculties } },
+    orderBy: { startsAt: "asc" },
+    select: { startsAt: true },
+  });
+  return siblings.map((item) => item.startsAt).filter((date) => MSK_DAY.format(date) === day);
+}
+
+/** Приглашение, когда в этот день несколько времён: выбрать в кабинете, сколько мест — не говорим. */
+function chooseText(place: Place, times: Date[]) {
+  const lines = [
+    `${MSK_DATE.format(times[0]!)} — центр оценки, ${placeLine(place)}.`,
+    `Время на выбор: ${times.map((time) => MSK_TIME.format(time)).join(", ")} (МСК). Места ограничены — кто раньше выбрал, за тем и место.`,
+  ];
+  if (place.note) lines.push(place.note);
+  lines.push("Выберите время в кабинете. Если ни одно не подходит — «Приду в резервный день» или «Не получится».");
+  return lines.join("\n");
+}
+
 /** Одинаковое приглашение при ручной рассылке и при поздней отправке анкеты. */
 async function notifyInvites(
   invites: { id: string; application: { userId: string } }[],
   place: Place,
   reserve: { startsAt: Date | string } | null,
+  sessionId?: string,
 ) {
+  const times = sessionId ? await dayTimes(sessionId) : [];
+  const choose = times.length > 1;
   await notify(
     invites.map((invite) => ({
       userId: invite.application.userId,
       category: "SELECTION" as const,
-      title: "Приглашение на центр оценки — будете?",
-      body: inviteText(place, reserve),
+      title: choose ? "Центр оценки — выберите время" : "Приглашение на центр оценки — будете?",
+      body: choose ? chooseText(place, times) : inviteText(place, reserve),
       url: "/cabinet/assessment",
       key: `assessment-invite:${invite.id}`,
     })),
@@ -429,6 +466,7 @@ export async function autoInvite(
       batch.invites,
       batch.place,
       await reserveOf(application.seasonId),
+      batch.sessionId,
     );
     return true;
   } catch (error) {
@@ -543,6 +581,7 @@ export async function inviteSession(
       batch.invites,
       batch.place,
       batch.reserve ? null : reserve,
+      batch.sessionId,
     );
   return {
     ok: true,

@@ -119,13 +119,12 @@ const button =
                 ? 'bg-accent text-accent-ink hover:brightness-110'
                 : 'border-ink/15 bg-card hover:border-accent border',
             ]"
-            :disabled="pending !== null || slot.free <= 0"
+            :disabled="pending !== null || slot.full"
             @click="answer('GOING', slot.current ? undefined : slot.id)"
           >
-            <span class="block">{{ when(slot.startsAt) }} МСК<template v-if="slot.free <= 0"> — все места заняты</template></span>
+            <span class="block">{{ when(slot.startsAt) }} МСК<template v-if="slot.full"> — все места заняты</template></span>
             <span class="block text-xs font-normal opacity-80">
               {{ slot.building || slot.room ? placeLine(slot) : slot.title }}
-              <template v-if="slot.free > 0 && slot.free <= 5"> · осталось мест: {{ slot.free }}</template>
             </span>
           </button>
         </div>
