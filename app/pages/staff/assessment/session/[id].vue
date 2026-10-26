@@ -94,6 +94,15 @@ async function saved() {
 }
 
 const picked = ref<string[]>([]);
+
+// Сообщение всем, кто идёт на сбор: перенос, аудитория, что взять.
+const messageText = ref("");
+const confirmMessage = ref(false);
+async function sendMessage() {
+  confirmMessage.value = false;
+  await act("message", "/api/staff/assessment/message", { sessionId: page.value?.session.id, text: messageText.value });
+  if (notice.value?.ok) messageText.value = "";
+}
 function inviteNoFaculty() {
   void act("nf", "/api/staff/assessment/invite", { sessionId: page.value?.session.id, applicationIds: picked.value }).then(() => {
     picked.value = [];
@@ -142,6 +151,37 @@ const LISTS = [
       </div>
 
       <UiNotice :ok="notice?.ok" :message="notice?.message" />
+
+      <!-- Сообщение всем, кто придёт -->
+      <section v-if="manage" class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5">
+        <div class="flex flex-col gap-1">
+          <h2 class="font-display text-xl">Написать всем, кто идёт на этот сбор</h2>
+          <p class="text-ink-soft text-sm">
+            Придёт сразу — на сайт и в Telegram, даже ночью. Получат все, кто ответил «буду» или ещё не ответил, кроме «не смогу»
+            и очереди на резерв. Время и место в кабинете это не меняет — для этого «Изменить» сбор и «Сообщить об изменении».
+          </p>
+        </div>
+        <textarea
+          v-model="messageText"
+          rows="3"
+          maxlength="1000"
+          placeholder="Например: сбор переносится на 19:00, аудитория 410"
+          aria-label="Текст сообщения"
+          class="border-line bg-paper focus:border-accent rounded-xl border px-3 py-2.5 text-base outline-none"
+        />
+        <div v-if="!confirmMessage">
+          <UiButton :disabled="!messageText.trim() || busy !== null" :pending="busy === 'message'" @click="confirmMessage = true">
+            <MailPlus class="size-4" aria-hidden="true" /> Отправить
+          </UiButton>
+        </div>
+        <div v-else class="bg-brand-yellow-soft flex flex-col gap-2 rounded-2xl p-3 text-sm" role="alertdialog" aria-label="Отправить сообщение?">
+          <p class="font-semibold">Отправить всем, кто идёт на «{{ page.session.title }}»?</p>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" class="bg-accent text-accent-ink rounded-xl px-4 py-2 font-semibold" @click="sendMessage">Да, отправить</button>
+            <button type="button" class="text-ink-soft rounded-xl px-4 py-2" @click="confirmMessage = false">Отмена</button>
+          </div>
+        </div>
+      </section>
 
       <!-- Ответы на приглашение -->
       <section class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5">

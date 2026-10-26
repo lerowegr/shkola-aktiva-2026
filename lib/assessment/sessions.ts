@@ -836,6 +836,42 @@ export async function notifyChange(
   return { ok: true, sent: people.length };
 }
 
+export const MESSAGE_MAX = 1000;
+
+/**
+ * Свободное сообщение всем, чей день — этот сбор (кроме «не смогу» и ждущих
+ * в очереди): перенос, аудитория, что взять. Срочно — в Telegram сразу.
+ */
+export async function messageSession(
+  seasonId: string,
+  sessionId: string,
+  text: string,
+): Promise<Result<{ sent: number; title: string }>> {
+  const body = text.trim();
+  if (!body) return { ok: false, message: "Напишите текст сообщения." };
+  if (body.length > MESSAGE_MAX) return { ok: false, message: `Сообщение — до ${MESSAGE_MAX} знаков.` };
+  const session = await db.assessmentSession.findFirst({
+    where: { id: sessionId, seasonId },
+    select: { id: true, title: true, reserve: true },
+  });
+  if (!session) return { ok: false, message: "Сбор не найден — обновите страницу." };
+  const people = await attendeesOf(seasonId, session);
+  if (people.length === 0) return { ok: false, message: "Писать некому: на этот сбор никто не идёт." };
+  const now = new Date();
+  await notify(
+    people.map((invite) => ({
+      userId: invite.application.userId,
+      category: "SELECTION" as const,
+      title: "Центр оценки: сообщение от организаторов",
+      body,
+      url: "/cabinet/assessment",
+      key: `assessment-message:${session.id}:${now.getTime()}:${invite.id}`,
+    })),
+    { urgent: true },
+  );
+  return { ok: true, sent: people.length, title: session.title };
+}
+
 /** Отметка «пришёл» — по приглашению кандидата. */
 export async function setAttended(
   seasonId: string,
