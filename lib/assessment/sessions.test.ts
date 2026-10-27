@@ -36,13 +36,14 @@ describe("сборы центра оценки", () => {
   async function startMailing(sessionId: string) {
     const first = await candidate("МЭО");
     expect(await inviteSession(seasonId, sessionId, [first.id])).toMatchObject({ ok: true, invited: 1 });
+    await db.assessmentInvite.update({ where: { applicationId: first.id }, data: { answer: "GOING" } });
     return first;
   }
 
   it("сбор без факультетов не создать, резервный день — один на сезон", async () => {
     expect(await saveSession(seasonId, { title: "Пн", startsAt: "2026-11-02T15:00:00.000Z", faculties: [], ...base })).toMatchObject({ ok: false });
     await session("Резерв", [], { reserve: true });
-    expect(await saveSession(seasonId, { title: "Ещё", startsAt: "2026-11-02T15:00:00.000Z", faculties: [], ...base, reserve: true })).toMatchObject({
+    expect(await saveSession(seasonId, { title: "Ещё", startsAt: "2026-11-03T15:00:00.000Z", faculties: [], ...base, reserve: true })).toMatchObject({
       ok: false,
     });
   });
@@ -98,7 +99,7 @@ describe("сборы центра оценки", () => {
     expect(page!.unassigned.map((person) => person.applicationId)).toEqual([b.id]);
     const mondayPage = await loadSessionPage(seasonId, monday, true);
     // В нераспределённых понедельника — «буду» и молчащий, без «резерва» и «не смогу».
-    expect(mondayPage!.unassigned).toHaveLength(2);
+    expect(mondayPage!.unassigned).toHaveLength(1);
   });
 
   it("напоминание — только молчащим и не чаще раза в час", async () => {
@@ -118,6 +119,7 @@ describe("сборы центра оценки", () => {
     const monday = await session("Пн", ["МЭО"]);
     await inviteSession(seasonId, monday);
     await db.assessmentInvite.update({ where: { applicationId: b.id }, data: { answer: "CANT" } });
+    await db.assessmentInvite.update({ where: { applicationId: a.id }, data: { answer: "GOING" } });
     expect(await notifyChange(seasonId, monday)).toMatchObject({ ok: false });
 
     await saveSession(seasonId, { id: monday, title: "Пн", startsAt: "2026-11-02T15:00:00.000Z", faculties: ["МЭО"], ...base, room: "410" });
@@ -226,9 +228,10 @@ describe("сборы центра оценки", () => {
     expect(after.invited).toEqual(before.invited);
     expect(after.invitedAt).toEqual(before.invitedAt);
     const view = await loadCandidateAssessment(late.userId, now);
-    expect(view!.invite!.day).toMatchObject({ building: "2", room: "Лекционная 305", startsAt: "2026-11-02T15:00:00.000Z" });
+    expect(view!.invite!.day).toBeNull();
+    expect(view!.invite!.session).toMatchObject({ building: "2", room: "Лекционная 305", startsAt: "2026-11-02T15:00:00.000Z" });
     const note = await db.notification.findFirstOrThrow({ where: { userId: late.userId } });
-    expect(note.body).toContain("Лекционная 305");
+    expect(note.body).toContain("факультет МЭО");
     expect(note.body).not.toContain("410");
     expect((await loadOverview(seasonId)).sessions[0]!.stale).toBe(true);
   });
@@ -250,7 +253,7 @@ describe("сборы центра оценки", () => {
     expect(await db.assessmentInvite.count({ where: { applicationId: late.id } })).toBe(0);
     expect(await notifyChange(seasonId, id)).toMatchObject({ ok: true, sent: 1 });
     expect(await inviteSession(seasonId, id)).toMatchObject({ ok: true, invited: 1 });
-    expect((await db.notification.findFirstOrThrow({ where: { userId: late.userId } })).body).toContain("410");
+    expect((await db.assessmentSession.findUniqueOrThrow({ where: { id } })).invited).toMatchObject({ room: "410" });
   });
 
   it("одновременные автоприглашения создают одно приглашение и уведомление", async () => {
@@ -268,6 +271,7 @@ describe("сборы центра оценки", () => {
     const id = await session("Пн", ["МЭО"]);
     await inviteSession(seasonId, id);
     await remindSession(seasonId, id);
+    await db.assessmentInvite.update({ where: { applicationId: a.id }, data: { answer: "GOING" } });
     await db.assessmentSession.update({ where: { id }, data: { room: "410" } });
     await notifyChange(seasonId, id);
     const deliveries = await db.notificationDelivery.findMany({ where: { userId: a.userId }, include: { notification: true } });

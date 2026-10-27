@@ -32,8 +32,7 @@ const form = reactive({
   reserve: props.session?.reserve ?? false,
   capacity: props.session?.capacity ?? 50,
 });
-// Второй резервный день не завести — галочку показываем только там, где она может стоять.
-const reserveAllowed = computed(() => props.session?.reserve || !props.hasReserve);
+watch(() => form.startsAt, (value) => { if (value.slice(5, 10) === "10-31") form.reserve = true; });
 
 const pending = ref(false);
 const result = ref<ActionResult | null>(null);
@@ -51,7 +50,7 @@ async function save() {
         room: form.room,
         startsAt: mskFromInput(form.startsAt),
         note: form.note,
-        faculties: form.reserve ? [] : form.faculties,
+        faculties: form.faculties,
         reserve: form.reserve,
         capacity: form.capacity,
       },
@@ -86,12 +85,10 @@ const field = "border-line bg-paper focus:border-accent min-h-11 rounded-xl bord
     </div>
     <UiDateTime v-model="form.startsAt" label="Начало — по Москве" size="md" />
     <label class="flex flex-col gap-1.5 text-sm font-medium">
-      Лимит приглашений
+      Лимит записей на это время
       <input v-model.number="form.capacity" type="number" min="1" max="10000" step="1" required :class="field" >
       <span class="text-ink-soft text-xs font-normal">
-        Учитываются все приглашённые, включая тех, кто ещё не ответил или отказался.
-        <template v-if="form.reserve">Также учитываются кандидаты, перешедшие в резервный день.</template>
-        <template v-else>После заполнения новые кандидаты попадают в следующий созданный слот своего факультета.</template>
+        Учитываются только выбравшие это время. Приглашение на день и очередь резерва место не занимают. Для объединённого слота лимит общий на все его факультеты.
       </span>
     </label>
     <label class="flex flex-col gap-1.5 text-sm font-medium">
@@ -106,13 +103,14 @@ const field = "border-line bg-paper focus:border-accent min-h-11 rounded-xl bord
     </label>
 
     <fieldset class="bg-paper flex flex-col gap-3 rounded-2xl p-3">
-      <UiCheckbox v-if="reserveAllowed" v-model="form.reserve">Это резервный день — для всех факультетов</UiCheckbox>
+      <UiCheckbox v-model="form.reserve">Это время резервного дня (31 октября)</UiCheckbox>
       <p v-if="form.reserve" class="text-ink-soft -mt-1 text-xs">
-        Ответившие «Приду в резервный день» ждут в очереди. После создания сбора нажмите «Пригласить из очереди» в обзоре ЦО.
+        В один резервный день можно создать несколько времён. Кандидаты сами выбирают время; при необходимости отправьте предложение из очереди.
       </p>
-      <div v-else class="flex flex-col gap-1.5">
+      <div class="flex flex-col gap-1.5">
         <p class="text-sm font-medium">Каких факультетов приглашаем</p>
         <p class="text-ink-soft -mt-1 text-xs">Факультет кандидат указал при регистрации. Это только выбор, кого пригласить, — оценка общая.</p>
+        <p v-if="form.reserve" class="text-ink-soft text-xs">Не отмечайте факультеты, если это общее время резерва для всех.</p>
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <UiCheckbox v-for="faculty in FACULTIES" :key="faculty" v-model="form.faculties" :value="faculty">{{ faculty }}</UiCheckbox>
         </div>

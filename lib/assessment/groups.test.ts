@@ -57,7 +57,8 @@ describe("подгруппы центра оценки", () => {
     });
   /** Кандидат, приглашённый на сбор и ответивший «буду». */
   async function candidate(name: string, session = sessionId) {
-    const user = await db.user.create({ data: { firstName: name } });
+    const faculty = (await db.assessmentSession.findUniqueOrThrow({ where: { id: session }, select: { faculties: true } })).faculties[0] ?? "МЭО";
+    const user = await db.user.create({ data: { firstName: name, faculty } });
     const application = await db.application.create({
       data: {
         seasonId,
@@ -77,7 +78,8 @@ describe("подгруппы центра оценки", () => {
     return application;
   }
   async function group(title: string, session = sessionId) {
-    const result = await saveGroup(seasonId, { sessionId: session, title });
+    const faculty = (await db.assessmentSession.findUniqueOrThrow({ where: { id: session }, select: { faculties: true } })).faculties[0] ?? "МЭО";
+    const result = await saveGroup(seasonId, { sessionId: session, title, faculty });
     if (!result.ok) throw new Error(result.message);
     return result.id;
   }

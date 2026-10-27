@@ -1,502 +1,116 @@
 <script setup lang="ts">
-import {
-  BellRing,
-  CalendarClock,
-  ChevronRight,
-  MailPlus,
-  MapPin,
-  Pencil,
-  Plus,
-  Trash2,
-  TriangleAlert,
-  UsersRound,
-} from "lucide-vue-next";
-
+import { BellRing, ChevronRight, MailPlus, MapPin, Pencil, Plus, Trash2 } from "lucide-vue-next";
 import type { ActionResult } from "~/composables/useAction";
-import { placeLine } from "~~/lib/assessment/rules";
+import { canChangeAnswer, mskDayKey, placeLine } from "~~/lib/assessment/rules";
 
-/**
- * «Центр оценки»: очный групповой этап. Организатор заводит сборы (где и
- * когда собираются все, каких факультетов зовём) и приглашает кандидатов —
- * они отвечают «буду», «в резервный день» или «не смогу». Подгруппы с
- * экспертами — внутри сбора, на его странице; кандидат их не видит.
- * Эксперт видит здесь свои подгруппы и уходит оценивать на их экран.
- */
 definePageMeta({ layout: "staff" });
 useHead({ title: "Центр оценки" });
-
+interface Group { id: string; title: string; faculty: string | null; experts: { id: string; name: string }[]; members: number; done: number }
 interface SessionRow {
-  id: string;
-  title: string;
-  building: string | null;
-  room: string | null;
-  startsAt: string;
-  note: string | null;
-  faculties: string[];
-  reserve: boolean;
-  capacity: number;
-  occupied: number;
-  invitedAt: string | null;
-  stale: boolean;
-  counts: {
-    invited: number;
-    going: number;
-    reserve: number;
-    cant: number;
-    silent: number;
-  };
-  groups: {
-    id: string;
-    title: string;
-    experts: { id: string; name: string }[];
-    members: number;
-    done: number;
-  }[];
+  id: string; title: string; building: string | null; room: string | null; startsAt: string; note: string | null;
+  faculties: string[]; reserve: boolean; capacity: number; occupied: number; invitedAt: string | null; stale: boolean;
+  counts: { invited: number; going: number; reserve: number; cant: number; silent: number }; groups: Group[];
 }
 interface Overview {
-  manage: boolean;
-  viewAll: boolean;
-  me: string;
-  criteria: number;
-  sessions: SessionRow[];
-  notInvited: number;
-  noFaculty: number;
-  hasReserve: boolean;
-  reserveQueue: {
-    applicationId: string;
-    name: string;
-    faculty: string | null;
-    queuedAt: string | null;
-  }[];
+  manage: boolean; viewAll: boolean; me: string; year: number; criteria: number; sessions: SessionRow[];
+  notInvited: number; noFaculty: number; hasReserve: boolean;
+  reserveQueue: { applicationId: string; name: string; faculty: string | null; queuedAt: string | null; offered: boolean }[];
 }
-
 const { data, refresh } = await useFetch<Overview>("/api/staff/assessment");
-
-const editing = ref<string | "new" | null>(null);
+const editing = ref<string | null>(null);
+const edited = computed(() => data.value?.sessions.find((slot) => slot.id === editing.value) ?? null);
 const notice = ref<ActionResult | null>(null);
 const busy = ref<string | null>(null);
 const confirmDelete = ref<string | null>(null);
-
+const schedule = computed(() => {
+  const sessions = data.value?.sessions ?? [];
+  const year = data.value?.year ?? 2026;
+  const days = [...new Set([...Array.from({ length: 6 }, (_, i) => `${year}-10-${26 + i}`), ...sessions.map((slot) => mskDayKey(slot.startsAt))])].sort();
+  return days.map((date) => {
+    const slots = sessions.filter((slot) => mskDayKey(slot.startsAt) === date);
+    const faculties = [...new Set(slots.flatMap((slot) => slot.faculties.length ? slot.faculties : ["Все факультеты"]))];
+    return { date, reserve: date.endsWith("10-31") || slots.some((slot) => slot.reserve), faculties: faculties.map((faculty) => {
+      const times = slots.filter((slot) => slot.faculties.includes(faculty) || (faculty === "Все факультеты" && slot.faculties.length === 0));
+      return { faculty, slots: times, target: times.find((slot) => canChangeAnswer(new Date(), slot.startsAt)) ?? times[0]! };
+    }) };
+  });
+});
+const waiting = computed(() => data.value?.reserveQueue.filter((person) => !person.offered).length ?? 0);
+const canOpen = (group: Group) => data.value?.viewAll || group.experts.some((expert) => expert.id === data.value?.me);
 async function act(key: string, url: string, body: Record<string, unknown>) {
   busy.value = key;
   try {
-    notice.value = await $fetch<ActionResult>(url, {
-      method: "POST",
-      body,
-      ignoreResponseError: true,
-    }).catch(() => ({
-      ok: false,
-      message: "Нет связи с сайтом. Проверьте интернет.",
-    }));
-    if (notice.value.ok) {
-      await refresh();
-      void refreshNuxtData("staff-nav");
-    }
-  } finally {
-    busy.value = null;
-  }
+    notice.value = await $fetch<ActionResult>(url, { method: "POST", body, ignoreResponseError: true }).catch(() => ({ ok: false, message: "Нет связи с сайтом. Проверьте интернет." }));
+    if (notice.value.ok) { await refresh(); void refreshNuxtData("staff-nav"); }
+  } finally { busy.value = null; }
 }
-
-async function saved() {
-  const created = editing.value === "new";
-  editing.value = null;
-  notice.value = {
-    ok: true,
-    message: created
-      ? "Сбор создан. Теперь пригласите кандидатов."
-      : "Сбор сохранён.",
-  };
-  await refresh();
-}
-
-async function removeSession(session: SessionRow) {
-  confirmDelete.value = null;
-  await act(`d:${session.id}`, "/api/staff/assessment/session-delete", {
-    id: session.id,
-  });
-}
-
-const when = (value: string) => `${mskDay(value)}, ${mskTime(value)} МСК`;
-const canOpen = (group: SessionRow["groups"][number]) =>
-  data.value?.viewAll ||
-  group.experts.some((expert) => expert.id === data.value?.me);
+async function saved() { editing.value = null; notice.value = { ok: true, message: "Время ЦО сохранено. Кандидаты выбирают его самостоятельно." }; await refresh(); }
 </script>
 
 <template>
   <main class="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-8">
-    <div class="flex flex-col gap-1">
-      <h1 class="font-display text-3xl">Центр оценки</h1>
-      <p class="text-ink-soft max-w-2xl text-sm">
-        Очный групповой этап. Кандидатов приглашают на сбор — место и время, где
-        собираются все. Внутри сбора организатор делит пришедших на подгруппы с
-        экспертами. Кандидат видит только сбор; подгрупп, оценок и комментариев
-        — никогда.
-      </p>
-    </div>
-
-    <div
-      v-if="data?.criteria === 0"
-      class="bg-brand-yellow-soft rounded-2xl p-4 text-sm"
-    >
-      У этапа нет критериев — добавьте их в «Админка → Анкета и оценка → Оценка
-      ЦО».
-    </div>
-
-    <template v-if="data?.manage">
-      <div
-        class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-      >
-        <p class="text-ink-soft text-sm">
-          Сборов: {{ data.sessions.length }} · ещё не приглашены:
-          {{ data.notInvited
-          }}<template v-if="data.noFaculty">
-            (из них без факультета: {{ data.noFaculty }} — пригласите на
-            странице сбора)</template
-          >
-        </p>
-        <div class="shrink-0">
-          <UiButton @click="editing = 'new'"
-            ><Plus class="size-4" aria-hidden="true" /> Новый сбор</UiButton
-          >
-        </div>
+    <header class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div class="min-w-0">
+        <h1 class="font-display text-3xl">Центр оценки</h1>
+        <p class="text-ink-soft mt-2 max-w-2xl text-sm">День → факультет → время → подгруппы. Приглашаем на день и факультет, кандидаты сами выбирают время. Место занимает только подтверждённая запись.</p>
+        <p v-if="data?.manage" class="text-ink-soft mt-2 text-sm">Времён: {{ data.sessions.length }} · ещё не приглашены: {{ data.notInvited }}<template v-if="data.noFaculty"> · без факультета: {{ data.noFaculty }} (пригласите вручную на странице времени)</template></p>
       </div>
-      <p
-        v-if="!data.hasReserve && data.sessions.length"
-        class="bg-brand-yellow-soft rounded-2xl p-3 text-sm"
-      >
-        Резервный день пока не назначен. Кандидаты могут выбрать «Приду в
-        резервный день» — они попадут в очередь и будут ждать отдельной
-        рассылки.
-      </p>
-
-      <UiNotice :ok="notice?.ok" :message="notice?.message" />
-
-      <section
-        v-if="editing === 'new'"
-        class="bg-card border-line rounded-3xl border p-5"
-      >
-        <h2 class="font-display mb-4 text-xl">Новый сбор</h2>
-        <StaffAssessmentSessionForm
-          :session="null"
-          :has-reserve="data.hasReserve"
-          @saved="saved"
-          @cancel="editing = null"
-        />
-      </section>
-    </template>
-
-    <section
-      v-if="data && (data.manage || data.viewAll)"
-      class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-5"
-      aria-labelledby="reserve-queue-title"
-    >
-      <div
-        class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-      >
-        <div class="min-w-0 flex-1">
-          <h2 id="reserve-queue-title" class="font-display text-xl">
-            Очередь на резервный день · {{ data.reserveQueue.length }}
-          </h2>
-          <p class="text-ink-soft mt-1 text-sm">
-            Ждут отдельного приглашения. Создание сбора не запускает рассылку.
-            Приглашаем по порядку записи, в пределах свободных мест.
-          </p>
-        </div>
-        <div v-if="data.manage" class="shrink-0">
-        <UiButton
-          :pending="busy === 'reserve-queue'"
-          :disabled="
-            !data.hasReserve || !data.reserveQueue.length || busy !== null
-          "
-          @click="
-            act('reserve-queue', '/api/staff/assessment/reserve-invite', {})
-          "
-        >
-          <MailPlus class="size-4" aria-hidden="true" /> Пригласить из очереди
-        </UiButton>
-        </div>
-      </div>
-      <p v-if="!data.hasReserve" class="text-ink-soft text-sm">
-        Чтобы отправить приглашения, создайте сбор с галочкой «Резервный день».
-        Очередь сохранится.
-      </p>
-      <p v-if="!data.reserveQueue.length" class="text-ink-soft text-sm">
-        В очереди пока никого нет.
-      </p>
-      <ol v-else class="flex max-h-96 flex-col gap-2 overflow-y-auto">
-        <li
-          v-for="(person, index) in data.reserveQueue"
-          :key="person.applicationId"
-          class="bg-paper flex min-w-0 items-start gap-3 rounded-2xl px-3 py-2 text-sm"
-        >
-          <span class="text-ink-soft shrink-0">{{ index + 1 }}.</span>
-          <div class="min-w-0 break-words">
-            <p class="font-semibold">{{ person.name }}</p>
-            <p class="text-ink-soft text-xs">
-              {{ person.faculty ?? "Факультет не указан"
-              }}<template v-if="person.queuedAt">
-                ·
-                {{ mskFormat(person.queuedAt, "d MMMM, HH:mm") }} МСК</template
-              >
-            </p>
-          </div>
-        </li>
-      </ol>
+      <div v-if="data?.manage" class="shrink-0"><UiButton @click="editing = 'new'"><Plus class="size-4" aria-hidden="true" /> Добавить время</UiButton></div>
+    </header>
+    <p v-if="data?.criteria === 0" class="bg-brand-yellow-soft rounded-2xl p-4 text-sm">У этапа нет критериев — добавьте их в «Админка → Анкета и оценка → Оценка ЦО».</p>
+    <UiNotice :ok="notice?.ok" :message="notice?.message" />
+    <section v-if="editing && data?.manage" class="bg-card border-line rounded-3xl border p-5">
+      <h2 class="font-display mb-4 text-xl">{{ editing === 'new' ? 'Новое время ЦО' : 'Редактировать время' }}</h2>
+      <StaffAssessmentSessionForm :key="editing" :session="edited" :has-reserve="data.hasReserve" @saved="saved" @cancel="editing = null" />
     </section>
 
-    <p
-      v-if="data && data.sessions.length === 0"
-      class="bg-card border-line text-ink-soft rounded-3xl border p-5 text-sm"
-    >
-      {{
-        data.manage
-          ? "Сборов пока нет. Создайте первый — корпус, общая аудитория, время и факультеты, — потом пригласите кандидатов."
-          : "Вас пока не назначили экспертом ни в одну подгруппу."
-      }}
-    </p>
+    <section v-if="data && (data.manage || data.viewAll)" class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5" aria-labelledby="reserve-queue-title">
+      <h2 id="reserve-queue-title" class="font-display text-xl">Очередь резервного дня · {{ data.reserveQueue.length }}</h2>
+      <p class="text-ink-soft text-sm">Ждут выбора времени: {{ data.reserveQueue.length }}. Из них ещё не получили рассылку: {{ waiting }}. Рассылка предлагает времена резерва и не занимает места автоматически.</p>
+      <div v-if="data.manage" class="self-start"><UiButton :pending="busy === 'reserve-queue'" :disabled="!data.hasReserve || !waiting || busy !== null" @click="act('reserve-queue', '/api/staff/assessment/reserve-invite', {})"><MailPlus class="size-4" aria-hidden="true" /> Пригласить из очереди</UiButton></div>
+      <p v-if="!data.hasReserve" class="text-ink-soft text-sm">Времена резервного дня пока не созданы. Очередь сохранена.</p>
+      <details v-if="data.reserveQueue.length"><summary class="min-h-11 cursor-pointer py-2 text-sm font-semibold">Показать ожидающих</summary>
+        <ol class="mt-2 flex max-h-80 flex-col gap-2 overflow-y-auto"><li v-for="(person, index) in data.reserveQueue" :key="person.applicationId" class="bg-paper rounded-2xl px-3 py-2 text-sm break-words">
+          {{ index + 1 }}. {{ person.name }} · {{ person.faculty ?? 'без факультета' }}<span class="text-ink-soft block text-xs">{{ person.offered ? 'Предложение отправлено — выбирает время' : 'Ждёт рассылки' }}</span>
+        </li></ol>
+      </details>
+    </section>
 
-    <div class="grid gap-4 lg:grid-cols-2">
-      <article
-        v-for="session in data?.sessions ?? []"
-        :key="session.id"
-        class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-5"
-      >
-        <template v-if="editing === session.id && data?.manage">
-          <h2 class="font-display text-xl">{{ session.title }}</h2>
-          <StaffAssessmentSessionForm
-            :session="session"
-            :has-reserve="data.hasReserve"
-            @saved="saved"
-            @cancel="editing = null"
-          />
-        </template>
-
-        <template v-else>
-          <div class="flex flex-col gap-1.5">
-            <div class="flex flex-wrap items-center gap-2">
-              <h2 class="font-display text-xl">{{ session.title }}</h2>
-              <span
-                v-if="session.reserve && !/резерв/i.test(session.title)"
-                class="bg-brand-yellow-soft rounded-lg px-2 py-0.5 text-xs font-semibold"
-                >Резервный день</span
-              >
-            </div>
-            <p
-              class="flex items-center gap-1.5 text-sm"
-              :class="session.building || session.room ? '' : 'text-ink-soft'"
-            >
-              <MapPin class="size-4 shrink-0" aria-hidden="true" />
-              {{
-                session.building || session.room
-                  ? placeLine(session)
-                  : "Место не указано"
-              }}
-            </p>
-            <p class="flex items-center gap-1.5 text-sm">
-              <CalendarClock class="size-4 shrink-0" aria-hidden="true" />
-              {{ when(session.startsAt) }}
-            </p>
-            <p class="text-ink-soft text-sm">
-              {{
-                session.reserve
-                  ? "Все факультеты"
-                  : session.faculties.join(", ")
-              }}
-            </p>
-            <p
-              class="text-sm font-medium"
-              :class="
-                session.occupied >= session.capacity
-                  ? 'text-danger'
-                  : 'text-ink-soft'
-              "
-            >
-              Занято мест: {{ session.occupied }} / {{ session.capacity
-              }}<span v-if="session.occupied >= session.capacity">
-                — слот заполнен</span
-              >
-            </p>
-          </div>
-
-          <dl
-            v-if="data?.manage || data?.viewAll"
-            class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4"
-          >
-            <div class="bg-paper rounded-2xl px-3 py-2">
-              <dt class="text-ink-soft text-xs">Будут</dt>
-              <dd class="font-display text-xl">{{ session.counts.going }}</dd>
-            </div>
-            <div class="bg-paper rounded-2xl px-3 py-2">
-              <dt class="text-ink-soft text-xs">
-                {{ session.reserve ? "Отказались" : "В резервный" }}
-              </dt>
-              <dd class="font-display text-xl">
-                {{
-                  session.reserve ? session.counts.cant : session.counts.reserve
-                }}
-              </dd>
-            </div>
-            <div v-if="!session.reserve" class="bg-paper rounded-2xl px-3 py-2">
-              <dt class="text-ink-soft text-xs">Не смогут</dt>
-              <dd class="font-display text-xl">{{ session.counts.cant }}</dd>
-            </div>
-            <div class="bg-paper rounded-2xl px-3 py-2">
-              <dt class="text-ink-soft text-xs">Не ответили</dt>
-              <dd class="font-display text-xl">{{ session.counts.silent }}</dd>
-            </div>
-          </dl>
-
-          <p
-            v-if="session.stale"
-            class="text-danger flex items-start gap-1.5 text-sm"
-          >
-            <TriangleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            Место или время изменились после приглашения — кандидаты видят
-            прежние. Сообщите об изменении.
-          </p>
-          <p v-else-if="session.invitedAt" class="text-ok text-sm">
-            Приглашено: {{ session.counts.invited }}, последнее приглашение
-            {{ mskFormat(session.invitedAt, "d MMMM, HH:mm") }}
-          </p>
-          <p
-            v-else-if="data?.manage && !session.reserve"
-            class="text-ink-soft text-sm"
-          >
-            Кандидатов ещё не приглашали.
-          </p>
-
-          <div v-if="session.groups.length" class="flex flex-col gap-2">
-            <p
-              class="text-ink-soft flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase"
-            >
-              <UsersRound class="size-3.5" aria-hidden="true" /> Подгруппы
-            </p>
-            <ul class="flex flex-col gap-1.5">
-              <li
-                v-for="group in session.groups"
-                :key="group.id"
-                class="bg-paper flex items-center justify-between gap-3 rounded-2xl px-3 py-2"
-              >
-                <div class="min-w-0 text-sm">
-                  <p class="font-semibold">{{ group.title }}</p>
-                  <p class="text-ink-soft text-xs">
-                    {{
-                      group.experts.map((expert) => expert.name).join(", ") ||
-                      "эксперты не назначены"
-                    }}
-                    · оценено {{ group.done }} из {{ group.members }}
-                  </p>
-                </div>
-                <NuxtLink
-                  v-if="canOpen(group)"
-                  :to="`/staff/assessment/${group.id}`"
-                  class="text-accent flex shrink-0 items-center gap-1 text-sm font-semibold"
-                >
-                  Оценивать <ChevronRight class="size-4" aria-hidden="true" />
-                </NuxtLink>
+    <section v-for="day in schedule" :key="day.date" class="flex flex-col gap-4" :aria-label="mskFormat(`${day.date}T12:00:00Z`, 'EEEE, d MMMM')">
+      <h2 class="font-display border-line flex flex-wrap items-center gap-2 border-b pb-3 text-2xl"><span class="inline-block first-letter:uppercase">{{ mskFormat(`${day.date}T12:00:00Z`, "EEEE, d MMMM") }}</span><span v-if="day.reserve" class="bg-brand-yellow-soft rounded-xl px-3 py-1 text-sm">Резервный день</span></h2>
+      <p v-if="!day.faculties.length" class="text-ink-soft text-sm">{{ data?.manage ? 'Времена пока не созданы. Добавьте время, аудиторию и факультеты.' : 'Нет доступных вам подгрупп в этот день.' }}</p>
+      <section v-for="block in day.faculties" :key="block.faculty" class="flex min-w-0 flex-col gap-3">
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h3 class="font-display text-xl">{{ block.faculty }}</h3>
+          <div v-if="data?.manage" class="shrink-0"><UiButton variant="ghost" :pending="busy === `invite:${day.date}:${block.faculty}`" :disabled="busy !== null || !block.slots.some((slot) => canChangeAnswer(new Date(), slot.startsAt))" @click="act(`invite:${day.date}:${block.faculty}`, '/api/staff/assessment/invite', { sessionId: block.target.id, ...(block.faculty !== 'Все факультеты' ? { faculty: block.faculty } : {}) })"><MailPlus class="size-4" aria-hidden="true" /> Пригласить на этот день</UiButton></div>
+        </div>
+        <div class="grid gap-4 lg:grid-cols-2">
+          <article v-for="session in block.slots" :key="session.id" class="bg-card border-line flex min-w-0 flex-col gap-3 rounded-3xl border p-5">
+            <h4 class="font-display text-xl">{{ mskTime(session.startsAt) }} МСК</h4>
+            <p class="text-ink-soft text-sm break-words">{{ session.title }}</p>
+            <p class="flex items-start gap-2 text-sm"><MapPin class="mt-0.5 size-4 shrink-0" aria-hidden="true" />{{ placeLine(session) || 'Место не указано' }}</p>
+            <p class="text-sm font-semibold" :class="session.occupied >= session.capacity ? 'text-danger' : 'text-ink'">Записано: {{ session.occupied }} / {{ session.capacity }}{{ session.occupied >= session.capacity ? ' — все места заняты' : '' }}</p>
+            <p v-if="session.faculties.length > 1" class="text-ink-soft text-xs">Общий слот для {{ session.faculties.join(' и ') }}. Лимит общий, не на каждый факультет отдельно.</p>
+            <p v-if="data?.manage || data?.viewAll" class="text-ink-soft text-xs">Приглашений-опор: {{ session.counts.invited }} · ещё выбирают: {{ session.counts.silent }} · в резерв: {{ session.counts.reserve }} · отказались: {{ session.counts.cant }}</p>
+            <p v-if="session.stale" class="text-danger text-sm">Место или время изменены — кандидаты видят прежние данные. Сообщите об изменении.</p>
+            <ul v-if="session.groups.length" class="flex flex-col gap-2">
+              <li v-for="group in session.groups.filter((group) => !group.faculty || group.faculty === block.faculty || block.faculty === 'Все факультеты')" :key="group.id" class="bg-paper rounded-2xl p-3 text-sm">
+                <p class="font-semibold">{{ group.title }}<span v-if="group.faculty"> · {{ group.faculty }}</span></p><p class="text-ink-soft text-xs">{{ group.experts.map((expert) => expert.name).join(', ') || 'Эксперты не назначены' }} · оценено {{ group.done }} / {{ group.members }}</p>
+                <NuxtLink v-if="canOpen(group)" :to="`/staff/assessment/${group.id}`" class="text-accent mt-2 inline-flex min-h-9 items-center gap-1 font-semibold">Оценивать <ChevronRight class="size-4" aria-hidden="true" /></NuxtLink>
               </li>
             </ul>
-          </div>
-
-          <div
-            v-if="data?.manage || data?.viewAll"
-            class="mt-auto grid gap-2 sm:grid-cols-2"
-          >
-            <UiButton
-              class="sm:col-span-2"
-              :href="`/staff/assessment/session/${session.id}`"
-            >
-              Ответы и подгруппы
-              <ChevronRight class="size-4" aria-hidden="true" />
-            </UiButton>
-            <template v-if="data?.manage">
-              <UiButton
-                v-if="!session.reserve"
-                :pending="busy === `i:${session.id}`"
-                @click="
-                  act(`i:${session.id}`, '/api/staff/assessment/invite', {
-                    sessionId: session.id,
-                  })
-                "
-              >
-                <MailPlus class="size-4" aria-hidden="true" /> Пригласить на
-                центр оценки
-              </UiButton>
-              <UiButton
-                variant="ghost"
-                :pending="busy === `r:${session.id}`"
-                :disabled="session.counts.silent === 0"
-                @click="
-                  act(`r:${session.id}`, '/api/staff/assessment/remind', {
-                    sessionId: session.id,
-                  })
-                "
-              >
-                <BellRing class="size-4" aria-hidden="true" /> Напомнить
-                неответившим
-              </UiButton>
-              <UiButton
-                v-if="session.stale"
-                variant="ghost"
-                :pending="busy === `c:${session.id}`"
-                @click="
-                  act(
-                    `c:${session.id}`,
-                    '/api/staff/assessment/notify-change',
-                    { sessionId: session.id },
-                  )
-                "
-              >
-                <BellRing class="size-4" aria-hidden="true" /> Сообщить об
-                изменении
-              </UiButton>
-              <UiButton variant="ghost" @click="editing = session.id"
-                ><Pencil class="size-4" aria-hidden="true" /> Изменить</UiButton
-              >
-              <UiButton
-                v-if="confirmDelete !== session.id"
-                variant="ghost"
-                :pending="busy === `d:${session.id}`"
-                @click="confirmDelete = session.id"
-              >
-                <Trash2 class="size-4" aria-hidden="true" /> Удалить
-              </UiButton>
-              <div
-                v-else
-                class="bg-brand-red-soft flex flex-col gap-2 rounded-2xl p-3 text-sm sm:col-span-2"
-                role="alertdialog"
-                :aria-label="`Удалить ${session.title}?`"
-              >
-                <p class="font-semibold">Удалить «{{ session.title }}»?</p>
-                <p>
-                  Уйдут подгруппы и приглашения<template
-                    v-if="session.counts.invited"
-                  >
-                    ({{ session.counts.invited }})</template
-                  >. Начатые оценки экспертов сохранятся, пустые уберутся.
-                  Кандидатам ничего не придёт.
-                </p>
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    class="bg-danger rounded-xl px-4 py-2 font-semibold text-white"
-                    @click="removeSession(session)"
-                  >
-                    Да, удалить
-                  </button>
-                  <button
-                    type="button"
-                    class="text-ink-soft rounded-xl px-4 py-2"
-                    @click="confirmDelete = null"
-                  >
-                    Отмена
-                  </button>
-                </div>
-              </div>
-            </template>
-          </div>
-        </template>
-      </article>
-    </div>
+            <div v-if="data?.manage || data?.viewAll" class="mt-auto flex flex-col gap-2">
+              <UiButton :href="`/staff/assessment/session/${session.id}`">Записи, сообщения и подгруппы <ChevronRight class="size-4" aria-hidden="true" /></UiButton>
+              <template v-if="data?.manage">
+                <UiButton v-if="session.stale" variant="ghost" :pending="busy === `change:${session.id}`" @click="act(`change:${session.id}`, '/api/staff/assessment/notify-change', { sessionId: session.id })"><BellRing class="size-4" aria-hidden="true" /> Сообщить об изменении</UiButton>
+                <UiButton variant="ghost" :pending="busy === `remind:${session.id}`" :disabled="session.counts.silent === 0" @click="act(`remind:${session.id}`, '/api/staff/assessment/remind', { sessionId: session.id })">Напомнить выбрать время</UiButton>
+                <div class="flex flex-wrap gap-2"><UiButton variant="ghost" @click="editing = session.id"><Pencil class="size-4" aria-hidden="true" /> Изменить</UiButton><UiButton variant="ghost" @click="confirmDelete = session.id"><Trash2 class="size-4" aria-hidden="true" /> Удалить</UiButton></div>
+                <div v-if="confirmDelete === session.id" class="bg-brand-red-soft rounded-2xl p-3 text-sm" role="alertdialog" :aria-label="`Удалить ${session.title}?`"><p>Удалить время и его приглашения/подгруппы? Начатые оценки сохранятся.</p><div class="mt-2 flex flex-wrap gap-2"><UiButton :pending="busy === `delete:${session.id}`" @click="act(`delete:${session.id}`, '/api/staff/assessment/session-delete', { id: session.id }); confirmDelete = null">Да, удалить</UiButton><UiButton variant="ghost" @click="confirmDelete = null">Отмена</UiButton></div></div>
+              </template>
+            </div>
+          </article>
+        </div>
+      </section>
+    </section>
   </main>
 </template>

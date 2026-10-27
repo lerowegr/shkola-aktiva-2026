@@ -109,6 +109,12 @@ export const DEFAULT_ASSESSMENT_TASKS = [
 
 export type AssessmentAnswerKind = "GOING" | "RESERVE" | "CANT";
 
+export const ASSESSMENT_CHANGE_MS = 2 * 60 * 60 * 1000;
+const DAY_FORMAT = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" });
+export const mskDayKey = (value: Date | string) => DAY_FORMAT.format(new Date(value));
+export const slotPlace = (session: { invited: unknown; building: string | null; room: string | null; startsAt: Date | string; note: string | null }) => readPlace(session.invited) ?? placeOf(session);
+export const slotStartsAt = (session: { startsAt: Date | string; invited: unknown }) => readPlace(session.invited)?.startsAt ?? session.startsAt;
+
 export const ANSWER_LABEL: Record<AssessmentAnswerKind, string> = {
   GOING: "Буду",
   RESERVE: "Резервный день",
@@ -120,7 +126,7 @@ export function invitesFaculty(
   session: { faculties: readonly string[]; reserve: boolean },
   faculty: string | null,
 ): boolean {
-  if (session.reserve) return true;
+  if (session.reserve && session.faculties.length === 0) return true;
   return faculty !== null && session.faculties.includes(faculty);
 }
 
@@ -137,6 +143,7 @@ export function dayOf(
   reserveId: string | null,
 ): string | null {
   if (invite.reserveQueued) return null;
+  if (invite.answer === null) return null;
   if (invite.answer === "CANT") return null;
   if (invite.answer === "RESERVE") return reserveId;
   return invite.sessionId;
@@ -147,5 +154,5 @@ export function canChangeAnswer(
   now: Date,
   ...days: (Date | string | null | undefined)[]
 ): boolean {
-  return days.every((day) => !day || new Date(day).getTime() > now.getTime());
+  return days.every((day) => !day || new Date(day).getTime() - now.getTime() >= ASSESSMENT_CHANGE_MS);
 }

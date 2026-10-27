@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "~~/lib/db";
 import { resetDatabase } from "~~/lib/test/db";
 
-import { answerInvite, loadCandidateAssessment } from "./candidate";
+import { answerInvite, chooseSlot, loadCandidateAssessment } from "./candidate";
 import { inviteReserveQueue } from "./sessions";
 
 describe("центр оценки глазами кандидата", () => {
@@ -79,7 +79,7 @@ describe("центр оценки глазами кандидата", () => {
     expect(view.invite).toMatchObject({
       answer: null,
       canChange: true,
-      day: { room: "305" },
+      day: null,
       reserve: { room: "Актовый" },
     });
 
@@ -97,12 +97,15 @@ describe("центр оценки глазами кандидата", () => {
       invited: 1,
     });
     view = (await loadCandidateAssessment(userId, before))!;
+    expect(view.invite!.day).toBeNull();
+    expect((await chooseSlot(userId, reserveId, before)).ok).toBe(true);
+    view = (await loadCandidateAssessment(userId, before))!;
     expect(view.invite).toMatchObject({
-      answer: "RESERVE",
+      answer: "GOING",
       day: { room: "Актовый", reserve: true },
     });
 
-    expect(await answerInvite(userId, "GOING", before)).toMatchObject({
+    expect(await chooseSlot(userId, mondayId, before)).toMatchObject({
       ok: true,
     });
     expect(
@@ -122,7 +125,7 @@ describe("центр оценки глазами кандидата", () => {
       data: { sessionId: mondayId, applicationId, answer: "RESERVE" },
     });
     const saturday = new Date("2026-10-31T10:00:00Z");
-    expect(await answerInvite(userId, "GOING", saturday)).toMatchObject({
+    expect(await chooseSlot(userId, mondayId, saturday)).toMatchObject({
       ok: false,
     });
     expect(

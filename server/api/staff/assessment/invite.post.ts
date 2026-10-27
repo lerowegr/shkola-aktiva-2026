@@ -6,6 +6,7 @@ import { requirePermission } from "~~/server/utils/session";
 
 const schema = z.object({
   sessionId: z.string().min(1),
+  faculty: z.string().min(1).optional(),
   /** Пригласить именно этих (например, без факультета). Без списка — факультеты сбора. */
   applicationIds: z.array(z.string().min(1)).max(500).optional(),
 });
@@ -13,7 +14,7 @@ const schema = z.object({
 /** «Пригласить на центр оценки». */
 export default defineAction(schema, async ({ body, event }) => {
   const actor = await requirePermission(event, "applications.assign");
-  const result = await inviteSession(await requireCurrentSeasonId(), body.sessionId, body.applicationIds);
+  const result = await inviteSession(await requireCurrentSeasonId(), body.sessionId, body.applicationIds, body.faculty);
   if (!result.ok) return result;
   if (result.invited) {
     await audit(event, {
@@ -21,7 +22,7 @@ export default defineAction(schema, async ({ body, event }) => {
       action: "assessment.session.invite",
       entityType: "assessment_session",
       entityId: body.sessionId,
-      meta: { invited: result.invited, overflow: result.overflow, unplaced: result.unplaced, manual: Boolean(body.applicationIds) },
+      meta: { invited: result.invited, faculty: body.faculty, manual: Boolean(body.applicationIds) },
     });
   }
   const skipped = result.skipped ? ` Уже приглашены раньше: ${result.skipped}.` : "";
@@ -32,6 +33,6 @@ export default defineAction(schema, async ({ body, event }) => {
     invited: result.invited,
     unplaced: result.unplaced,
     overflow: result.overflow,
-    message: result.invited ? `Приглашено: ${result.invited}.${overflow}${skipped}${unplaced}` : `${result.unplaced ? "Свободных мест в подходящих слотах нет." : "Новых кандидатов для приглашения нет."}${skipped}${unplaced}`,
+    message: result.invited ? `Приглашено на день: ${result.invited}. Время кандидаты выбирают сами.${overflow}${skipped}${unplaced}` : `Новых кандидатов для приглашения нет.${skipped}`,
   };
 });

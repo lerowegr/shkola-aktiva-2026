@@ -1054,6 +1054,8 @@ model AssessmentGroup {
   id         String    @id @default(cuid())
   seasonId   String
   title      String
+  /// null — историческая общая подгруппа; новые подгруппы привязаны к факультету.
+  faculty    String?
   building   String?
   room       String?
   startsAt   DateTime?
@@ -1126,7 +1128,7 @@ model AssessmentSession {
   faculties String[]  @default([])
   /// Резервный день: один на сезон, на него переходят ответившие «резервный день».
   reserve   Boolean   @default(false)
-  /// Лимит всех приглашённых; ответ «не смогу» не освобождает место.
+  /// Лимит подтверждённых записей на это время, общий для faculties.
   capacity  Int       @default(50)
   /// Снимок места при последнем приглашении или «сообщить об изменении» —
   /// его видит кандидат, правка без рассылки ему не видна.
@@ -1153,6 +1155,11 @@ model AssessmentInvite {
   answer        AssessmentAnswer?
   /// Ожидает отдельной рассылки на резервный день, конкретный день ещё не назначен.
   reserveQueued Boolean           @default(false)
+  /// Московский день и факультет, на которые пригласили; не меняются при выборе времени.
+  invitedDay    String?
+  invitedFaculty String?
+  /// Из очереди уже отправлено предложение выбрать резервное время (не бронь).
+  reserveOffered Boolean          @default(false)
   answeredAt    DateTime?
   remindedAt    DateTime?
   /// Отметка «пришёл» — ставит организатор в день ЦО.

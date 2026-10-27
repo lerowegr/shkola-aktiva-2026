@@ -66,7 +66,7 @@ describe("сборы ЦО", () => {
   });
 
   it("свой день: резервный — резервный сбор, «не смогу» — никакой", () => {
-    expect(dayOf({ sessionId: "mon", answer: null }, "sat")).toBe("mon");
+    expect(dayOf({ sessionId: "mon", answer: null }, "sat")).toBeNull();
     expect(dayOf({ sessionId: "mon", answer: "GOING" }, "sat")).toBe("mon");
     expect(dayOf({ sessionId: "mon", answer: "RESERVE" }, "sat")).toBe("sat");
     expect(dayOf({ sessionId: "mon", answer: "RESERVE" }, null)).toBeNull();
@@ -74,7 +74,8 @@ describe("сборы ЦО", () => {
   });
 
   it("менять ответ — пока дни не начались", () => {
-    expect(canChangeAnswer(now, "2026-10-26T07:00:00Z", "2026-10-31T07:00:00Z")).toBe(true);
+    expect(canChangeAnswer(now, "2026-10-26T08:00:00Z", "2026-10-31T07:00:00Z")).toBe(true);
+    expect(canChangeAnswer(now, "2026-10-26T07:59:59Z")).toBe(false);
     expect(canChangeAnswer(now, "2026-10-26T05:00:00Z")).toBe(false);
     expect(canChangeAnswer(now, null)).toBe(true);
   });

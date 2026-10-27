@@ -264,7 +264,7 @@ export async function resetDemo(now = new Date()): Promise<{ staff: number; cand
   if (past.ok) {
     await inviteSession(seasonId, past.id, pastKeys.map(app));
     for (const key of pastKeys) await answer(key, "GOING");
-    const group = await saveGroup(seasonId, { sessionId: past.id, title: "Подгруппа 1" });
+    const group = await saveGroup(seasonId, { sessionId: past.id, title: "Подгруппа 1", faculty: null });
     if (group.ok) {
       await setExperts(seasonId, group.id, [staff.katya!], staff.lead!);
       for (const key of pastKeys) await placeMember(seasonId, app(key), group.id, staff.lead!);
@@ -291,8 +291,8 @@ export async function resetDemo(now = new Date()): Promise<{ staff: number; cand
     await answer("dasha", "GOING");
     await answer("boris", "RESERVE");
     await answer("gleb", "CANT");
-    const first = await saveGroup(seasonId, { sessionId: next.id, title: "Подгруппа А" });
-    const second = await saveGroup(seasonId, { sessionId: next.id, title: "Подгруппа Б" });
+    const first = await saveGroup(seasonId, { sessionId: next.id, title: "Подгруппа А", faculty: "ИТиАБД" });
+    const second = await saveGroup(seasonId, { sessionId: next.id, title: "Подгруппа Б", faculty: "ЮФ" });
     if (first.ok) await setExperts(seasonId, first.id, [staff.katya!, staff.ilya!], staff.lead!);
     if (second.ok) await setExperts(seasonId, second.id, [staff.ilya!], staff.lead!);
     if (first.ok) await placeMember(seasonId, app("dasha"), first.id, staff.lead!);

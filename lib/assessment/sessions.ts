@@ -15,6 +15,9 @@ import { placeMember } from "./groups";
 import {
   dayOf,
   invitesFaculty,
+  canChangeAnswer,
+  mskDayKey,
+  slotStartsAt,
   placeChanged,
   placeLine,
   placeOf,
@@ -67,6 +70,7 @@ function when(date: Date | string): string {
 export async function reserveOf(seasonId: string) {
   return db.assessmentSession.findFirst({
     where: { seasonId, reserve: true },
+    orderBy: [{ startsAt: "asc" }, { id: "asc" }],
     select: {
       id: true,
       title: true,
@@ -125,7 +129,8 @@ export async function saveSession(
       ),
     ),
   ];
-  if (!input.reserve && faculties.length === 0)
+  const reserve = input.reserve || mskDayKey(startsAt).endsWith("-10-31");
+  if (!reserve && faculties.length === 0)
     return {
       ok: false,
       message: "Отметьте факультеты, которых приглашаете на этот сбор.",
@@ -133,19 +138,19 @@ export async function saveSession(
 
   return db.$transaction(async (tx) => {
     await lockAssessmentCapacity(tx, seasonId);
-    if (input.reserve) {
+    if (reserve) {
       const other = await tx.assessmentSession.findFirst({
         where: {
           seasonId,
           reserve: true,
           ...(input.id ? { id: { not: input.id } } : {}),
         },
-        select: { title: true },
+        select: { title: true, startsAt: true },
       });
-      if (other)
+      if (other && mskDayKey(other.startsAt) !== mskDayKey(startsAt))
         return {
           ok: false,
-          message: `Резервный день уже есть — «${other.title}». Он один на сезон.`,
+          message: `Резервный день уже есть — «${other.title}». Добавляйте времена в тот же день.`,
         };
     }
 
@@ -155,8 +160,8 @@ export async function saveSession(
       room: input.room.trim() || null,
       startsAt,
       note: input.note.trim() || null,
-      faculties: input.reserve ? [] : faculties,
-      reserve: input.reserve,
+      faculties,
+      reserve,
     };
 
     if (input.id) {
@@ -169,7 +174,7 @@ export async function saveSession(
       const capacity = input.capacity ?? found.capacity;
       const used = await usedAssessmentPlaces(tx, {
         ...found,
-        reserve: found.reserve || input.reserve,
+        reserve: found.reserve || reserve,
       });
       if (capacity < used)
         return {
@@ -183,7 +188,7 @@ export async function saveSession(
       return { ok: true, id: found.id, created: false };
     }
     const capacity = input.capacity ?? 50;
-    if (input.reserve) {
+    if (reserve && !await tx.assessmentSession.findFirst({ where: { seasonId, reserve: true }, select: { id: true } })) {
       const moved = await tx.assessmentInvite.count({
         where: {
           answer: "RESERVE",
@@ -261,16 +266,6 @@ export async function deleteSession(
 // Приглашения
 // ---------------------------------------------------------------------------
 
-function inviteText(place: Place, reserve: { startsAt: Date | string } | null) {
-  const lines = [`${when(place.startsAt!)} (МСК), ${placeLine(place)}.`];
-  if (place.note) lines.push(place.note);
-  lines.push(
-    reserve
-      ? `Ответьте в кабинете: «Буду», «Приду в резервный день» (очередь ожидания отдельного приглашения) или «Не получится». Резервный сбор запланирован на ${when(reserve.startsAt)}.`
-      : "Ответьте в кабинете: «Буду», «Приду в резервный день» (очередь ожидания отдельного приглашения) или «Не получится».",
-  );
-  return lines.join("\n");
-}
 
 const MSK_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" });
 const MSK_TIME = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" });
@@ -280,26 +275,26 @@ const MSK_DATE = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", w
  * Все будущие обычные сборы того же дня (по Москве), что и этот, с общими
  * факультетами — время на выбор. Один — выбирать не из чего.
  */
-async function dayTimes(sessionId: string, now = new Date()): Promise<Date[]> {
+async function dayTimes(sessionId: string, now = new Date(), faculty?: string | null): Promise<Date[]> {
   const session = await db.assessmentSession.findUnique({
     where: { id: sessionId },
-    select: { seasonId: true, startsAt: true, faculties: true, reserve: true },
+    select: { seasonId: true, startsAt: true, invited: true, faculties: true, reserve: true },
   });
-  if (!session || session.reserve) return [];
-  const day = MSK_DAY.format(session.startsAt);
+  if (!session) return [];
+  const day = mskDayKey(slotStartsAt(session));
   const siblings = await db.assessmentSession.findMany({
-    where: { seasonId: session.seasonId, reserve: false, startsAt: { gt: now }, faculties: { hasSome: session.faculties } },
+    where: { seasonId: session.seasonId, reserve: session.reserve, ...(faculty ? { OR: [{ faculties: { has: faculty } }, ...(session.reserve ? [{ faculties: { isEmpty: true } }] : [])] } : { id: sessionId }) },
     orderBy: { startsAt: "asc" },
-    select: { startsAt: true },
+    select: { startsAt: true, invited: true },
   });
-  return siblings.map((item) => item.startsAt).filter((date) => MSK_DAY.format(date) === day);
+  return siblings.map((item) => new Date(slotStartsAt(item))).filter((date) => MSK_DAY.format(date) === day && canChangeAnswer(now, date));
 }
 
 /** Приглашение, когда в этот день несколько времён: выбрать в кабинете, сколько мест — не говорим. */
-function chooseText(place: Place, times: Date[]) {
+function chooseText(place: Place, times: Date[], faculty?: string | null) {
   const lines = [
-    `${MSK_DATE.format(times[0]!)} — центр оценки, ${placeLine(place)}.`,
-    `Время на выбор: ${times.map((time) => MSK_TIME.format(time)).join(", ")} (МСК). Места ограничены — кто раньше выбрал, за тем и место.`,
+    `${MSK_DATE.format(new Date(place.startsAt!))} — центр оценки${faculty ? `, факультет ${faculty}` : ""}.`,
+    times.length ? `Время на выбор: ${[...new Set(times.map((time) => MSK_TIME.format(time)))].join(", ")} (МСК). Выберите слот в кабинете — приглашение само по себе место не занимает.` : "Открытых времён пока нет. Можно выбрать резервный день или отказаться в кабинете.",
   ];
   if (place.note) lines.push(place.note);
   lines.push("Выберите время в кабинете. Если ни одно не подходит — «Приду в резервный день» или «Не получится».");
@@ -314,13 +309,15 @@ async function notifyInvites(
   sessionId?: string,
 ) {
   const times = sessionId ? await dayTimes(sessionId) : [];
-  const choose = times.length > 1;
+  const users = await db.user.findMany({ where: { id: { in: invites.map((item) => item.application.userId) } }, select: { id: true, faculty: true } });
+  const faculties = [...new Set(users.map((user) => user.faculty))];
+  const byFaculty = new Map(await Promise.all(faculties.map(async (faculty) => [faculty, sessionId ? await dayTimes(sessionId, new Date(), faculty) : times] as const)));
   await notify(
     invites.map((invite) => ({
       userId: invite.application.userId,
       category: "SELECTION" as const,
-      title: choose ? "Центр оценки — выберите время" : "Приглашение на центр оценки — будете?",
-      body: choose ? chooseText(place, times) : inviteText(place, reserve),
+      title: "Центр оценки — выберите время",
+      body: chooseText(place, byFaculty.get(users.find((user) => user.id === invite.application.userId)?.faculty ?? null) ?? times, users.find((user) => user.id === invite.application.userId)?.faculty) + (reserve ? "\nЕсли время не подходит, доступен резервный день." : ""),
       url: "/cabinet/assessment",
       key: `assessment-invite:${invite.id}`,
     })),
@@ -328,7 +325,7 @@ async function notifyInvites(
   );
 }
 
-type InvitePerson = { id: string; userId: string };
+type InvitePerson = { id: string; userId: string; faculty?: string | null };
 type CapacitySession = {
   id: string;
   seasonId: string;
@@ -371,17 +368,15 @@ async function claimInvites(
 ): Promise<InviteBatch | null> {
   const place = readPlace(session.invited) ?? placeOf(session);
   if (placeProblem(place)) return null;
-  const free = Math.max(
-    0,
-    session.capacity - (await usedAssessmentPlaces(tx, session)),
-  );
-  const selected = people.slice(0, free);
+  const selected = people;
   if (!selected.length) return null;
   const created = await tx.assessmentInvite.createManyAndReturn({
     data: selected.map((item) => ({
       sessionId: session.id,
       applicationId: item.id,
       invitedAt: now,
+      invitedDay: mskDayKey(slotStartsAt(session)),
+      invitedFaculty: item.faculty ?? null,
     })),
     skipDuplicates: true,
     select: { id: true, applicationId: true },
@@ -447,15 +442,15 @@ export async function autoInvite(
         ).filter((item) => invitesFaculty(item, application.user.faculty));
         // Первую рассылку запускает организатор; следующие созданные слоты
         // могут начать принимать переполнение без отдельного нажатия кнопки.
-        const firstStarted = sessions.find((item) => item.invitedAt !== null);
-        if (!firstStarted) return null;
+        const startedDays = new Set(sessions.filter((item) => item.invitedAt !== null).map((item) => mskDayKey(slotStartsAt(item))));
+        if (!startedDays.size) return null;
         for (const session of sessions) {
           if (
-            session.startsAt <= now ||
-            session.startsAt < firstStarted.startsAt
+            !canChangeAnswer(now, slotStartsAt(session)) ||
+            !startedDays.has(mskDayKey(slotStartsAt(session)))
           )
             continue;
-          const claimed = await claimInvites(tx, session, [application], now);
+          const claimed = await claimInvites(tx, session, [{ ...application, faculty: application.user.faculty }], now);
           if (claimed) return claimed;
         }
         return null;
@@ -481,6 +476,7 @@ export async function inviteSession(
   seasonId: string,
   sessionId: string,
   applicationIds?: string[],
+  faculty?: string,
 ): Promise<
   Result<{
     invited: number;
@@ -526,31 +522,18 @@ export async function inviteSession(
           assessmentInvite: { select: { id: true } },
         },
       });
-      const wanted = applicationIds
+      if (faculty && !session.faculties.includes(faculty) && !(session.reserve && session.faculties.length === 0)) return { ok: false as const, message: "Этот факультет не относится к выбранному дню/слоту." };
+      const wanted = (applicationIds
         ? candidates
         : candidates.filter((item) =>
             invitesFaculty(session, item.user.faculty),
-          );
+          )).filter((item) => !faculty || item.user.faculty === faculty);
       let remaining = wanted.filter((item) => !item.assessmentInvite);
       const skipped = wanted.length - remaining.length;
       const now = new Date();
-      const following = session.reserve
-        ? []
-        : await tx.assessmentSession.findMany({
-            where: {
-              seasonId,
-              reserve: false,
-              startsAt: {
-                gt: new Date(
-                  Math.max(now.getTime(), session.startsAt.getTime()),
-                ),
-              },
-            },
-            orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-            select: capacitySessionSelect,
-          });
+      // Приглашение — на день. Ни лимит времени, ни другой день не назначают бронь.
       const batches: InviteBatch[] = [];
-      for (const slot of [session, ...following]) {
+      for (const slot of [session]) {
         if (!remaining.length) break;
         const eligible =
           slot.id === session.id
@@ -558,7 +541,7 @@ export async function inviteSession(
             : remaining.filter((item) =>
                 invitesFaculty(slot, item.user.faculty),
               );
-        const batch = await claimInvites(tx, slot, eligible, now);
+        const batch = await claimInvites(tx, slot, eligible.map((item) => ({ id: item.id, userId: item.userId, faculty: item.user.faculty })), now);
         if (!batch) continue;
         batches.push(batch);
         const invitedUsers = new Set(
@@ -598,107 +581,38 @@ export async function inviteSession(
   };
 }
 
-/** Отдельная рассылка ожидающим: создание резервного сбора само по себе никого не записывает. */
-export async function inviteReserveQueue(
-  seasonId: string,
-  now = new Date(),
-): Promise<Result<{ invited: number; waiting: number; sessionId: string }>> {
-  const outcome = await db.$transaction(
-    async (tx) => {
-      await lockAssessmentCapacity(tx, seasonId);
-      const session = await tx.assessmentSession.findFirst({
-        where: { seasonId, reserve: true },
-        select: capacitySessionSelect,
-      });
-      if (!session)
-        return {
-          ok: false as const,
-          message:
-            "Сначала создайте сбор с галочкой «Резервный день». Очередь сохранена.",
-        };
-      if (session.startsAt <= now)
-        return {
-          ok: false as const,
-          message:
-            "Резервный сбор уже начался. Укажите будущую дату перед рассылкой.",
-        };
-      const place = placeOf(session);
-      const problem = placeProblem(place);
-      if (problem) return { ok: false as const, message: problem };
-      if (placeChanged(readPlace(session.invited), place))
-        return {
-          ok: false as const,
-          message:
-            "Место или время изменились — сначала нажмите «Сообщить об изменении». Очередь сохранена.",
-        };
-      const where = {
-        answer: "RESERVE" as const,
-        reserveQueued: true,
-        session: { seasonId },
-        application: {
-          status: "SUBMITTED" as const,
-          user: { status: "ACTIVE" as const },
-        },
-      };
-      const waiting = await tx.assessmentInvite.count({ where });
-      const free = Math.max(
-        0,
-        session.capacity - (await usedAssessmentPlaces(tx, session)),
-      );
-      const selected = free
-        ? await tx.assessmentInvite.findMany({
-            where,
-            orderBy: [{ answeredAt: "asc" }, { id: "asc" }],
-            take: free,
-            select: { id: true, application: { select: { userId: true } } },
-          })
-        : [];
-      if (selected.length) {
-        await tx.assessmentInvite.updateMany({
-          where: { id: { in: selected.map((item) => item.id) } },
-          data: { reserveQueued: false },
-        });
-        if (!session.invitedAt || !readPlace(session.invited))
-          await tx.assessmentSession.update({
-            where: { id: session.id },
-            data: { invited: { ...place }, invitedAt: now },
-          });
-      }
-      return {
-        ok: true as const,
-        selected,
-        place,
-        sessionId: session.id,
-        waiting: waiting - selected.length,
-      };
-    },
-    { timeout: 30_000 },
-  );
+/** Очередь получает доступные времена резервного дня, а не назначенное место. */
+export async function inviteReserveQueue(seasonId: string, now = new Date()): Promise<Result<{ invited: number; waiting: number; sessionId: string }>> {
+  const outcome = await db.$transaction(async (tx) => {
+    await lockAssessmentCapacity(tx, seasonId);
+    const sessions = (await tx.assessmentSession.findMany({ where: { seasonId, reserve: true }, orderBy: [{ startsAt: "asc" }, { id: "asc" }], select: capacitySessionSelect }))
+      .filter((slot) => canChangeAnswer(now, slotStartsAt(slot)) && !placeProblem(readPlace(slot.invited) ?? placeOf(slot)));
+    if (!sessions.length) return { ok: false as const, message: "Создайте открытые времена резервного дня с местом проведения. Очередь сохранена." };
+    const queued = await tx.assessmentInvite.findMany({
+      where: { answer: "RESERVE", reserveQueued: true, reserveOffered: false, session: { seasonId }, application: { status: "SUBMITTED", user: { status: "ACTIVE" } } },
+      orderBy: [{ answeredAt: "asc" }, { id: "asc" }],
+      select: { id: true, invitedFaculty: true, application: { select: { userId: true, user: { select: { faculty: true } } } } },
+    });
+    const offers = queued.flatMap((item) => {
+      const faculty = item.invitedFaculty ?? item.application.user.faculty;
+      const slots = sessions.filter((slot) => invitesFaculty(slot, faculty));
+      return slots.length ? [{ ...item, faculty, slots }] : [];
+    });
+    if (offers.length) {
+      await tx.assessmentInvite.updateMany({ where: { id: { in: offers.map((item) => item.id) } }, data: { reserveOffered: true } });
+      for (const slot of sessions) if (!slot.invited) await tx.assessmentSession.update({ where: { id: slot.id }, data: { invited: { ...placeOf(slot) }, invitedAt: now } });
+    }
+    return { ok: true as const, offers, waiting: queued.length - offers.length, sessionId: sessions[0]!.id };
+  }, { timeout: 30_000 });
   if (!outcome.ok) return outcome;
-  const batchKey = randomUUID();
-  await notify(
-    outcome.selected.map((item) => ({
-      userId: item.application.userId,
-      category: "SELECTION" as const,
-      title: "Приглашение на резервный день центра оценки",
-      body: [
-        `Вы приглашены из очереди: ${when(outcome.place.startsAt!)} (МСК), ${placeLine(outcome.place)}.`,
-        outcome.place.note,
-        "Место за вами закреплено. Подробности — в кабинете.",
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      url: "/cabinet/assessment",
-      key: `assessment-reserve-invite:${item.id}:${batchKey}`,
-    })),
-    { urgent: true },
-  );
-  return {
-    ok: true,
-    invited: outcome.selected.length,
-    waiting: outcome.waiting,
-    sessionId: outcome.sessionId,
-  };
+  const key = randomUUID();
+  await notify(outcome.offers.map((item) => ({
+    userId: item.application.userId, category: "SELECTION" as const,
+    title: "Резервный день ЦО — выберите время",
+    body: chooseText(readPlace(item.slots[0]!.invited) ?? placeOf(item.slots[0]!), item.slots.map((slot) => new Date(slotStartsAt(slot))), item.faculty),
+    url: "/cabinet/assessment", key: `assessment-reserve-invite:${item.id}:${key}`,
+  })), { urgent: true });
+  return { ok: true, invited: outcome.offers.length, waiting: outcome.waiting, sessionId: outcome.sessionId };
 }
 
 /** Напомнить тем, кто не ответил. */
@@ -731,7 +645,7 @@ export async function remindSession(
         { remindedAt: { lt: new Date(now.getTime() - REMIND_EVERY_MS) } },
       ],
     },
-    select: { id: true, application: { select: { userId: true } } },
+    select: { id: true, invitedFaculty: true, application: { select: { userId: true, user: { select: { faculty: true } } } } },
   });
   if (silent.length === 0)
     return {
@@ -745,16 +659,15 @@ export async function remindSession(
     data: { remindedAt: now },
   });
   const place = readPlace(session.invited) ?? placeOf(session);
-  const reserve = session.reserve ? null : await reserveOf(seasonId);
   await notify(
-    silent.map((invite) => ({
+    await Promise.all(silent.map(async (invite) => ({
       userId: invite.application.userId,
       category: "SELECTION" as const,
-      title: "Ответьте на приглашение на центр оценки",
-      body: inviteText(place, reserve),
+      title: "Центр оценки — выберите время",
+      body: chooseText(place, await dayTimes(session.id, now, invite.invitedFaculty ?? invite.application.user.faculty), invite.invitedFaculty ?? invite.application.user.faculty),
       url: "/cabinet/assessment",
       key: `assessment-remind:${invite.id}:${now.getTime()}`,
-    })),
+    }))),
   );
   return { ok: true, reminded: silent.length };
 }
@@ -764,9 +677,7 @@ async function attendeesOf(
   seasonId: string,
   session: { id: string; reserve: boolean },
 ) {
-  const reserve = session.reserve
-    ? session.id
-    : ((await reserveOf(seasonId))?.id ?? null);
+  const reserve = (await reserveOf(seasonId))?.id ?? null;
   const invites = await db.assessmentInvite.findMany({
     where: session.reserve
       ? {
@@ -860,6 +771,7 @@ export async function moveCandidate(
       lastName: true,
       firstName: true,
       middleName: true,
+      user: { select: { faculty: true } },
       assessmentInvite: { select: { id: true, sessionId: true } },
       assessment: { select: { group: { select: { sessionId: true } } } },
     },
@@ -882,10 +794,10 @@ export async function moveCandidate(
     await lockAssessmentCapacity(tx, seasonId);
     const data =
       target.kind === "session"
-        ? { sessionId: session!.id, answer: "GOING" as const, reserveQueued: false, answeredAt: now, attended: false }
+        ? { sessionId: session!.id, answer: "GOING" as const, reserveQueued: false, reserveOffered: false, invitedDay: mskDayKey(slotStartsAt(session!)), invitedFaculty: application.user.faculty, answeredAt: now, attended: false }
         : target.kind === "reserve"
-          ? { answer: "RESERVE" as const, reserveQueued: true, answeredAt: now, attended: false }
-          : { answer: "CANT" as const, reserveQueued: false, answeredAt: now, attended: false };
+          ? { answer: "RESERVE" as const, reserveQueued: true, reserveOffered: false, answeredAt: now, attended: false }
+          : { answer: "CANT" as const, reserveQueued: false, reserveOffered: false, answeredAt: now, attended: false };
     if (application.assessmentInvite) {
       await tx.assessmentInvite.update({ where: { id: application.assessmentInvite.id }, data });
     } else {
@@ -1008,6 +920,7 @@ export interface SessionRow {
   groups: {
     id: string;
     title: string;
+    faculty: string | null;
     experts: { id: string; name: string }[];
     members: number;
     done: number;
@@ -1021,6 +934,7 @@ export interface AssessmentOverview {
     name: string;
     faculty: string | null;
     queuedAt: Date | null;
+    offered: boolean;
   }[];
   /** Отправили анкету, но ни на один сбор не приглашены. */
   notInvited: number;
@@ -1032,6 +946,7 @@ export interface AssessmentOverview {
 const groupSelect = {
   id: true,
   title: true,
+  faculty: true,
   experts: {
     select: {
       user: {
@@ -1064,6 +979,7 @@ function groupSummary(
   group: {
     id: string;
     title: string;
+    faculty: string | null;
     experts: {
       user: {
         id: string;
@@ -1096,6 +1012,7 @@ function groupSummary(
   return {
     id: group.id,
     title: group.title,
+    faculty: group.faculty,
     experts: group.experts
       .map((expert) => ({ id: expert.user.id, name: displayName(expert.user) }))
       .sort((a, b) => a.name.localeCompare(b.name, "ru")),
@@ -1152,10 +1069,9 @@ export async function loadOverview(
 
   const rows: SessionRow[] = sessions.map((session) => {
     const own = invites.filter((invite) => invite.sessionId === session.id);
-    const movedHere = session.reserve
+    const movedHere = session.reserve && session.id === reserveId
       ? invites.filter(
           (invite) =>
-            invite.sessionId !== session.id &&
             invite.answer === "RESERVE" &&
             !invite.reserveQueued,
         ).length
@@ -1163,7 +1079,7 @@ export async function loadOverview(
     const counts: SessionCounts = {
       invited: own.length,
       going:
-        own.filter((invite) => invite.answer === "GOING").length + movedHere,
+        own.filter((invite) => invite.answer === "GOING" && !invite.reserveQueued).length + movedHere,
       reserve: own.filter((invite) => invite.answer === "RESERVE").length,
       cant: own.filter((invite) => invite.answer === "CANT").length,
       silent: own.filter((invite) => invite.answer === null).length,
@@ -1178,7 +1094,7 @@ export async function loadOverview(
       faculties: session.faculties,
       reserve: session.reserve,
       capacity: session.capacity,
-      occupied: own.length + movedHere,
+      occupied: counts.going,
       invitedAt: session.invitedAt,
       stale: placeChanged(readPlace(session.invited), placeOf(session)),
       counts,
@@ -1205,6 +1121,7 @@ export async function loadOverview(
     orderBy: [{ answeredAt: "asc" }, { id: "asc" }],
     select: {
       answeredAt: true,
+      reserveOffered: true,
       application: {
         select: {
           id: true,
@@ -1228,6 +1145,7 @@ export async function loadOverview(
       name: fullName(item.application),
       faculty: item.application.user.faculty,
       queuedAt: item.answeredAt,
+      offered: item.reserveOffered,
     })),
     notInvited: free.length,
     noFaculty: free.filter((item) => !item.user.faculty).length,
@@ -1278,9 +1196,7 @@ export async function loadSessionPage(
     },
   });
   if (!session) return null;
-  const reserveId = session.reserve
-    ? session.id
-    : ((await reserveOf(seasonId))?.id ?? null);
+  const reserveId = (await reserveOf(seasonId))?.id ?? null;
   const criteria = await db.criterion.count({
     where: { seasonId, stageKind: "ASSESSMENT" },
   });
@@ -1382,10 +1298,9 @@ export async function loadSessionPage(
       }))
     : [];
 
-  const movedHere = session.reserve
+  const movedHere = session.reserve && session.id === reserveId
     ? invites.filter(
         (invite) =>
-          invite.sessionId !== session.id &&
           invite.answer === "RESERVE" &&
           !invite.reserveQueued,
       ).length
@@ -1401,7 +1316,7 @@ export async function loadSessionPage(
       faculties: session.faculties,
       reserve: session.reserve,
       capacity: session.capacity,
-      occupied: own.length + movedHere,
+      occupied: answers.going.length + movedHere,
       invitedAt: session.invitedAt,
       stale: placeChanged(readPlace(session.invited), placeOf(session)),
       counts: {

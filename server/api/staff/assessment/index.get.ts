@@ -36,6 +36,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     manage,
+    year: season.year,
     viewAll,
     me: user.id,
     stage: stage ? { title: stage.title, state: stage.state, opensAt: stage.opensAt, closesAt: stage.closesAt } : null,

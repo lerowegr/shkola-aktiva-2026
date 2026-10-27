@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { ActionResult } from "~/composables/useAction";
+import { FACULTIES } from "~~/lib/profile/onboarding";
 
 /**
  * Подгруппа сбора ЦО: название и эксперты. Её видят только организаторы и
@@ -9,14 +10,16 @@ import type { ActionResult } from "~/composables/useAction";
 interface Group {
   id: string;
   title: string;
+  faculty: string | null;
   experts: { id: string; name: string }[];
 }
 
-const props = defineProps<{ group: Group | null; sessionId: string; pool: { id: string; name: string }[]; suggestedTitle: string }>();
+const props = defineProps<{ group: Group | null; sessionId: string; faculties: string[]; pool: { id: string; name: string }[]; suggestedTitle: string }>();
 const emit = defineEmits<{ saved: []; cancel: [] }>();
 
 const form = reactive({
   title: props.group?.title ?? props.suggestedTitle,
+  faculty: props.group?.faculty ?? (props.faculties.length === 1 ? props.faculties[0]! : ""),
   experts: props.group?.experts.map((expert) => expert.id) ?? [],
 });
 
@@ -37,6 +40,7 @@ async function save() {
       ...(props.group ? { id: props.group.id } : {}),
       sessionId: props.sessionId,
       title: form.title,
+      ...(form.faculty ? { faculty: form.faculty } : {}),
     });
     if (!saved.ok) return (result.value = saved);
 
@@ -64,6 +68,15 @@ async function save() {
         placeholder="Подгруппа 1"
         class="border-line bg-paper focus:border-accent min-h-11 rounded-xl border px-3 text-base font-normal outline-none"
       >
+    </label>
+
+    <label class="flex flex-col gap-1.5 text-sm font-medium">
+      Факультет подгруппы
+      <UiSelect v-model="form.faculty" :required="!group || group.faculty !== null" aria-label="Факультет подгруппы">
+        <option value="" disabled>{{ group && group.faculty === null ? 'Историческая общая подгруппа' : 'Выберите факультет' }}</option>
+        <option v-for="faculty in (faculties.length ? faculties : FACULTIES)" :key="faculty" :value="faculty">{{ faculty }}</option>
+      </UiSelect>
+      <span class="text-ink-soft text-xs font-normal">Переносы разрешены только между подгруппами одного времени и факультета.</span>
     </label>
 
     <fieldset class="flex flex-col gap-2">

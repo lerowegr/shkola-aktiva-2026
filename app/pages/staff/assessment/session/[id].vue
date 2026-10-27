@@ -23,6 +23,7 @@ interface Person {
 interface Group {
   id: string;
   title: string;
+  faculty: string | null;
   experts: { id: string; name: string }[];
   members: number;
   done: number;
@@ -251,7 +252,7 @@ const LISTS = [
       <section class="bg-card border-line flex flex-col gap-3 rounded-3xl border p-5">
         <h2 class="font-display text-xl">Не в подгруппе: {{ page.unassigned.length }}</h2>
         <p class="text-ink-soft text-sm">
-          Все, чей день — этот сбор, кроме ответивших «не смогу». Сверху — отмеченные «пришёл», потом «будут», потом молчащие.
+          Записавшиеся на это время. Кандидаты без выбора времени и очередь резерва сюда не попадают. Сверху — отмеченные «пришёл».
           Положили в подгруппу — отметка «пришёл» ставится сама.
         </p>
         <ul v-if="page.unassigned.length" class="divide-line flex flex-col divide-y">
@@ -280,7 +281,7 @@ const LISTS = [
                 @change="move(person, ($event.target as HTMLSelectElement).value)"
               >
                 <option value="" disabled>В подгруппу…</option>
-                <option v-for="option in page.groups" :key="option.id" :value="option.id">{{ option.title }}</option>
+                <option v-for="option in page.groups.filter((group) => !group.faculty || group.faculty === person.faculty)" :key="option.id" :value="option.id">{{ option.title }}{{ option.faculty ? ` · ${option.faculty}` : '' }}</option>
               </UiSelect>
               <StaffAssessmentMove
                 :application-id="person.applicationId"
@@ -308,6 +309,7 @@ const LISTS = [
         <StaffAssessmentGroupForm
           :group="null"
           :session-id="page.session.id"
+          :faculties="page.session.faculties"
           :pool="data?.experts ?? []"
           :suggested-title="suggestedTitle"
           @saved="saved"
@@ -326,6 +328,7 @@ const LISTS = [
             <StaffAssessmentGroupForm
               :group="group"
               :session-id="page.session.id"
+              :faculties="page.session.faculties"
               :pool="data?.experts ?? []"
               :suggested-title="group.title"
               @saved="saved"
@@ -336,6 +339,7 @@ const LISTS = [
             <header class="border-line flex items-start justify-between gap-3 border-b pb-3">
               <div class="min-w-0">
                 <h3 class="font-display text-xl">{{ group.title }}</h3>
+                <p class="text-ink-soft text-sm">{{ group.faculty ?? 'Общая подгруппа — создана ранее' }}</p>
                 <p class="text-ink-soft text-sm">
                   {{ group.experts.map((expert) => expert.name).join(", ") || "Эксперты не назначены" }}
                 </p>
@@ -357,7 +361,7 @@ const LISTS = [
                   :aria-label="`Подгруппа: ${person.name}`"
                   @change="move(person, ($event.target as HTMLSelectElement).value)"
                 >
-                  <option v-for="option in page.groups" :key="option.id" :value="option.id">{{ option.title }}</option>
+                  <option v-for="option in page.groups.filter((group) => !group.faculty || group.faculty === person.faculty)" :key="option.id" :value="option.id">{{ option.title }}{{ option.faculty ? ` · ${option.faculty}` : '' }}</option>
                   <option value="">Убрать из подгруппы</option>
                 </UiSelect>
               </li>

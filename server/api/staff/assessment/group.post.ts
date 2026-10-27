@@ -8,6 +8,7 @@ const schema = z.object({
   id: z.string().min(1).optional(),
   sessionId: z.string().min(1, "Выберите сбор."),
   title: z.string().max(200),
+  faculty: z.string().min(1).optional(),
 });
 
 /** Создать подгруппу сбора или переименовать. */
@@ -23,7 +24,7 @@ export default defineAction(schema, async ({ body, event }) => {
     action: result.created ? "assessment.group.create" : "assessment.group.update",
     entityType: "assessment_group",
     entityId: result.id,
-    meta: { title: body.title.trim(), sessionId: body.sessionId },
+    meta: { title: body.title.trim(), sessionId: body.sessionId, faculty: body.faculty },
   });
 
   return { ok: true, id: result.id, message: result.created ? "Подгруппа создана." : "Сохранено." };

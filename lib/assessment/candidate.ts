@@ -1,39 +1,11 @@
 import { db } from "~~/lib/db";
 import { stageState, type StageState } from "~~/lib/stages";
 
-import { lockAssessmentCapacity } from "./capacity";
-import {
-  canChangeAnswer,
-  dayOf,
-  placeOf,
-  readPlace,
-  type AssessmentAnswerKind,
-  type Place,
-} from "./rules";
+import { lockAssessmentCapacity, usedAssessmentPlaces, type AssessmentTx } from "./capacity";
+import { ASSESSMENT_CHANGE_MS, canChangeAnswer, mskDayKey, placeProblem, slotPlace, slotStartsAt, type AssessmentAnswerKind, type Place } from "./rules";
 
-/**
- * Центр оценки глазами кандидата: что это за этап, приглашение на сбор и
- * ответ — «буду», «резервный день», «не смогу».
- *
- * Только сбор — место и время, где собираются все. Подгрупп, экспертов,
- * баллов и комментариев этот файл не читает вовсе: так их точно не утащить
- * в ответ кабинета. Место — снимок при приглашении (или последнем «сообщить
- * об изменении»): правка без рассылки кандидату не видна.
- */
-export interface CandidateDay extends Place {
-  title: string;
-  reserve: boolean;
-}
-
-/** Другое время того же дня для своего факультета — кандидат выбирает сам. */
-export interface CandidateSlot extends CandidateDay {
-  id: string;
-  /** Сбор, на который сейчас приглашён. */
-  current: boolean;
-  /** Все места заняты. Сколько их — кандидату не показываем. */
-  full: boolean;
-}
-
+export interface CandidateDay extends Place { title: string; reserve: boolean }
+export interface CandidateSlot extends CandidateDay { id: string; current: boolean; full: boolean; closed: boolean }
 export interface CandidateAssessment {
   title: string;
   description: string | null;
@@ -43,289 +15,150 @@ export interface CandidateAssessment {
   invite: {
     answer: AssessmentAnswerKind | null;
     reserveQueued: boolean;
-    /** Сбор, на который пригласили. */
+    reserveOffered: boolean;
+    invitedDay: string;
+    faculty: string | null;
     session: CandidateDay;
-    /** Резервный день сезона, если задан. */
     reserve: CandidateDay | null;
-    /** Куда идти по ответу: сбор, резервный день или никуда («не смогу»). */
     day: CandidateDay | null;
     canChange: boolean;
-    /** Время на выбор: свой сбор и другие сборы этого дня для факультета, где есть места. */
+    changeClosesAt: string | null;
     slots: CandidateSlot[];
+    reserveSlots: CandidateSlot[];
   } | null;
 }
 
-type SessionLike = {
-  id: string;
-  title: string;
-  reserve: boolean;
-  building: string | null;
-  room: string | null;
-  startsAt: Date;
-  note: string | null;
-  invited: unknown;
-};
-
-function asDay(session: SessionLike): CandidateDay {
-  const place = readPlace(session.invited) ?? placeOf(session);
-  return { ...place, title: session.title, reserve: session.reserve };
-}
-
-const sessionSelect = {
-  id: true,
-  title: true,
-  reserve: true,
-  capacity: true,
-  building: true,
-  room: true,
-  startsAt: true,
-  note: true,
-  invited: true,
-} as const;
-
+const sessionSelect = { id: true, seasonId: true, title: true, reserve: true, capacity: true, faculties: true, building: true, room: true, startsAt: true, note: true, invited: true } as const;
+type Session = { id: string; seasonId: string; title: string; reserve: boolean; capacity: number; faculties: string[]; building: string | null; room: string | null; startsAt: Date; note: string | null; invited: unknown };
 type Client = Pick<typeof db, "application" | "assessmentSession" | "assessmentInvite">;
+const asDay = (session: Session): CandidateDay => ({ ...slotPlace(session), title: session.title, reserve: session.reserve });
 
 async function context(userId: string, client: Client = db) {
   return client.application.findFirst({
     where: { userId, status: "SUBMITTED", season: { isCurrent: true } },
     select: {
-      id: true,
-      seasonId: true,
-      user: { select: { faculty: true } },
-      season: {
-        select: {
-          stages: {
-            where: { kind: "ASSESSMENT" },
-            select: {
-              title: true,
-              description: true,
-              mode: true,
-              opensAt: true,
-              closesAt: true,
-            },
-          },
-          assessmentSessions: {
-            where: { reserve: true },
-            select: sessionSelect,
-            take: 1,
-          },
-        },
-      },
-      assessmentInvite: {
-        select: {
-          id: true,
-          sessionId: true,
-          answer: true,
-          reserveQueued: true,
-          session: { select: sessionSelect },
-        },
-      },
+      id: true, seasonId: true, user: { select: { faculty: true } },
+      season: { select: {
+        stages: { where: { kind: "ASSESSMENT" }, select: { title: true, description: true, mode: true, opensAt: true, closesAt: true } },
+        assessmentSessions: { where: { reserve: true }, orderBy: [{ startsAt: "asc" }, { id: "asc" }], select: sessionSelect },
+      } },
+      assessmentInvite: { select: { id: true, sessionId: true, answer: true, reserveQueued: true, reserveOffered: true, invitedDay: true, invitedFaculty: true, session: { select: sessionSelect } } },
     },
   });
 }
+type Context = NonNullable<Awaited<ReturnType<typeof context>>>;
 
-const MSK_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" });
-const mskDay = (date: Date) => MSK_DAY.format(date);
-const MSK_TIME = new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" });
-
-/**
- * Сборы, между которыми кандидат может выбрать время: того же дня (по
- * Москве), что и его приглашение, для его факультета, ещё не начавшиеся.
- * Место занимает только ответ «буду»: кто первый выбрал, того и место.
- * Заполненные тоже в списке — кандидат видит «все места заняты».
- */
-async function slotsFor(
-  client: Client,
-  application: NonNullable<Awaited<ReturnType<typeof context>>>,
-  now: Date,
-): Promise<CandidateSlot[]> {
+function booked(application: Context): Session | null {
   const invite = application.assessmentInvite;
-  const faculty = application.user.faculty;
-  if (!invite || invite.session.reserve || !faculty) return [];
-  const day = mskDay(invite.session.startsAt);
-  const sessions = (
-    await client.assessmentSession.findMany({
-      where: {
-        seasonId: application.seasonId,
-        reserve: false,
-        startsAt: { gt: now },
-        OR: [{ id: invite.sessionId }, { faculties: { has: faculty } }],
-      },
-      orderBy: { startsAt: "asc" },
-      select: sessionSelect,
-    })
-  ).filter((session) => mskDay(session.startsAt) === day);
-  const taken = await client.assessmentInvite.groupBy({
-    by: ["sessionId"],
-    where: { sessionId: { in: sessions.map((session) => session.id) }, answer: "GOING", reserveQueued: false },
-    _count: { _all: true },
-  });
-  const used = new Map(taken.map((row) => [row.sessionId, row._count._all]));
-  return sessions
-    .map((session) => {
-      const current = session.id === invite.sessionId;
-      // Свой сбор: себя из занятых не вычитаем дважды.
-      const mine = current && invite.answer === "GOING" ? 1 : 0;
-      return { ...asDay(session), id: session.id, current, full: session.capacity - (used.get(session.id) ?? 0) + mine <= 0 };
-    });
+  if (!invite || invite.reserveQueued) return null;
+  if (invite.answer === "GOING") return invite.session;
+  // Совместимость назначений, сделанных до самостоятельного выбора резерва.
+  return invite.answer === "RESERVE" ? application.season.assessmentSessions[0] ?? null : null;
 }
 
-export async function loadCandidateAssessment(
-  userId: string,
-  now = new Date(),
-): Promise<CandidateAssessment | null> {
+async function slotsFor(client: Client, application: Context, now: Date): Promise<CandidateSlot[]> {
+  const invite = application.assessmentInvite;
+  if (!invite) return [];
+  const faculty = invite.invitedFaculty ?? application.user.faculty;
+  const day = invite.invitedDay ?? mskDayKey(slotStartsAt(invite.session));
+  const sessions = (await client.assessmentSession.findMany({ where: { seasonId: application.seasonId }, orderBy: [{ startsAt: "asc" }, { id: "asc" }], select: sessionSelect }))
+    .filter((slot) => slot.reserve
+      ? slot.faculties.length === 0 || (faculty !== null && slot.faculties.includes(faculty))
+      : mskDayKey(slotStartsAt(slot)) === day && (slot.id === invite.sessionId || (faculty !== null && slot.faculties.includes(faculty))));
+  const taken = await client.assessmentInvite.groupBy({ by: ["sessionId"], where: { sessionId: { in: sessions.map((slot) => slot.id) }, answer: "GOING", reserveQueued: false }, _count: { _all: true } });
+  const used = new Map(taken.map((row) => [row.sessionId, row._count._all]));
+  const legacy = await client.assessmentInvite.count({ where: { answer: "RESERVE", reserveQueued: false, session: { seasonId: application.seasonId } } });
+  const legacyReserveId = application.season.assessmentSessions[0]?.id;
+  const current = booked(application)?.id;
+  return sessions.filter((slot) => !placeProblem(slotPlace(slot))).map((slot) => {
+    const own = slot.id === current;
+    const count = (used.get(slot.id) ?? 0) + (slot.id === legacyReserveId ? legacy : 0);
+    return { ...asDay(slot), id: slot.id, current: own, full: count - (own ? 1 : 0) >= slot.capacity, closed: !canChangeAnswer(now, slotStartsAt(slot)) };
+  });
+}
+
+export async function loadCandidateAssessment(userId: string, now = new Date()): Promise<CandidateAssessment | null> {
   const application = await context(userId);
   const stage = application?.season.stages[0];
   if (!application || !stage) return null;
-
-  const invite = application.assessmentInvite;
-  const reserveSession = application.season.assessmentSessions[0] ?? null;
   let view: CandidateAssessment["invite"] = null;
+  const invite = application.assessmentInvite;
   if (invite) {
-    const session = asDay(invite.session);
-    const reserve =
-      reserveSession && reserveSession.id !== invite.sessionId
-        ? asDay(reserveSession)
-        : null;
-    const dayId = dayOf(invite, reserveSession?.id ?? null);
-    const day =
-      dayId === invite.sessionId ? session : dayId && reserve ? reserve : null;
+    const current = booked(application);
+    const choices = await slotsFor(db, application, now);
     view = {
-      answer: invite.answer,
-      reserveQueued: invite.reserveQueued,
-      session,
-      reserve,
-      day,
-      canChange: canChangeAnswer(
-        now,
-        invite.reserveQueued || invite.answer === "CANT"
-          ? null
-          : invite.answer === "RESERVE"
-            ? reserveSession?.startsAt
-            : invite.session.startsAt,
-      ),
-      slots: await slotsFor(db, application, now),
+      answer: invite.answer, reserveQueued: invite.reserveQueued, reserveOffered: invite.reserveOffered,
+      invitedDay: invite.invitedDay ?? mskDayKey(slotStartsAt(invite.session)), faculty: invite.invitedFaculty ?? application.user.faculty,
+      session: asDay(invite.session), reserve: application.season.assessmentSessions[0] ? asDay(application.season.assessmentSessions[0]) : null,
+      day: current ? asDay(current) : null,
+      canChange: canChangeAnswer(now, current ? slotStartsAt(current) : null),
+      changeClosesAt: current ? new Date(new Date(slotStartsAt(current)).getTime() - ASSESSMENT_CHANGE_MS).toISOString() : null,
+      slots: choices.filter((slot) => !slot.reserve), reserveSlots: choices.filter((slot) => slot.reserve),
     };
   }
-
-  return {
-    title: stage.title,
-    description: stage.description?.trim() || null,
-    state: stageState(stage, now),
-    opensAt: stage.opensAt,
-    closesAt: stage.closesAt,
-    invite: view,
-  };
+  return { title: stage.title, description: stage.description?.trim() || null, state: stageState(stage, now), opensAt: stage.opensAt, closesAt: stage.closesAt, invite: view };
 }
 
-export type AnswerResult =
-  { ok: true; message: string } | { ok: false; message: string };
+export type AnswerResult = { ok: boolean; message: string };
+const NO_INVITE = { ok: false, message: "Приглашения на центр оценки пока нет — пришлём уведомление." };
+const TOO_LATE = { ok: false, message: "До начала записанного времени осталось меньше 2 часов. Перезапись или отказ — только через организаторов в «Сообщениях»." };
 
-const DONE: Record<AssessmentAnswerKind, string> = {
-  GOING: "Ждём вас на центре оценки!",
-  RESERVE:
-    "Вы в очереди на резервный день. Дату, время и место пришлём отдельным уведомлением.",
-  CANT: "Понятно. Организаторы с вами свяжутся.",
-};
+/** Снятие прежней подгруппы атомарно с записью; начатые оценки не удаляются. */
+async function detach(tx: AssessmentTx, applicationId: string) {
+  await tx.assessmentMember.deleteMany({ where: { applicationId } });
+  await tx.review.deleteMany({ where: { applicationId, stageKind: "ASSESSMENT", scores: { none: {} }, markers: { none: {} }, OR: [{ comment: null }, { comment: "" }] } });
+}
 
-/**
- * Выбрать другое время того же дня для своего факультета — это ответ «буду»
- * на другой сбор. Под общим замком: места не уходят двоим.
- */
 export async function chooseSlot(userId: string, sessionId: string, now = new Date()): Promise<AnswerResult & { movedFrom?: string }> {
   const initial = await context(userId);
-  if (!initial?.assessmentInvite) return { ok: false, message: "Приглашения на центр оценки пока нет — пришлём уведомление." };
-  if (initial.assessmentInvite.sessionId === sessionId) return answerInvite(userId, "GOING", now);
-
+  if (!initial?.assessmentInvite) return NO_INVITE;
   return db.$transaction(async (tx) => {
     await lockAssessmentCapacity(tx, initial.seasonId);
     const application = await context(userId, tx);
     const invite = application?.assessmentInvite;
-    if (!application || !invite) return { ok: false, message: "Приглашения на центр оценки пока нет — пришлём уведомление." };
-
-    // Уйти со своего сбора можно, пока он не начался (после «не смогу» или из очереди — всегда).
-    const current = invite.reserveQueued || invite.answer === "CANT" || invite.answer === "RESERVE" ? null : invite.session.startsAt;
-    if (!canChangeAnswer(now, current)) {
-      return { ok: false, message: "Ваш центр оценки уже начался — поменять время можно только через организаторов в «Сообщениях»." };
-    }
-    const slot = (await slotsFor(tx, application, now)).find((item) => item.id === sessionId && !item.current);
-    if (!slot) return { ok: false, message: "Это время недоступно — обновите страницу и выберите другое." };
-    if (slot.full) return { ok: false, message: "На это время все места заняты — выберите другое или резервный день." };
-
-    await tx.assessmentInvite.update({
-      where: { id: invite.id },
-      data: { sessionId, answer: "GOING", reserveQueued: false, answeredAt: now, attended: false },
-    });
-    const time = slot.startsAt ? ` на ${MSK_TIME.format(new Date(slot.startsAt))} МСК` : "";
-    return { ok: true, message: `Записали вас${time}. Ждём!`, movedFrom: invite.sessionId };
-  });
+    if (!application || !invite) return NO_INVITE;
+    const current = booked(application);
+    if (current?.id === sessionId) return { ok: true, message: "Вы уже записаны на это время." };
+    if (current && !canChangeAnswer(now, slotStartsAt(current))) return TOO_LATE;
+    const target = (await slotsFor(tx, application, now)).find((slot) => slot.id === sessionId);
+    if (!target) return { ok: false, message: "Этот слот недоступен для дня и факультета вашего приглашения. Обновите страницу." };
+    if (target.closed) return { ok: false, message: "Запись на это время закрыта: до начала меньше 2 часов. Выберите другое время или резервный день." };
+    if (target.full) return { ok: false, message: "На это время все места заняты — выберите другое время или резервный день." };
+    const session = await tx.assessmentSession.findUniqueOrThrow({ where: { id: sessionId }, select: sessionSelect });
+    if (await usedAssessmentPlaces(tx, session) >= session.capacity) return { ok: false, message: "Место уже заняли. Выберите другое время или резервный день." };
+    if (!session.invited) await tx.assessmentSession.update({ where: { id: sessionId }, data: { invited: { ...slotPlace(session) } } });
+    await detach(tx, application.id);
+    await tx.assessmentInvite.update({ where: { id: invite.id }, data: {
+      sessionId, answer: "GOING", reserveQueued: false, answeredAt: now, attended: false,
+      invitedDay: invite.invitedDay ?? mskDayKey(slotStartsAt(invite.session)), invitedFaculty: invite.invitedFaculty ?? application.user.faculty,
+    } });
+    return { ok: true, message: "Вы записаны на выбранное время. Перезаписаться или отказаться можно не позже чем за 2 часа до начала.", movedFrom: invite.sessionId };
+  }, { timeout: 30_000 });
 }
 
-/** Ответить на приглашение или поменять ответ, пока дни не начались. */
-export async function answerInvite(
-  userId: string,
-  answer: AssessmentAnswerKind,
-  now = new Date(),
-): Promise<AnswerResult> {
+export async function answerInvite(userId: string, answer: AssessmentAnswerKind, now = new Date()): Promise<AnswerResult> {
   const initial = await context(userId);
-  if (!initial)
-    return {
-      ok: false,
-      message: "Приглашения на центр оценки пока нет — пришлём уведомление.",
-    };
+  if (!initial?.assessmentInvite) return NO_INVITE;
+  if (answer === "GOING") {
+    const current = booked(initial);
+    if (current) return chooseSlot(userId, current.id, now);
+    const slots = (await slotsFor(db, initial, now)).filter((slot) => !slot.reserve);
+    if (slots.length !== 1) return { ok: false, message: "Выберите конкретное время в списке слотов." };
+    return chooseSlot(userId, slots[0]!.id, now);
+  }
   return db.$transaction(async (tx) => {
     await lockAssessmentCapacity(tx, initial.seasonId);
     const application = await context(userId, tx);
     const invite = application?.assessmentInvite;
-    if (!application || !invite)
-      return {
-        ok: false,
-        message: "Приглашения на центр оценки пока нет — пришлём уведомление.",
-      };
-
-    const reserve = application.season.assessmentSessions[0] ?? null;
-    if (answer === "RESERVE" && invite.session.reserve) {
-      return {
-        ok: false,
-        message:
-          "Вы уже приглашены на резервный день. Выберите «Буду» или «Не получится».",
-      };
-    }
-    // Менять можно, пока не начался ни нынешний «свой день», ни тот, куда переходим.
-    const current =
-      invite.reserveQueued || invite.answer === "CANT"
-        ? null
-        : invite.answer === "RESERVE"
-          ? reserve?.startsAt
-          : invite.session.startsAt;
-    const next = answer === "GOING" ? invite.session.startsAt : null;
-    if (!canChangeAnswer(now, current, next)) {
-      return {
-        ok: false,
-        message:
-          "Центр оценки уже начался — поменять ответ можно только через организаторов в «Сообщениях».",
-      };
-    }
-    // «Буду» занимает место: если его уже разобрали — отказ.
-    if (answer === "GOING" && (invite.answer !== "GOING" || invite.reserveQueued)) {
-      const taken = await tx.assessmentInvite.count({ where: { sessionId: invite.sessionId, answer: "GOING", reserveQueued: false } });
-      if (taken >= invite.session.capacity) {
-        return { ok: false, message: "На это время все места заняты — выберите другое время или резервный день." };
-      }
-    }
-    if (invite.answer === answer)
-      return {
-        ok: true,
-        message:
-          answer === "RESERVE" && !invite.reserveQueued
-            ? "Ждём вас в резервный день."
-            : DONE[answer],
-      };
-
-    await tx.assessmentInvite.update({
-      where: { id: invite.id },
-      data: { answer, reserveQueued: answer === "RESERVE", answeredAt: now },
-    });
-    return { ok: true, message: DONE[answer] };
+    if (!application || !invite) return NO_INVITE;
+    if (invite.answer === answer) return { ok: true, message: answer === "RESERVE" ? "Вы в очереди на резервный день. Выберите время резерва, когда оно появится." : "Ваш отказ сохранён." };
+    const current = booked(application);
+    if (current && !canChangeAnswer(now, slotStartsAt(current))) return TOO_LATE;
+    await detach(tx, application.id);
+    await tx.assessmentInvite.update({ where: { id: invite.id }, data: {
+      answer, reserveQueued: answer === "RESERVE", reserveOffered: false, answeredAt: now, attended: false,
+      invitedDay: invite.invitedDay ?? mskDayKey(slotStartsAt(invite.session)), invitedFaculty: invite.invitedFaculty ?? application.user.faculty,
+    } });
+    return { ok: true, message: answer === "RESERVE" ? "Вы в очереди на резервный день. Выберите подходящее резервное время или ждите отдельного приглашения, если слоты ещё не созданы." : "Вы отказались от записи. Место освобождено; организаторы с вами свяжутся." };
   });
 }

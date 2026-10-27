@@ -18,6 +18,6 @@ export default defineAction(z.object({}), async ({ event }) => {
     });
   return {
     ok: true,
-    message: `Приглашено из очереди: ${result.invited}. Ожидают рассылки: ${result.waiting}.${result.waiting ? " Для остальных нужны свободные места в резервном сборе." : ""}`,
+    message: `Предложение выбрать резервное время отправлено: ${result.invited}. Ещё ждут рассылки: ${result.waiting}. Места закрепятся после выбора кандидатов.`,
   };
 });

@@ -15,14 +15,14 @@ export async function usedAssessmentPlaces(
   tx: AssessmentTx,
   session: { id: string; seasonId: string; reserve: boolean },
 ) {
+  const firstReserve = session.reserve ? await tx.assessmentSession.findFirst({ where: { seasonId: session.seasonId, reserve: true }, orderBy: [{ startsAt: "asc" }, { id: "asc" }], select: { id: true } }) : null;
   return tx.assessmentInvite.count({
     where: {
       OR: [
-        { sessionId: session.id },
-        ...(session.reserve
+        { sessionId: session.id, answer: "GOING", reserveQueued: false },
+        ...(session.reserve && firstReserve?.id === session.id
           ? [
               {
-                sessionId: { not: session.id },
                 answer: "RESERVE" as const,
                 reserveQueued: false,
                 session: { seasonId: session.seasonId },

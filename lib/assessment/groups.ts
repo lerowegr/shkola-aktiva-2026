@@ -1,5 +1,7 @@
 import { displayName } from "~~/lib/auth/actor";
 import { db } from "~~/lib/db";
+import { FACULTIES } from "~~/lib/profile/onboarding";
+import { lockAssessmentCapacity } from "./capacity";
 
 import { dayOf } from "./rules";
 
@@ -23,6 +25,7 @@ export interface GroupInput {
   /** Сбор — для новой подгруппы. */
   sessionId: string;
   title: string;
+  faculty?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,47 +95,29 @@ async function dropStaleReviews(
 // Группы
 // ---------------------------------------------------------------------------
 
-export async function saveGroup(
-  seasonId: string,
-  input: GroupInput,
-): Promise<Result<{ id: string; created: boolean }>> {
+export async function saveGroup(seasonId: string, input: GroupInput): Promise<Result<{ id: string; created: boolean }>> {
   const title = input.title.trim();
-  if (!title)
-    return {
-      ok: false,
-      message: "Назовите подгруппу — например, «Подгруппа 1».",
-    };
-  if (title.length > TITLE_MAX)
-    return { ok: false, message: `Название — до ${TITLE_MAX} знаков.` };
-
-  if (input.id) {
-    const found = await db.assessmentGroup.findFirst({
-      where: { id: input.id, seasonId },
-      select: { id: true },
-    });
-    if (!found)
-      return {
-        ok: false,
-        message: "Подгруппа не найдена — обновите страницу.",
-      };
-    await db.assessmentGroup.update({
-      where: { id: found.id },
-      data: { title },
-    });
-    return { ok: true, id: found.id, created: false };
-  }
-
-  const session = await db.assessmentSession.findFirst({
-    where: { id: input.sessionId, seasonId },
-    select: { id: true },
+  if (!title || title.length > TITLE_MAX) return { ok: false, message: "Название подгруппы — от 1 до 80 знаков." };
+  return db.$transaction(async (tx) => {
+    await lockAssessmentCapacity(tx, seasonId);
+    const session = await tx.assessmentSession.findFirst({ where: { id: input.sessionId, seasonId }, select: { id: true, faculties: true, reserve: true } });
+    if (!session) return { ok: false, message: "Сбор не найден — обновите страницу." };
+    const found = input.id ? await tx.assessmentGroup.findFirst({ where: { id: input.id, seasonId, sessionId: session.id }, select: { id: true, faculty: true } }) : null;
+    if (input.id && !found) return { ok: false, message: "Подгруппа не найдена в выбранном времени." };
+    const faculty = input.faculty !== undefined ? input.faculty : found ? found.faculty : session.faculties.length === 1 ? session.faculties[0]! : undefined;
+    if (faculty === undefined) return { ok: false, message: "Выберите факультет подгруппы." };
+    if (faculty && (!(FACULTIES as readonly string[]).includes(faculty) || (session.faculties.length > 0 && !session.faculties.includes(faculty)))) return { ok: false, message: "Факультет не относится к этому времени ЦО." };
+    if (found && faculty) {
+      const mismatched = await tx.assessmentMember.findFirst({ where: { groupId: found.id, application: { user: { OR: [{ faculty: null }, { faculty: { not: faculty } }] } } }, select: { id: true } });
+      if (mismatched) return { ok: false, message: "В подгруппе есть кандидаты другого факультета. Сначала перенесите их." };
+    }
+    if (found) {
+      await tx.assessmentGroup.update({ where: { id: found.id }, data: { title, faculty } });
+      return { ok: true, id: found.id, created: false };
+    }
+    const created = await tx.assessmentGroup.create({ data: { seasonId, sessionId: session.id, title, faculty }, select: { id: true } });
+    return { ok: true, id: created.id, created: true };
   });
-  if (!session)
-    return { ok: false, message: "Сбор не найден — обновите страницу." };
-  const created = await db.assessmentGroup.create({
-    data: { seasonId, sessionId: session.id, title },
-    select: { id: true },
-  });
-  return { ok: true, id: created.id, created: true };
 }
 
 /**
@@ -293,6 +278,7 @@ export async function placeMember(
     select: {
       id: true,
       assessment: { select: { group: { select: { id: true, title: true } } } },
+      user: { select: { faculty: true } },
     },
   });
   if (!application)
@@ -308,6 +294,7 @@ export async function placeMember(
         id: true,
         title: true,
         sessionId: true,
+        faculty: true,
         experts: { select: { userId: true } },
       },
     });
@@ -317,6 +304,7 @@ export async function placeMember(
         message: "Подгруппа не найдена — обновите страницу.",
       };
     // В подгруппу — только своего дня: сбор, на который пригласили, или резервный.
+    if (found.faculty && found.faculty !== application.user.faculty) return { ok: false, message: "Кандидат другого факультета — выберите подгруппу его факультета в этом времени." };
     if (found.sessionId) {
       const [invite, reserve] = await Promise.all([
         db.assessmentInvite.findUnique({
@@ -325,6 +313,7 @@ export async function placeMember(
         }),
         db.assessmentSession.findFirst({
           where: { seasonId, reserve: true },
+          orderBy: [{ startsAt: "asc" }, { id: "asc" }],
           select: { id: true },
         }),
       ]);
@@ -357,15 +346,20 @@ export async function placeMember(
       kept: 0,
     };
 
-  if (to) {
-    await db.assessmentMember.upsert({
-      where: { applicationId },
-      create: { applicationId, groupId: to.id },
-      update: { groupId: to.id, addedAt: new Date() },
-    });
-  } else {
-    await db.assessmentMember.deleteMany({ where: { applicationId } });
-  }
+  const placement = await db.$transaction(async (tx) => {
+    await lockAssessmentCapacity(tx, seasonId);
+    if (to) {
+      const group = await tx.assessmentGroup.findUniqueOrThrow({ where: { id: to.id }, select: { faculty: true, sessionId: true } });
+      const current = await tx.assessmentInvite.findUnique({ where: { applicationId }, select: { answer: true, reserveQueued: true, sessionId: true } });
+      const reserve = await tx.assessmentSession.findFirst({ where: { seasonId, reserve: true }, orderBy: [{ startsAt: "asc" }, { id: "asc" }], select: { id: true } });
+      if (group.sessionId && (!current || (current.answer === "CANT" ? current.sessionId : dayOf(current, reserve?.id ?? null)) !== group.sessionId)) return { ok: false as const, message: "Запись кандидата изменилась. Обновите страницу и выберите подгруппу его времени." };
+      const user = await tx.application.findUniqueOrThrow({ where: { id: applicationId }, select: { user: { select: { faculty: true } } } });
+      if (group.faculty && group.faculty !== user.user.faculty) return { ok: false as const, message: "Кандидат другого факультета." };
+      await tx.assessmentMember.upsert({ where: { applicationId }, create: { applicationId, groupId: to.id }, update: { groupId: to.id, addedAt: new Date() } });
+    } else await tx.assessmentMember.deleteMany({ where: { applicationId } });
+    return { ok: true as const };
+  });
+  if (!placement.ok) return placement;
 
   await dropStaleReviews(
     applicationId,

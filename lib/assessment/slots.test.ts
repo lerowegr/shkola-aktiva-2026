@@ -35,8 +35,8 @@ describe("выбор другого времени ЦО того же дня", (
     const userId = await candidate("МЭО", early.id, "CANT");
 
     const slots = (await loadCandidateAssessment(userId, now))!.invite!.slots;
-    expect(slots.map((slot) => [slot.id, slot.current])).toEqual([
-      [early.id, true],
+    expect(slots.filter((slot) => !slot.closed).map((slot) => [slot.id, slot.current])).toEqual([
+      [early.id, false],
       [late.id, false],
     ]);
   });
@@ -77,7 +77,7 @@ describe("выбор другого времени ЦО того же дня", (
     // Молчащий не держит 17:20 — его занимает тот, кто выбрал первым.
     expect(await chooseSlot(mover, early.id, now)).toMatchObject({ ok: true });
     const slots = (await loadCandidateAssessment(silent, now))!.invite!.slots;
-    expect(slots.find((slot) => slot.id === early.id)).toMatchObject({ current: true, full: true });
+    expect(slots.find((slot) => slot.id === early.id)).toMatchObject({ current: false, full: true });
     expect(await answerInvite(silent, "GOING", now)).toMatchObject({ ok: false });
     expect(await chooseSlot(silent, late.id, now)).toMatchObject({ ok: true });
   });
