@@ -294,9 +294,11 @@ async function dayTimes(sessionId: string, now = new Date(), faculty?: string | 
 function chooseText(place: Place, times: Date[], faculty?: string | null) {
   const lines = [
     `${MSK_DATE.format(new Date(place.startsAt!))} — центр оценки${faculty ? `, факультет ${faculty}` : ""}.`,
-    times.length ? `Время на выбор: ${[...new Set(times.map((time) => MSK_TIME.format(time)))].join(", ")} (МСК). Выберите слот в кабинете — приглашение само по себе место не занимает.` : "Открытых времён пока нет. Можно выбрать резервный день или отказаться в кабинете.",
+    times.length ? `Время на выбор: ${[...new Set(times.map((time) => MSK_TIME.format(time)))].join(", ")} (МСК). Места ограничены — место за вами, когда подтвердите время в кабинете.` : "Открытых времён пока нет. Можно выбрать резервный день или отказаться в кабинете.",
   ];
-  if (place.note) lines.push(place.note);
+  // Заметка пишется к одному времени («…в 17:20») — в приглашение на день с выбором её не вставляем,
+  // кандидат увидит её в кабинете, когда запишется на это время.
+  if (place.note && new Set(times.map((time) => MSK_TIME.format(time))).size <= 1) lines.push(place.note);
   lines.push("Выберите время в кабинете. Если ни одно не подходит — «Приду в резервный день» или «Не получится».");
   return lines.join("\n");
 }
