@@ -19,6 +19,13 @@ interface Overview {
 const { data, refresh } = await useFetch<Overview>("/api/staff/assessment");
 const editing = ref<string | null>(null);
 const edited = computed(() => data.value?.sessions.find((slot) => slot.id === editing.value) ?? null);
+// Форма — вверху страницы; кнопка «Изменить» — у времени ниже. Прокручиваем к форме, иначе кажется, что ничего не произошло.
+const editForm = ref<HTMLElement | null>(null);
+watch(editing, async (value) => {
+  if (!value) return;
+  await nextTick();
+  editForm.value?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
 const notice = ref<ActionResult | null>(null);
 const busy = ref<string | null>(null);
 const confirmDelete = ref<string | null>(null);
@@ -59,7 +66,7 @@ async function saved() { editing.value = null; notice.value = { ok: true, messag
     </header>
     <p v-if="data?.criteria === 0" class="bg-brand-yellow-soft rounded-2xl p-4 text-sm">У этапа нет критериев — добавьте их в «Админка → Анкета и оценка → Оценка ЦО».</p>
     <UiNotice :ok="notice?.ok" :message="notice?.message" />
-    <section v-if="editing && data?.manage" class="bg-card border-line rounded-3xl border p-5">
+    <section v-if="editing && data?.manage" ref="editForm" class="bg-card border-line scroll-mt-4 rounded-3xl border p-5">
       <h2 class="font-display mb-4 text-xl">{{ editing === 'new' ? 'Новое время ЦО' : 'Редактировать время' }}</h2>
       <StaffAssessmentSessionForm :key="editing" :session="edited" :has-reserve="data.hasReserve" @saved="saved" @cancel="editing = null" />
     </section>
