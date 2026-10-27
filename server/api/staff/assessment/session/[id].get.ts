@@ -29,5 +29,13 @@ export default defineEventHandler(async (event) => {
         .map((person) => ({ id: person.id, name: displayName(person) }))
         .sort((a, b) => a.name.localeCompare(b.name, "ru"))
     : [];
-  return { manage, page, experts };
+  // Куда можно перенести кандидата вручную — сборы сезона, кроме давно прошедших.
+  const targets = manage
+    ? await db.assessmentSession.findMany({
+        where: { seasonId, startsAt: { gt: new Date(Date.now() - 3 * 60 * 60 * 1000) } },
+        orderBy: { startsAt: "asc" },
+        select: { id: true, title: true, startsAt: true, reserve: true },
+      })
+    : [];
+  return { manage, page, experts, targets };
 });

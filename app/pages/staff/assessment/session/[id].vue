@@ -51,7 +51,12 @@ interface Page {
 }
 
 const route = useRoute();
-const { data, refresh, error } = await useFetch<{ manage: boolean; page: Page; experts: { id: string; name: string }[] }>(
+const { data, refresh, error } = await useFetch<{
+  manage: boolean;
+  page: Page;
+  experts: { id: string; name: string }[];
+  targets: { id: string; title: string; startsAt: string; reserve: boolean }[];
+}>(
   () => `/api/staff/assessment/session/${route.params.id}`,
 );
 useHead({ title: () => data.value?.page.session.title ?? "Сбор ЦО" });
@@ -94,6 +99,15 @@ async function saved() {
 }
 
 const picked = ref<string[]>([]);
+
+// Ручной перенос на другое время, в очередь резерва или «не придёт».
+async function moved(result: ActionResult) {
+  notice.value = result;
+  if (result.ok) {
+    await refresh();
+    void refreshNuxtData("staff-nav");
+  }
+}
 
 // Сообщение всем, кто идёт на сбор: перенос, аудитория, что взять.
 const messageText = ref("");
@@ -214,9 +228,19 @@ const LISTS = [
             <ChevronDown class="text-ink-soft size-4 transition-transform group-open/list:rotate-180" aria-hidden="true" />
           </summary>
           <ul class="flex flex-col gap-1 pb-2">
-            <li v-for="person in page.answers[list.key]" :key="person.applicationId" class="text-sm">
-              <NuxtLink :to="`/staff/applications/${person.applicationId}`" class="hover:underline">{{ person.name }}</NuxtLink>
-              <span v-if="person.faculty" class="text-ink-soft text-xs"> · {{ person.faculty }}</span>
+            <li v-for="person in page.answers[list.key]" :key="person.applicationId" class="flex flex-col gap-2 text-sm sm:flex-row sm:items-start sm:justify-between">
+              <span>
+                <NuxtLink :to="`/staff/applications/${person.applicationId}`" class="hover:underline">{{ person.name }}</NuxtLink>
+                <span v-if="person.faculty" class="text-ink-soft text-xs"> · {{ person.faculty }}</span>
+              </span>
+              <StaffAssessmentMove
+                v-if="manage"
+                :application-id="person.applicationId"
+                :name="person.name"
+                :current-session-id="page.session.id"
+                :targets="data?.targets ?? []"
+                @done="moved"
+              />
             </li>
             <li v-if="page.answers[list.key].length === 0" class="text-ink-soft text-sm">Никого.</li>
           </ul>
@@ -258,6 +282,13 @@ const LISTS = [
                 <option value="" disabled>В подгруппу…</option>
                 <option v-for="option in page.groups" :key="option.id" :value="option.id">{{ option.title }}</option>
               </UiSelect>
+              <StaffAssessmentMove
+                :application-id="person.applicationId"
+                :name="person.name"
+                :current-session-id="page.session.id"
+                :targets="data?.targets ?? []"
+                @done="moved"
+              />
             </div>
           </li>
         </ul>
@@ -329,6 +360,23 @@ const LISTS = [
                   <option v-for="option in page.groups" :key="option.id" :value="option.id">{{ option.title }}</option>
                   <option value="">Убрать из подгруппы</option>
                 </UiSelect>
+              </li>
+              <li v-if="manage && group.people.length" class="pt-2">
+                <details class="text-sm">
+                  <summary class="text-ink-soft cursor-pointer">Перенести кого-то из подгруппы на другое время…</summary>
+                  <ul class="mt-2 flex flex-col gap-2">
+                    <li v-for="person in group.people" :key="person.applicationId" class="flex flex-col gap-1">
+                      <span>{{ person.name }}</span>
+                      <StaffAssessmentMove
+                        :application-id="person.applicationId"
+                        :name="person.name"
+                        :current-session-id="page.session.id"
+                        :targets="data?.targets ?? []"
+                        @done="moved"
+                      />
+                    </li>
+                  </ul>
+                </details>
               </li>
               <li v-if="group.people.length === 0" class="text-ink-soft py-2 text-sm">Пока никого.</li>
             </ol>

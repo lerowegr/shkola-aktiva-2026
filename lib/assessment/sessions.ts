@@ -11,6 +11,7 @@ import {
   usedAssessmentPlaces,
   type AssessmentTx,
 } from "./capacity";
+import { placeMember } from "./groups";
 import {
   dayOf,
   invitesFaculty,
@@ -834,6 +835,92 @@ export async function notifyChange(
     { urgent: true },
   );
   return { ok: true, sent: people.length };
+}
+
+export type MoveTarget = { kind: "session"; sessionId: string } | { kind: "reserve" } | { kind: "cant" };
+
+/**
+ * Организатор вручную переносит кандидата: на другое время (любой сбор
+ * сезона, в том числе резервный — сразу «буду»), в очередь на резервный день
+ * или отмечает «не придёт». Лимит мест организатору не мешает — только
+ * предупреждаем. Из подгруппы прежнего дня кандидат выходит (начатые оценки
+ * экспертов остаются). Нет приглашения — создаём.
+ */
+export async function moveCandidate(
+  seasonId: string,
+  applicationId: string,
+  target: MoveTarget,
+  options: { notifyCandidate: boolean; actorId: string | null },
+): Promise<Result<{ name: string; label: string; over: boolean; fromGroup: boolean }>> {
+  const application = await db.application.findFirst({
+    where: { id: applicationId, seasonId, status: "SUBMITTED" },
+    select: {
+      id: true,
+      userId: true,
+      lastName: true,
+      firstName: true,
+      middleName: true,
+      assessmentInvite: { select: { id: true, sessionId: true } },
+      assessment: { select: { group: { select: { sessionId: true } } } },
+    },
+  });
+  if (!application) return { ok: false, message: "Кандидат не найден или анкета не отправлена — обновите страницу." };
+
+  let session: { id: string; title: string; reserve: boolean; capacity: number; building: string | null; room: string | null; startsAt: Date; note: string | null; invited: unknown } | null = null;
+  if (target.kind === "session") {
+    session = await db.assessmentSession.findFirst({
+      where: { id: target.sessionId, seasonId },
+      select: { id: true, title: true, reserve: true, capacity: true, building: true, room: true, startsAt: true, note: true, invited: true },
+    });
+    if (!session) return { ok: false, message: "Сбор не найден — обновите страницу." };
+  } else if (!application.assessmentInvite) {
+    return { ok: false, message: "Кандидат ещё не приглашён — сначала перенесите его на какой-нибудь сбор." };
+  }
+
+  const now = new Date();
+  const over = await db.$transaction(async (tx) => {
+    await lockAssessmentCapacity(tx, seasonId);
+    const data =
+      target.kind === "session"
+        ? { sessionId: session!.id, answer: "GOING" as const, reserveQueued: false, answeredAt: now, attended: false }
+        : target.kind === "reserve"
+          ? { answer: "RESERVE" as const, reserveQueued: true, answeredAt: now, attended: false }
+          : { answer: "CANT" as const, reserveQueued: false, answeredAt: now, attended: false };
+    if (application.assessmentInvite) {
+      await tx.assessmentInvite.update({ where: { id: application.assessmentInvite.id }, data });
+    } else {
+      await tx.assessmentInvite.create({ data: { applicationId, invitedAt: now, ...data, sessionId: session!.id } });
+    }
+    if (!session) return false;
+    const going = await tx.assessmentInvite.count({ where: { sessionId: session.id, answer: "GOING", reserveQueued: false } });
+    return going > session.capacity;
+  });
+
+  // Подгруппа прежнего дня ему больше не подходит.
+  const groupSession = application.assessment?.group.sessionId ?? null;
+  const fromGroup = Boolean(groupSession && (target.kind !== "session" || groupSession !== session!.id));
+  if (fromGroup) await placeMember(seasonId, applicationId, null, options.actorId);
+
+  const label = session ? `${session.title} (${when(session.startsAt)})` : target.kind === "reserve" ? "очередь на резервный день" : "не придёт";
+  if (options.notifyCandidate && target.kind !== "cant") {
+    const place = session ? (readPlace(session.invited) ?? placeOf(session)) : null;
+    await notify(
+      [
+        {
+          userId: application.userId,
+          category: "SELECTION" as const,
+          title: place ? "Центр оценки: ваше время изменено" : "Центр оценки: вы в очереди на резервный день",
+          body: place
+            ? [`Ждём вас: ${when(place.startsAt ?? session!.startsAt)} (МСК)${place.building || place.room ? `, ${placeLine(place)}` : ""}.`, place.note].filter(Boolean).join("\n")
+            : "Организаторы перенесли вас в очередь на резервный день. Дату, время и место пришлём отдельным уведомлением.",
+          url: "/cabinet/assessment",
+          key: `assessment-move:${applicationId}:${now.getTime()}`,
+        },
+      ],
+      { urgent: true },
+    );
+  }
+  return { ok: true, name: fullName(application), label, over, fromGroup };
 }
 
 export const MESSAGE_MAX = 1000;

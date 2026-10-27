@@ -94,4 +94,31 @@ describe("выбор другого времени ЦО того же дня", (
     expect(note.body).toContain("17:20, 18:50");
     expect(note.body).not.toMatch(/\b(50|20) мест/);
   });
+
+  it("организатор вручную переносит: другое время, резерв, «не придёт»; из подгруппы выходит", async () => {
+    const { moveCandidate } = await import("./sessions");
+    const early = await session("17:20", "2030-10-26T14:20:00Z", ["МЭО"], 1);
+    const late = await session("18:50", "2030-10-26T15:50:00Z", ["МЭО"]);
+    const userId = await candidate("МЭО", early.id, "GOING");
+    const application = await db.application.findFirstOrThrow({ where: { userId } });
+    const group = await db.assessmentGroup.create({ data: { seasonId, sessionId: early.id, title: "П1" } });
+    await db.assessmentMember.create({ data: { groupId: group.id, applicationId: application.id } });
+    const opts = { notifyCandidate: true, actorId: null };
+
+    expect(await moveCandidate(seasonId, application.id, { kind: "session", sessionId: late.id }, opts)).toMatchObject({ ok: true, fromGroup: true });
+    expect(await db.assessmentInvite.findFirstOrThrow({ where: { applicationId: application.id } })).toMatchObject({ sessionId: late.id, answer: "GOING" });
+    expect(await db.assessmentMember.count()).toBe(0);
+    expect(await db.notification.count({ where: { userId, title: "Центр оценки: ваше время изменено" } })).toBe(1);
+
+    // Сверх лимита — можно, но с предупреждением.
+    const other = await candidate("МЭО", late.id, "GOING");
+    const otherApp = await db.application.findFirstOrThrow({ where: { userId: other } });
+    await moveCandidate(seasonId, application.id, { kind: "session", sessionId: early.id }, opts);
+    expect(await moveCandidate(seasonId, otherApp.id, { kind: "session", sessionId: early.id }, opts)).toMatchObject({ ok: true, over: true });
+
+    await moveCandidate(seasonId, application.id, { kind: "reserve" }, opts);
+    expect(await db.assessmentInvite.findFirstOrThrow({ where: { applicationId: application.id } })).toMatchObject({ answer: "RESERVE", reserveQueued: true });
+    await moveCandidate(seasonId, application.id, { kind: "cant" }, opts);
+    expect(await db.assessmentInvite.findFirstOrThrow({ where: { applicationId: application.id } })).toMatchObject({ answer: "CANT", reserveQueued: false });
+  });
 });

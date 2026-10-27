@@ -49,6 +49,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   "assessment.session.notify_change": "ЦО: сообщили об изменении места",
   "assessment.attend": "ЦО: отметка «пришёл»",
   "assessment.session.message": "ЦО: сообщение участникам сбора",
+  "assessment.move": "ЦО: кандидат перенесён вручную",
   "assessment.task_note": "ЦО: комментарий к заданию",
   "assessment.group_note": "ЦО: фон подгруппы",
   "assessment.task.create": "ЦО: задание добавлено",
