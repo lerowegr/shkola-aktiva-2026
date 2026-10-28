@@ -40,6 +40,28 @@ describe("сборы центра оценки", () => {
     return first;
   }
 
+  it("ссылки на последнее сданное ДЗ видны в списках ЦО, включая просмотр без управления", async () => {
+    const monday = await session("Пн", ["МЭО"]);
+    const first = await startMailing(monday);
+    const missing = await candidate("МЭО");
+    await inviteSession(seasonId, monday, [missing.id]);
+    await db.submission.createMany({ data: [
+      { applicationId: first.id, stageKind: "HOMEWORK", text: "Старое: https://example.org/replaced", replacedAt: now },
+      { applicationId: first.id, stageKind: "APPLICATION", text: "Анкета: https://example.org/profile" },
+      { applicationId: first.id, stageKind: "HOMEWORK", text: "Ранняя сдача: https://example.org/earlier", submittedAt: new Date(now.getTime() - 1000) },
+      { applicationId: first.id, stageKind: "HOMEWORK", text: "Задание 1: https://drive.google.com/drive/folders/current" },
+    ] });
+    const links = [{ label: "Задание 1", url: "https://drive.google.com/drive/folders/current" }];
+    const page = await loadSessionPage(seasonId, monday, false);
+    expect(page?.answers.going.find((p) => p.applicationId === first.id)?.homeworkLinks).toEqual(links);
+    expect(page?.unassigned.find((p) => p.applicationId === first.id)?.homeworkLinks).toEqual(links);
+    expect(page?.answers.silent.find((p) => p.applicationId === missing.id)?.homeworkLinks).toEqual([]);
+    const group = await db.assessmentGroup.create({ data: { seasonId, sessionId: monday, title: "Подгруппа", faculty: "МЭО" } });
+    await db.assessmentMember.create({ data: { groupId: group.id, applicationId: first.id } });
+    const grouped = await loadSessionPage(seasonId, monday, true);
+    expect(grouped?.groups[0]?.people[0]?.homeworkLinks).toEqual(links);
+  });
+
   it("сбор без факультетов не создать, резервный день — один на сезон", async () => {
     expect(await saveSession(seasonId, { title: "Пн", startsAt: "2026-11-02T15:00:00.000Z", faculties: [], ...base })).toMatchObject({ ok: false });
     await session("Резерв", [], { reserve: true });

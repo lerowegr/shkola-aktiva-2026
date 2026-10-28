@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { homeworkLinks, type HomeworkLink } from "~~/lib/applications/homework";
 import { fullName } from "~~/lib/applications/staff";
 import { displayName } from "~~/lib/auth/actor";
 import { db } from "~~/lib/db";
@@ -1162,6 +1163,7 @@ export interface SessionPerson {
   answer: AssessmentAnswerKind | null;
   attended: boolean;
   groupId: string | null;
+  homeworkLinks: HomeworkLink[];
 }
 
 export interface SessionPage {
@@ -1223,6 +1225,12 @@ export async function loadSessionPage(
           middleName: true,
           user: { select: { faculty: true } },
           assessment: { select: { groupId: true } },
+          submissions: {
+            where: { stageKind: "HOMEWORK", replacedAt: null },
+            orderBy: [{ submittedAt: "desc" }, { id: "desc" }],
+            take: 1,
+            select: { text: true },
+          },
         },
       },
     },
@@ -1237,6 +1245,7 @@ export async function loadSessionPage(
       answer: invite.answer,
       attended: invite.attended,
       groupId: groupId && groupIds.has(groupId) ? groupId : null,
+      homeworkLinks: homeworkLinks(invite.application.submissions[0]?.text),
     };
   };
   const byName = (a: SessionPerson, b: SessionPerson) =>

@@ -2,6 +2,7 @@
 import { ArrowLeft, BellRing, CalendarClock, ChevronDown, ChevronRight, MailPlus, MapPin, Pencil, Plus, Trash2, TriangleAlert } from "lucide-vue-next";
 
 import type { ActionResult } from "~/composables/useAction";
+import type { HomeworkLink } from "~~/lib/applications/homework";
 import { placeLine } from "~~/lib/assessment/rules";
 
 /**
@@ -19,6 +20,7 @@ interface Person {
   answer: Answer;
   attended: boolean;
   groupId: string | null;
+  homeworkLinks: HomeworkLink[];
 }
 interface Group {
   id: string;
@@ -234,14 +236,18 @@ const LISTS = [
                 <NuxtLink :to="`/staff/applications/${person.applicationId}`" class="hover:underline">{{ person.name }}</NuxtLink>
                 <span v-if="person.faculty" class="text-ink-soft text-xs"> · {{ person.faculty }}</span>
               </span>
-              <StaffAssessmentMove
-                v-if="manage"
-                :application-id="person.applicationId"
-                :name="person.name"
-                :current-session-id="page.session.id"
-                :targets="data?.targets ?? []"
-                @done="moved"
-              />
+              <div class="flex min-w-0 flex-col gap-2 sm:w-1/2 sm:shrink-0 sm:flex-row sm:items-start sm:justify-end">
+                <StaffAssessmentHomeworkLinks :links="person.homeworkLinks" :name="person.name" />
+                <StaffAssessmentMove
+                  v-if="manage"
+                  class="min-w-0 flex-1"
+                  :application-id="person.applicationId"
+                  :name="person.name"
+                  :current-session-id="page.session.id"
+                  :targets="data?.targets ?? []"
+                  @done="moved"
+                />
+              </div>
             </li>
             <li v-if="page.answers[list.key].length === 0" class="text-ink-soft text-sm">Никого.</li>
           </ul>
@@ -261,35 +267,38 @@ const LISTS = [
               {{ person.name }}
               <span class="text-ink-soft text-xs">· {{ answerLine(person) }}</span>
             </span>
-            <div v-if="manage" class="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                class="min-h-9 rounded-xl border px-3 text-sm font-medium transition"
-                :class="person.attended ? 'border-ok bg-ok/10 text-ok' : 'border-line text-ink-soft'"
-                :aria-pressed="person.attended"
-                :disabled="busy === `a:${person.applicationId}`"
-                @click="attend(person)"
-              >
-                {{ person.attended ? "Пришёл ✓" : "Пришёл?" }}
-              </button>
-              <UiSelect
-                v-if="page.groups.length"
-                size="sm"
-                model-value=""
-                :disabled="busy === `m:${person.applicationId}`"
-                :aria-label="`В подгруппу: ${person.name}`"
-                @change="move(person, ($event.target as HTMLSelectElement).value)"
-              >
-                <option value="" disabled>В подгруппу…</option>
-                <option v-for="option in page.groups.filter((group) => !group.faculty || group.faculty === person.faculty)" :key="option.id" :value="option.id">{{ option.title }}{{ option.faculty ? ` · ${option.faculty}` : '' }}</option>
-              </UiSelect>
-              <StaffAssessmentMove
-                :application-id="person.applicationId"
-                :name="person.name"
-                :current-session-id="page.session.id"
-                :targets="data?.targets ?? []"
-                @done="moved"
-              />
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
+              <StaffAssessmentHomeworkLinks :links="person.homeworkLinks" :name="person.name" />
+              <template v-if="manage">
+                <button
+                  type="button"
+                  class="min-h-9 rounded-xl border px-3 text-sm font-medium transition"
+                  :class="person.attended ? 'border-ok bg-ok/10 text-ok' : 'border-line text-ink-soft'"
+                  :aria-pressed="person.attended"
+                  :disabled="busy === `a:${person.applicationId}`"
+                  @click="attend(person)"
+                >
+                  {{ person.attended ? "Пришёл ✓" : "Пришёл?" }}
+                </button>
+                <UiSelect
+                  v-if="page.groups.length"
+                  size="sm"
+                  model-value=""
+                  :disabled="busy === `m:${person.applicationId}`"
+                  :aria-label="`В подгруппу: ${person.name}`"
+                  @change="move(person, ($event.target as HTMLSelectElement).value)"
+                >
+                  <option value="" disabled>В подгруппу…</option>
+                  <option v-for="option in page.groups.filter((group) => !group.faculty || group.faculty === person.faculty)" :key="option.id" :value="option.id">{{ option.title }}{{ option.faculty ? ` · ${option.faculty}` : '' }}</option>
+                </UiSelect>
+                <StaffAssessmentMove
+                  :application-id="person.applicationId"
+                  :name="person.name"
+                  :current-session-id="page.session.id"
+                  :targets="data?.targets ?? []"
+                  @done="moved"
+                />
+              </template>
             </div>
           </li>
         </ul>
@@ -353,17 +362,20 @@ const LISTS = [
                   <span class="text-ink-soft mr-1.5 text-xs">{{ index + 1 }}</span>{{ person.name }}
                   <span v-if="person.faculty" class="text-ink-soft text-xs"> · {{ person.faculty }}</span>
                 </span>
-                <UiSelect
-                  v-if="manage"
-                  size="sm"
-                  :model-value="group.id"
-                  :disabled="busy === `m:${person.applicationId}`"
-                  :aria-label="`Подгруппа: ${person.name}`"
-                  @change="move(person, ($event.target as HTMLSelectElement).value)"
-                >
-                  <option v-for="option in page.groups.filter((group) => !group.faculty || group.faculty === person.faculty)" :key="option.id" :value="option.id">{{ option.title }}{{ option.faculty ? ` · ${option.faculty}` : '' }}</option>
-                  <option value="">Убрать из подгруппы</option>
-                </UiSelect>
+                <div class="flex min-w-0 flex-wrap items-center gap-2">
+                  <StaffAssessmentHomeworkLinks :links="person.homeworkLinks" :name="person.name" />
+                  <UiSelect
+                    v-if="manage"
+                    size="sm"
+                    :model-value="group.id"
+                    :disabled="busy === `m:${person.applicationId}`"
+                    :aria-label="`Подгруппа: ${person.name}`"
+                    @change="move(person, ($event.target as HTMLSelectElement).value)"
+                  >
+                    <option v-for="option in page.groups.filter((group) => !group.faculty || group.faculty === person.faculty)" :key="option.id" :value="option.id">{{ option.title }}{{ option.faculty ? ` · ${option.faculty}` : '' }}</option>
+                    <option value="">Убрать из подгруппы</option>
+                  </UiSelect>
+                </div>
               </li>
               <li v-if="manage && group.people.length" class="pt-2">
                 <details class="text-sm">
