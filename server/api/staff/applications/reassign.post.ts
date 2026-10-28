@@ -10,6 +10,7 @@ const schema = z.object({
   applicationId: z.string().min(1),
   reviewerId: z.string().min(1),
   stage: z.enum(EVALUATED_STAGES).default("APPLICATION"),
+  notify: z.boolean().default(true),
 });
 
 /** Передать анкету другому мастеру — вместе с уже поставленными баллами. */
@@ -39,10 +40,10 @@ export default defineAction(schema, async ({ body, event }) => {
     action: "application.reassign",
     entityType: "application",
     entityId: application.id,
-    meta: { stage: body.stage, reviewerId: reviewer.id, reviewer: [reviewer.firstName, reviewer.lastName].filter(Boolean).join(" ") },
+    meta: { stage: body.stage, reviewerId: reviewer.id, reviewer: [reviewer.firstName, reviewer.lastName].filter(Boolean).join(" "), notify: body.notify },
   });
 
-  await notifyAssigned([review.id], body.stage);
+  if (body.notify) await notifyAssigned([review.id], body.stage);
 
   return { ok: true, message: "Анкета передана.", reviewId: review.id };
 });

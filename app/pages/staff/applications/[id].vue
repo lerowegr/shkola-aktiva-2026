@@ -116,9 +116,10 @@ const { data: pool } = await useFetch("/api/staff/reviewers", {
   key: "staff-reviewers",
 });
 const target = ref("");
+const notifyReassignment = ref(true);
 const reassign = useAction("/api/staff/applications/reassign");
 async function pass() {
-  const result = await reassign.submit({ applicationId: id.value, reviewerId: target.value, stage: stage.value });
+  const result = await reassign.submit({ applicationId: id.value, reviewerId: target.value, stage: stage.value, notify: notifyReassignment.value });
   if (result.ok) {
     target.value = "";
     await refresh();
@@ -460,6 +461,8 @@ v-for="field in [
               </UiButton>
             </div>
           </div>
+          <UiCheckbox v-model="notifyReassignment" :disabled="reassign.pending.value">Уведомить нового мастера</UiCheckbox>
+          <p class="text-ink-soft text-xs">Передача всегда сохраняется в журнале действий.</p>
           <UiNotice :ok="reassign.result.value?.ok" :message="reassign.result.value?.message" />
         </form>
       </div>
