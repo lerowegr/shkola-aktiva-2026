@@ -25,6 +25,7 @@ export interface PersonRow {
   hasTelegram: boolean;
   roles: { id: string; name: string }[];
   application: "none" | "draft" | "submitted";
+  faculty: string | null;
 }
 
 export async function searchPeople(params: {
@@ -57,6 +58,7 @@ export async function searchPeople(params: {
       id: true,
       firstName: true,
       lastName: true,
+      faculty: true,
       nickname: true,
       email: true,
       telegramUsername: true,
@@ -73,6 +75,7 @@ export async function searchPeople(params: {
   return people.map((person) => ({
     id: person.id,
     name: displayName(person),
+    faculty: person.faculty,
     nickname: person.nickname,
     email: person.email,
     telegramUsername: person.telegramUsername,

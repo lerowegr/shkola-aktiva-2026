@@ -14,6 +14,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   "invite.create": "Приглашение организатора",
   "invite.accept": "Пароль по приглашению",
   "application.submit": "Отправка анкеты",
+  "application.accept_by_staff": "Анкета принята организатором",
   "application.assign_all": "Распределение анкет",
   "application.reassign": "Передача анкеты другому мастеру",
   "review.score": "Балл по критерию",

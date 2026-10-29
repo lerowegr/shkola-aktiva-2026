@@ -20,8 +20,8 @@ export async function writeAudit(params: {
   /** Откуда пришёл запрос. Для фоновых задач не заполняется — это нормально. */
   ip?: string | null;
   userAgent?: string | null;
-}): Promise<void> {
-  await db.auditLog.create({
+}, client: Pick<typeof db, "auditLog"> = db): Promise<void> {
+  await client.auditLog.create({
     data: {
       actorId: params.actorId,
       action: params.action,

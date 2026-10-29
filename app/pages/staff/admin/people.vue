@@ -3,6 +3,7 @@ import { refDebounced } from "@vueuse/core";
 import { Ban, Copy, KeyRound, Search, ShieldCheck, Trash2, X } from "lucide-vue-next";
 
 import type { PersonRow } from "~~/lib/admin/people";
+import { canChangeAnswer } from "~~/lib/assessment/rules";
 
 /**
  * Люди: роли, блокировка, ссылки-приглашения, удаление организатора
@@ -20,6 +21,51 @@ const { data: roles } = await useFetch<{ roles: { id: string; name: string; gran
 const user = await useSession();
 const { data: nav } = await useFetch("/api/staff/nav", { key: "staff-nav" });
 const canDelete = computed(() => Boolean(nav.value?.can.team && nav.value?.can.roles));
+
+// Адресно принять сохранённую анкету и предложить выбор времени ЦО.
+interface AcceptSession { id: string; title: string; startsAt: string; faculties: string[]; reserve: boolean; invitedAt: string | null; stale: boolean }
+const accepting = ref<{ person: PersonRow; sessions: AcceptSession[]; sessionId: string; loading: boolean; pending: boolean } | null>(null);
+const retryInvite = ref<{ personId: string; applicationId: string; sessionId: string; faculty: string | null; pending: boolean } | null>(null);
+const availableSessions = computed(() => {
+  const current = accepting.value;
+  if (!current?.person.faculty) return [];
+  return current.sessions.filter((session) => !session.reserve && session.invitedAt && !session.stale && session.faculties.includes(current.person.faculty!) && canChangeAnswer(new Date(), session.startsAt));
+});
+async function askAccept(person: PersonRow) {
+  const current = { person, sessions: [] as AcceptSession[], sessionId: "", loading: true, pending: false };
+  accepting.value = current;
+  try {
+    const result = await $fetch<{ sessions: AcceptSession[] }>("/api/staff/assessment");
+    if (accepting.value?.person.id !== person.id) return;
+    accepting.value.sessions = result.sessions;
+    if (availableSessions.value.length === 1) accepting.value.sessionId = availableSessions.value[0]!.id;
+  } catch {
+    message.value = { id: person.id, ok: false, text: "Не удалось загрузить сборы ЦО. Обновите страницу." };
+  } finally {
+    if (accepting.value?.person.id === person.id) accepting.value.loading = false;
+  }
+}
+async function acceptApplication() {
+  const current = accepting.value;
+  if (!current?.sessionId || current.pending) return;
+  current.pending = true;
+  try {
+    const result = await call("/api/admin/people/accept-application", { userId: current.person.id, sessionId: current.sessionId }, current.person.id);
+    if (result.ok) {
+      retryInvite.value = result.invited === false && result.applicationId ? { personId: current.person.id, applicationId: result.applicationId, sessionId: current.sessionId, faculty: current.person.faculty, pending: false } : null;
+      accepting.value = null;
+    }
+  } finally { current.pending = false; }
+}
+async function retryCandidateInvite() {
+  const current = retryInvite.value;
+  if (!current || current.pending) return;
+  current.pending = true;
+  try {
+    const result = await call("/api/staff/assessment/invite", { sessionId: current.sessionId, applicationIds: [current.applicationId], ...(current.faculty ? { faculty: current.faculty } : {}) }, current.personId);
+    if (result.ok && result.invited === 1) retryInvite.value = null;
+  } finally { current.pending = false; }
+}
 
 // --- Удаление организатора ----------------------------------------------------
 interface DeleteCheck {
@@ -59,13 +105,15 @@ const open = ref<string | null>(null);
 const message = ref<{ id: string; ok: boolean; text: string } | null>(null);
 const links = ref<Record<string, string>>({});
 
+type PersonActionResult = { ok: boolean; message?: string; link?: string; applicationId?: string; invited?: boolean | number; reviewAssigned?: boolean; auditRecorded?: boolean };
 async function call(path: string, body: Record<string, unknown>, personId: string) {
-  const result = await $fetch<{ ok: boolean; message?: string; link?: string }>(path, {
+  const result = await $fetch<PersonActionResult>(path, {
     method: "POST",
     body,
     ignoreResponseError: true,
-  });
-  message.value = result.message || !result.ok ? { id: personId, ok: result.ok, text: result.message ?? "Не получилось." } : null;
+  }).catch((): PersonActionResult => ({ ok: false, message: "Нет связи с сайтом. Обновите страницу и проверьте результат." }));
+  const attention = result.ok && (result.invited === false || result.reviewAssigned === false || result.auditRecorded === false);
+  message.value = result.message || !result.ok ? { id: personId, ok: result.ok && !attention, text: result.message ?? "Не получилось." } : null;
   if (result.link) links.value = { ...links.value, [personId]: result.link };
   await refresh();
   return result;
@@ -165,6 +213,23 @@ const APP = { none: "без анкеты", draft: "анкета: чернови�
             </button>
 
             <div v-if="open === person.id" class="bg-paper/60 flex flex-col gap-3 px-4 pt-1 pb-4">
+              <div v-if="person.application === 'draft' && !person.blocked && nav?.can.assign" class="border-line bg-card flex flex-col gap-3 rounded-2xl border p-3">
+                <button v-if="accepting?.person.id !== person.id" type="button" class="text-accent min-h-11 self-start text-sm font-semibold" @click="askAccept(person)">Принять сохранённую анкету и пригласить на ЦО</button>
+                <template v-else>
+                  <p class="text-sm font-semibold">Принять анкету {{ person.name }}?</p>
+                  <p class="text-ink-soft text-sm">После закрытия приёма сохранённые ответы перейдут в общие анкеты. Если ссылка на ДЗ отсутствует, сдача ДЗ не появится. После принятия анкету нельзя будет редактировать. Кандидату придёт приглашение на день; время он выберет сам.</p>
+                  <p v-if="accepting.loading" class="text-ink-soft text-sm">Загружаем сборы ЦО…</p>
+                  <p v-else-if="!availableSessions.length" class="text-danger text-sm">Нет опубликованных будущих сборов этого факультета с доступной записью.</p>
+                  <UiSelect v-else v-model="accepting.sessionId" size="md" label="Сбор ЦО">
+                    <option value="" disabled>Выберите сбор</option>
+                    <option v-for="session in availableSessions" :key="session.id" :value="session.id">{{ mskFormat(session.startsAt, 'd MMMM') }}, {{ mskTime(session.startsAt) }} — {{ session.title }}</option>
+                  </UiSelect>
+                  <div class="flex flex-wrap gap-2">
+                    <UiButton :disabled="!accepting.sessionId || accepting.loading" :pending="accepting.pending" @click="acceptApplication">Принять и пригласить</UiButton>
+                    <UiButton variant="ghost" :disabled="accepting.pending" @click="accepting = null">Отмена</UiButton>
+                  </div>
+                </template>
+              </div>
               <div class="flex flex-wrap items-center gap-1.5">
                 <span class="text-ink-soft text-xs">Роли:</span>
                 <span v-for="role in person.roles" :key="role.id" class="bg-card border-line flex items-center gap-1 rounded-lg border py-0.5 pr-1 pl-2 text-xs">
@@ -292,6 +357,7 @@ const APP = { none: "без анкеты", draft: "анкета: чернови�
                 </div>
               </div>
               <UiNotice v-if="message?.id === person.id" :ok="message.ok" :message="message.text" />
+              <UiButton v-if="retryInvite?.personId === person.id" :pending="retryInvite.pending" @click="retryCandidateInvite">Повторить приглашение только этому кандидату</UiButton>
             </div>
           </li>
         </ul>
