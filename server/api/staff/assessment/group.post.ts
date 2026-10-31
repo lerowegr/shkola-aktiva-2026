@@ -8,7 +8,7 @@ const schema = z.object({
   id: z.string().min(1).optional(),
   sessionId: z.string().min(1, "Выберите сбор."),
   title: z.string().max(200),
-  faculty: z.string().min(1).optional(),
+  faculty: z.string().min(1).nullable().optional(),
 });
 
 /** Создать подгруппу сбора или переименовать. */

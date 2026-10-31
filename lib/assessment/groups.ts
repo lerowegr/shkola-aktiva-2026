@@ -104,7 +104,7 @@ export async function saveGroup(seasonId: string, input: GroupInput): Promise<Re
     if (!session) return { ok: false, message: "Сбор не найден — обновите страницу." };
     const found = input.id ? await tx.assessmentGroup.findFirst({ where: { id: input.id, seasonId, sessionId: session.id }, select: { id: true, faculty: true } }) : null;
     if (input.id && !found) return { ok: false, message: "Подгруппа не найдена в выбранном времени." };
-    const faculty = input.faculty !== undefined ? input.faculty : found ? found.faculty : session.faculties.length === 1 ? session.faculties[0]! : undefined;
+    const faculty = input.faculty !== undefined ? input.faculty : found ? found.faculty : session.faculties.length === 1 ? session.faculties[0]! : session.reserve ? null : undefined;
     if (faculty === undefined) return { ok: false, message: "Выберите факультет подгруппы." };
     if (faculty && (!(FACULTIES as readonly string[]).includes(faculty) || (session.faculties.length > 0 && !session.faculties.includes(faculty)))) return { ok: false, message: "Факультет не относится к этому времени ЦО." };
     if (found && faculty) {

@@ -173,6 +173,48 @@ describe("подгруппы центра оценки", () => {
     );
   });
 
+  it("в резервный день общая подгруппа принимает кандидатов всех факультетов", async () => {
+    const reserve = (
+      await db.assessmentSession.create({
+        data: {
+          seasonId,
+          title: "Резерв",
+          startsAt: new Date("2026-10-31T09:00:00Z"),
+          reserve: true,
+        },
+      })
+    ).id;
+    const saved = await saveGroup(seasonId, { sessionId: reserve, title: "Все факультеты" });
+    expect(saved).toMatchObject({ ok: true });
+    const general = saved.ok ? saved.id : "";
+
+    // Кандидаты разных факультетов ответили «приду в резервный день».
+    const people = await Promise.all(
+      ["ЮФ", "ВШУ"].map(async (faculty) => {
+        const user = await db.user.create({ data: { firstName: faculty, faculty } });
+        const application = await db.application.create({
+          data: {
+            seasonId,
+            userId: user.id,
+            firstName: faculty,
+            status: "SUBMITTED",
+            submittedAt: new Date(),
+          },
+        });
+        await db.assessmentInvite.create({
+          data: { sessionId, applicationId: application.id, answer: "RESERVE" },
+        });
+        return application;
+      }),
+    );
+    for (const person of people) {
+      expect(await placeMember(seasonId, person.id, general, null)).toMatchObject({
+        ok: true,
+        to: "Все факультеты",
+      });
+    }
+  });
+
   it("эксперта с начатой оценкой снять нельзя, без оценок — можно", async () => {
     const g = await group("Группа");
     const kate = await expert("Катя");

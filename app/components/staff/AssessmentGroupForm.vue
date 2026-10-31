@@ -3,9 +3,11 @@ import type { ActionResult } from "~/composables/useAction";
 import { FACULTIES } from "~~/lib/profile/onboarding";
 
 /**
- * Подгруппа сбора ЦО: название и эксперты. Её видят только организаторы и
- * эксперты — кандидату показывают сбор. Новая подгруппа сначала создаётся,
- * потом ей ставятся эксперты — два запроса, но одна кнопка.
+ * Подгруппа сбора ЦО: название, факультет и эксперты. Её видят только
+ * организаторы и эксперты — кандидату показывают сбор. Новая подгруппа
+ * сначала создаётся, потом ей ставятся эксперты — два запроса, но одна кнопка.
+ * В резервный день можно выбрать «Резерв — все факультеты»: в такую общую
+ * подгруппу кладут кандидатов любого факультета.
  */
 interface Group {
   id: string;
@@ -14,7 +16,7 @@ interface Group {
   experts: { id: string; name: string }[];
 }
 
-const props = defineProps<{ group: Group | null; sessionId: string; faculties: string[]; pool: { id: string; name: string }[]; suggestedTitle: string }>();
+const props = defineProps<{ group: Group | null; sessionId: string; faculties: string[]; reserve: boolean; pool: { id: string; name: string }[]; suggestedTitle: string }>();
 const emit = defineEmits<{ saved: []; cancel: [] }>();
 
 const form = reactive({
@@ -40,7 +42,9 @@ async function save() {
       ...(props.group ? { id: props.group.id } : {}),
       sessionId: props.sessionId,
       title: form.title,
-      ...(form.faculty ? { faculty: form.faculty } : {}),
+      // Пустой факультет — общая подгруппа. В обычный день её не предлагаем:
+      // без выбора сервер попросит указать факультет.
+      ...(form.faculty ? { faculty: form.faculty } : props.reserve || props.group?.faculty === null ? { faculty: null } : {}),
     });
     if (!saved.ok) return (result.value = saved);
 
@@ -72,11 +76,12 @@ async function save() {
 
     <label class="flex flex-col gap-1.5 text-sm font-medium">
       Факультет подгруппы
-      <UiSelect v-model="form.faculty" :required="!group || group.faculty !== null" aria-label="Факультет подгруппы">
-        <option value="" disabled>{{ group && group.faculty === null ? 'Историческая общая подгруппа' : 'Выберите факультет' }}</option>
+      <UiSelect v-model="form.faculty" :required="!reserve && (!group || group.faculty !== null)" aria-label="Факультет подгруппы">
+        <option value="" :disabled="!reserve">{{ reserve ? 'Резерв — все факультеты' : group && group.faculty === null ? 'Историческая общая подгруппа' : 'Выберите факультет' }}</option>
         <option v-for="faculty in (faculties.length ? faculties : FACULTIES)" :key="faculty" :value="faculty">{{ faculty }}</option>
       </UiSelect>
-      <span class="text-ink-soft text-xs font-normal">Переносы разрешены только между подгруппами одного времени и факультета.</span>
+      <span v-if="reserve" class="text-ink-soft text-xs font-normal">«Резерв — все факультеты» — общая подгруппа: в неё можно положить кандидата любого факультета. Иначе — только своего факультета.</span>
+      <span v-else class="text-ink-soft text-xs font-normal">Переносы разрешены только между подгруппами одного времени и факультета.</span>
     </label>
 
     <fieldset class="flex flex-col gap-2">
