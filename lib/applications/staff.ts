@@ -1,4 +1,5 @@
 import { displayName } from "~~/lib/auth/actor";
+import { missedAssessment, slotStartsAt } from "~~/lib/assessment/rules";
 import { db } from "~~/lib/db";
 import type { StageKind } from "~~/lib/generated/prisma/enums";
 import type { GuideView } from "~~/lib/interviews/guide";
@@ -60,7 +61,7 @@ export async function criteriaFor(seasonId: string, stage: StageKind) {
 // ---------------------------------------------------------------------------
 
 export type ListScope = "mine" | "all";
-export type ListFilter = "all" | "todo" | "done";
+export type ListFilter = "all" | "todo" | "done" | "missed";
 
 export interface ListRow {
   id: string;
@@ -73,6 +74,8 @@ export interface ListRow {
   reviewers: { id: string; name: string; isMe: boolean; released: boolean }[];
   mine: boolean;
   summary: ReviewSummary;
+  /** День ЦО прошёл, а отметки «пришёл» нет. */
+  missedAssessment: boolean;
   /** Маркеры, по которым мастер что-то написал, — чипы в списке. */
   markers: string[];
 }
@@ -107,7 +110,7 @@ export async function listApplications(params: {
   const faculty = params.faculty ?? "";
   const stage = params.stage ?? "APPLICATION";
 
-  const [criteria, applications] = await Promise.all([
+  const [criteria, applications, reserve] = await Promise.all([
     criteriaFor(seasonId, stage),
     db.application.findMany({
       where: {
@@ -126,6 +129,14 @@ export async function listApplications(params: {
         studentId: true,
         submittedAt: true,
         user: { select: { telegramUsername: true, faculty: true } },
+        assessmentInvite: {
+          select: {
+            attended: true,
+            answer: true,
+            reserveQueued: true,
+            session: { select: { startsAt: true, invited: true } },
+          },
+        },
         submissions: {
           where: { stageKind: stage, replacedAt: null },
           orderBy: { submittedAt: "desc" },
@@ -145,7 +156,14 @@ export async function listApplications(params: {
         },
       },
     }),
+    db.assessmentSession.findFirst({
+      where: { seasonId, reserve: true },
+      orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+      select: { startsAt: true, invited: true },
+    }),
   ]);
+
+  const reserveStartsAt = reserve ? slotStartsAt(reserve) : null;
 
   const all: (ListRow & { studentId: string | null })[] = applications.map((application) => {
     // В «Моих» показываем свою оценку, во «Всех» — оценку первого мастера.
@@ -169,6 +187,17 @@ export async function listApplications(params: {
       })),
       mine: application.reviews.some((review) => review.reviewerId === viewerId && review.releasedAt === null),
       summary: reviewSummary(criteria, main?.scores ?? []),
+      missedAssessment: application.assessmentInvite
+        ? missedAssessment(
+            {
+              attended: application.assessmentInvite.attended,
+              answer: application.assessmentInvite.answer,
+              reserveQueued: application.assessmentInvite.reserveQueued,
+              sessionStartsAt: slotStartsAt(application.assessmentInvite.session),
+            },
+            reserveStartsAt,
+          )
+        : false,
       markers: (main?.markers ?? [])
         .map((item) => item.marker)
         .sort((a, b) => a.order - b.order)
@@ -187,10 +216,15 @@ export async function listApplications(params: {
     all: inFaculty.length,
     todo: inFaculty.filter((row) => row.summary.status !== "done").length,
     done: inFaculty.filter((row) => row.summary.status === "done").length,
+    missed: inFaculty.filter((row) => row.missedAssessment).length,
   };
 
   const rows = inFaculty
-    .filter((row) => filter === "all" || (filter === "done") === (row.summary.status === "done"))
+    .filter((row) => {
+      if (filter === "all") return true;
+      if (filter === "missed") return row.missedAssessment;
+      return (filter === "done") === (row.summary.status === "done");
+    })
     .filter((row) => matches(row, row.studentId, query))
     .map(({ studentId: _studentId, ...row }) => row);
 
@@ -252,6 +286,8 @@ export interface StaffApplication {
   stage: EvaluatedStage;
   /** Запись на собеседование — для этапа собеседования. */
   interview: StaffInterview | null;
+  /** День ЦО прошёл, а отметки «пришёл» нет. */
+  missedAssessment: boolean;
   /** Текст задания этапа — для домашки. */
   task: string | null;
   /** Формулировки заданий ДЗ (подсказки вопросов раздела ДЗ) — для ДЗ и собеседования. */
@@ -289,6 +325,14 @@ export async function loadStaffApplication(
       studentId: true,
       submittedAt: true,
       user: { select: { telegramUsername: true, telegramId: true } },
+      assessmentInvite: {
+        select: {
+          attended: true,
+          answer: true,
+          reserveQueued: true,
+          session: { select: { startsAt: true, invited: true } },
+        },
+      },
       answers: { select: { questionId: true, value: true } },
       bookings: {
         where: { cancelledAt: null },
@@ -340,7 +384,7 @@ export async function loadStaffApplication(
   // Черновики организаторам не показываем: человек ещё пишет.
   if (!application || application.status !== "SUBMITTED") return null;
 
-  const [questions, criteria, stageRow, markers] = await Promise.all([
+  const [questions, criteria, stageRow, markers, reserve] = await Promise.all([
     // Ответы анкеты показываем на любом этапе: мастеру ДЗ полезно помнить,
     // кто перед ним.
     db.formQuestion.findMany({
@@ -358,6 +402,11 @@ export async function loadStaffApplication(
       where: { seasonId: application.seasonId, stageKind: stage },
       orderBy: { order: "asc" },
       select: { id: true, title: true, example: true },
+    }),
+    db.assessmentSession.findFirst({
+      where: { seasonId: application.seasonId, reserve: true },
+      orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+      select: { startsAt: true, invited: true },
     }),
   ]);
   const homeworkSections =
@@ -385,6 +434,12 @@ export async function loadStaffApplication(
 
   return {
     stage,
+    missedAssessment: application.assessmentInvite ? missedAssessment({
+      attended: application.assessmentInvite.attended,
+      answer: application.assessmentInvite.answer,
+      reserveQueued: application.assessmentInvite.reserveQueued,
+      sessionStartsAt: slotStartsAt(application.assessmentInvite.session),
+    }, reserve ? slotStartsAt(reserve) : null) : false,
     interview:
       stage === "INTERVIEW" && booking
         ? {

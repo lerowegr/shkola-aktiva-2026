@@ -149,6 +149,52 @@ export function dayOf(
   return invite.sessionId;
 }
 
+/**
+ * День, на который кандидат реально придёт: резерв — день резервного сбора,
+ * «не смогу» и очередь — никакой. Пришедшего без подтверждённого дня
+ * (организатор отметил вручную) относим ко дню приглашения.
+ */
+export function attendanceDay(
+  invite: {
+    sessionStartsAt: Date | string;
+    answer: AssessmentAnswerKind | null;
+    reserveQueued?: boolean;
+    attended?: boolean;
+  },
+  reserveStartsAt: Date | string | null,
+): Date | null {
+  if (invite.reserveQueued) {
+    return invite.attended ? new Date(invite.sessionStartsAt) : null;
+  }
+  if (invite.answer === null || invite.answer === "CANT") {
+    return invite.attended ? new Date(invite.sessionStartsAt) : null;
+  }
+  if (invite.answer === "RESERVE") {
+    if (reserveStartsAt) return new Date(reserveStartsAt);
+    return invite.attended ? new Date(invite.sessionStartsAt) : null;
+  }
+  return new Date(invite.sessionStartsAt);
+}
+
+/**
+ * День ЦО уже прошёл, а отметки «пришёл» нет. Неответившие, «не смогу»
+ * и ожидающие резерв — не прогул: своего дня у них ещё нет.
+ */
+export function missedAssessment(
+  invite: {
+    attended: boolean;
+    answer: AssessmentAnswerKind | null;
+    reserveQueued?: boolean;
+    sessionStartsAt: Date | string;
+  },
+  reserveStartsAt: Date | string | null,
+  now: Date = new Date(),
+): boolean {
+  if (invite.attended) return false;
+  const day = attendanceDay(invite, reserveStartsAt);
+  return day !== null && mskDayKey(day) < mskDayKey(now);
+}
+
 /** Ответ можно менять, пока «свой день» и день, на который переходит кандидат, не начались. */
 export function canChangeAnswer(
   now: Date,

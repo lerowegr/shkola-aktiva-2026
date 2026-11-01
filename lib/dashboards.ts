@@ -2,7 +2,9 @@ import { db } from "~~/lib/db";
 import type { StageKind } from "~~/lib/generated/prisma/enums";
 
 import { reviewSummary } from "./applications/review";
+import { attendanceDay, missedAssessment, mskDayKey, slotStartsAt } from "./assessment/rules";
 import { displayName } from "./auth/actor";
+import { facultyMatches, type FacultyFilter } from "./profile/faculty";
 
 /**
  * Цифры для дашбордов. Только чтение и подсчёт: кто вправе смотреть,
@@ -106,6 +108,260 @@ export async function daily(
     });
   }
   return points;
+}
+
+export interface ReportFilters {
+  faculty?: FacultyFilter;
+  assessmentDay?: string;
+  interviewDay?: string;
+}
+
+export interface AssessmentDayPoint {
+  day: string; // YYYY-MM-DD по Москве
+  /** В этот день есть резервный сбор. */
+  reserve: boolean;
+  attended: number;
+  missed: number;
+  /** Подтвердились, но день ещё не прошёл. */
+  pending: number;
+}
+
+export interface ConversionStep {
+  key: "attended" | "booked" | "scored" | "accepted";
+  label: string;
+  count: number;
+}
+
+export interface AssessmentReport {
+  days: AssessmentDayPoint[];
+  /** Все дни сезона — для выпадающего списка, даже когда выбран один. */
+  options: { day: string; reserve: boolean }[];
+  conversion: ConversionStep[];
+}
+
+export interface InterviewDayPoint {
+  day: string; // YYYY-MM-DD по Москве
+  slots: number;
+  /** Активные записи на этот день. */
+  booked: number;
+  /** Из записавшихся уже получили оценку собеседования. */
+  scored: number;
+}
+
+export interface InterviewReport {
+  days: InterviewDayPoint[];
+  options: { day: string }[];
+}
+
+/**
+ * ЦО: сколько пришло и сколько не пришло по дням, плюс конверсия
+ * пришедших. Прогул вычисляется, а не хранится: день своего сбора прошёл,
+ * отметки «пришёл» нет. Неответившие и «не смогу» в прогульщики не попадают.
+ */
+export async function assessmentReport(
+  seasonId: string,
+  filters: ReportFilters = {},
+  now = new Date(),
+): Promise<AssessmentReport> {
+  const faculty = filters.faculty ?? "";
+  const dayFilter = filters.assessmentDay || null;
+
+  const [sessions, reserve, interviewCriteria, applications] = await Promise.all([
+    db.assessmentSession.findMany({
+      where: { seasonId },
+      orderBy: { startsAt: "asc" },
+      select: { startsAt: true, reserve: true, invited: true },
+    }),
+    db.assessmentSession.findFirst({
+      where: { seasonId, reserve: true },
+      orderBy: [{ startsAt: "asc" }, { id: "asc" }],
+      select: { startsAt: true, invited: true },
+    }),
+    db.criterion.findMany({
+      where: { seasonId, stageKind: "INTERVIEW" },
+      select: { id: true, maxScore: true },
+    }),
+    db.application.findMany({
+      where: { seasonId, status: "SUBMITTED", assessmentInvite: { isNot: null } },
+      select: {
+        user: { select: { faculty: true } },
+        assessmentInvite: {
+          select: {
+            attended: true,
+            answer: true,
+            reserveQueued: true,
+            session: { select: { startsAt: true, invited: true } },
+          },
+        },
+        bookings: {
+          where: { cancelledAt: null },
+          select: { slot: { select: { startsAt: true } } },
+        },
+        reviews: {
+          where: { stageKind: "INTERVIEW" },
+          select: { scores: { select: { criterionId: true, score: true } } },
+        },
+        decisions: {
+          where: { stageKind: "INTERVIEW" },
+          select: { outcome: true, publishedAt: true },
+        },
+      },
+    }),
+  ]);
+
+  const optionMap = new Map<string, boolean>();
+  for (const session of sessions) {
+    const day = mskDayKey(slotStartsAt(session));
+    optionMap.set(day, (optionMap.get(day) ?? false) || session.reserve);
+  }
+  const options = [...optionMap.entries()]
+    .map(([day, reserve]) => ({ day, reserve }))
+    .sort((a, b) => a.day.localeCompare(b.day));
+
+  const points = new Map<string, AssessmentDayPoint>();
+  for (const option of options) {
+    if (dayFilter && option.day !== dayFilter) continue;
+    points.set(option.day, { ...option, attended: 0, missed: 0, pending: 0 });
+  }
+
+  const reserveStartsAt = reserve ? slotStartsAt(reserve) : null;
+  const cohort: typeof applications = [];
+  const dayOfApplication = (application: (typeof applications)[number]) => {
+    const invite = application.assessmentInvite;
+    if (!invite) return null;
+    return attendanceDay(
+      {
+        sessionStartsAt: slotStartsAt(invite.session),
+        answer: invite.answer,
+        reserveQueued: invite.reserveQueued,
+        attended: invite.attended,
+      },
+      reserveStartsAt,
+    );
+  };
+
+  for (const application of applications) {
+    if (!facultyMatches(application.user.faculty, faculty)) continue;
+    const invite = application.assessmentInvite;
+    if (!invite) continue;
+
+    const day = dayOfApplication(application);
+    const dayKey = day ? mskDayKey(day) : null;
+
+    if (dayKey && points.has(dayKey)) {
+      const point = points.get(dayKey)!;
+      if (invite.attended) point.attended++;
+      else if (
+        missedAssessment(
+          {
+            attended: invite.attended,
+            answer: invite.answer,
+            reserveQueued: invite.reserveQueued,
+            sessionStartsAt: slotStartsAt(invite.session),
+          },
+          reserveStartsAt,
+          now,
+        )
+      ) {
+        point.missed++;
+      } else {
+        point.pending++;
+      }
+    }
+
+    if (invite.attended && (!dayFilter || dayKey === dayFilter)) cohort.push(application);
+  }
+
+  const interviewDay = filters.interviewDay || null;
+  const booked = cohort.filter((application) =>
+    application.bookings.some((booking) => !interviewDay || mskDayKey(booking.slot.startsAt) === interviewDay),
+  );
+  const scored = booked.filter((application) =>
+    application.reviews.some((review) => reviewSummary(interviewCriteria, review.scores).status === "done"),
+  );
+  const accepted = scored.filter((application) =>
+    application.decisions.some((decision) => decision.outcome === "PASSED" && decision.publishedAt !== null),
+  );
+
+  return {
+    days: [...points.values()].sort((a, b) => a.day.localeCompare(b.day)),
+    options,
+    conversion: [
+      { key: "attended", label: "Пришли на ЦО", count: cohort.length },
+      { key: "booked", label: "Записались на собеседование", count: booked.length },
+      { key: "scored", label: "Получили оценки собеседования", count: scored.length },
+      { key: "accepted", label: "Приняты в Школу", count: accepted.length },
+    ],
+  };
+}
+
+/**
+ * Собеседования: загрузка по дням. «Получили оценки» — записавшиеся, у
+ * которых хотя бы один мастер заполнил все критерии собеседования.
+ * Отдельной отметки «пришёл» на собеседовании нет — считаем по записям.
+ */
+export async function interviewsReport(
+  seasonId: string,
+  filters: ReportFilters = {},
+): Promise<InterviewReport> {
+  const faculty = filters.faculty ?? "";
+  const dayFilter = filters.interviewDay || null;
+
+  const [criteria, slots] = await Promise.all([
+    db.criterion.findMany({
+      where: { seasonId, stageKind: "INTERVIEW" },
+      select: { id: true, maxScore: true },
+    }),
+    db.interviewSlot.findMany({
+      where: { seasonId },
+      orderBy: { startsAt: "asc" },
+      select: {
+        startsAt: true,
+        bookings: {
+          where: { cancelledAt: null },
+          select: {
+            application: {
+              select: {
+                user: { select: { faculty: true } },
+                reviews: {
+                  where: { stageKind: "INTERVIEW" },
+                  select: { scores: { select: { criterionId: true, score: true } } },
+                },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const options = [...new Set(slots.map((slot) => mskDayKey(slot.startsAt)))].sort().map((day) => ({ day }));
+
+  const points = new Map<string, InterviewDayPoint>();
+  for (const option of options) {
+    if (dayFilter && option.day !== dayFilter) continue;
+    points.set(option.day, { ...option, slots: 0, booked: 0, scored: 0 });
+  }
+
+  for (const slot of slots) {
+    const day = mskDayKey(slot.startsAt);
+    const point = points.get(day);
+    if (!point) continue;
+    point.slots++;
+
+    for (const booking of slot.bookings) {
+      if (!facultyMatches(booking.application.user.faculty, faculty)) continue;
+      point.booked++;
+      if (booking.application.reviews.some((review) => reviewSummary(criteria, review.scores).status === "done")) {
+        point.scored++;
+      }
+    }
+  }
+
+  return {
+    days: [...points.values()].sort((a, b) => a.day.localeCompare(b.day)),
+    options,
+  };
 }
 
 export interface ReviewerStats {

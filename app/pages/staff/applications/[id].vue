@@ -172,6 +172,10 @@ async function pass() {
 
     <UiNotice v-if="openThread.result.value?.ok === false" :message="openThread.result.value.message" />
 
+    <p v-if="card.missedAssessment" class="border-line text-danger rounded-2xl border p-4 text-sm" role="status">
+      Нет отметки явки на ЦО: подтверждённый день уже прошёл. Оценивать анкету и ДЗ можно в обычном порядке. Если кандидат был на ЦО, проверьте отметку явки в сборе.
+    </p>
+
     <!-- Анкета — две колонки: ответы и оценка рядом. ДЗ и собеседование — одной
          колонкой: работа, сценарий собеса, а критерии в самом низу. -->
     <div class="items-start gap-5" :class="stacked ? 'flex flex-col' : 'grid lg:grid-cols-[minmax(0,1fr)_400px]'">

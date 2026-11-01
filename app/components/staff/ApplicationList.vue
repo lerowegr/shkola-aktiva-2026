@@ -30,6 +30,7 @@ const FILTERS: { key: ListFilter; label: string }[] = [
   { key: "all", label: "Все" },
   { key: "todo", label: "Не проверены" },
   { key: "done", label: "Проверены" },
+  { key: "missed", label: "Нет явки ЦО" },
 ];
 
 const link = (id: string) =>
@@ -53,7 +54,7 @@ const link = (id: string) =>
       <StaffFacultyFilter v-model="faculty" :counts="data?.faculties" />
       </div>
 
-      <div role="tablist" class="bg-paper grid grid-cols-3 gap-1 rounded-2xl p-1 sm:flex">
+      <div role="tablist" class="bg-paper grid grid-cols-2 gap-1 rounded-2xl p-1 sm:flex">
         <button
           v-for="item in FILTERS"
           :key="item.key"
@@ -99,6 +100,7 @@ const link = (id: string) =>
             <StaffAvatar :seed="row.id" :text="row.initials" />
             <span class="min-w-0">
               <span class="block truncate text-sm font-semibold">{{ row.name }}</span>
+              <span v-if="row.missedAssessment" class="text-danger block text-xs">Нет отметки явки на ЦО</span>
               <span class="text-ink-soft block truncate text-xs">
                 {{ [row.faculty, row.telegramUsername ? `@${row.telegramUsername}` : null].filter(Boolean).join(" · ") }}
               </span>
@@ -144,6 +146,8 @@ const link = (id: string) =>
           ? "Никого не нашли. Проверьте написание."
           : faculty
             ? "С этого факультета здесь никого нет."
+          : filter === "missed"
+            ? "Нет кандидатов без отметки явки после подтверждённого дня ЦО."
           : filter === "todo"
             ? "Всё проверено 🎉"
             : stage === "HOMEWORK"

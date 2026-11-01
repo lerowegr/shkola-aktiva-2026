@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { balance, canChangeAnswer, dayOf, invitesFaculty, placeChanged, placeLine, placeOf, placeProblem, readPlace } from "./rules";
+import { balance, canChangeAnswer, dayOf, invitesFaculty, missedAssessment, attendanceDay, placeChanged, placeLine, placeOf, placeProblem, readPlace } from "./rules";
 
 describe("balance", () => {
   it("без групп — никого не раскладывает", () => {
@@ -78,5 +78,26 @@ describe("сборы ЦО", () => {
     expect(canChangeAnswer(now, "2026-10-26T07:59:59Z")).toBe(false);
     expect(canChangeAnswer(now, "2026-10-26T05:00:00Z")).toBe(false);
     expect(canChangeAnswer(now, null)).toBe(true);
+  });
+
+  it("день явки: резерв — день резерва, «не смогу» и очередь — никакой", () => {
+    const monday = "2026-10-26T07:00:00Z";
+    const saturday = "2026-10-31T07:00:00Z";
+    expect(attendanceDay({ sessionStartsAt: monday, answer: "GOING" }, saturday)?.toISOString()).toBe(new Date(monday).toISOString());
+    expect(attendanceDay({ sessionStartsAt: monday, answer: "RESERVE" }, saturday)?.toISOString()).toBe(new Date(saturday).toISOString());
+    expect(attendanceDay({ sessionStartsAt: monday, answer: "RESERVE" }, null)).toBeNull();
+    expect(attendanceDay({ sessionStartsAt: monday, answer: "CANT" }, saturday)).toBeNull();
+    expect(attendanceDay({ sessionStartsAt: monday, answer: null }, saturday)).toBeNull();
+    expect(attendanceDay({ sessionStartsAt: monday, answer: "RESERVE", reserveQueued: true }, saturday)).toBeNull();
+  });
+
+  it("прогул — только у подтвердивших, после своего дня", () => {
+    const invite = { sessionStartsAt: "2026-10-26T07:00:00Z", answer: "GOING" as const, attended: false };
+    expect(missedAssessment(invite, null, now)).toBe(false);
+    expect(missedAssessment({ ...invite, attended: true }, null, now)).toBe(false);
+    expect(missedAssessment(invite, null, new Date("2026-10-26T20:59:00Z"))).toBe(false);
+    expect(missedAssessment(invite, null, new Date("2026-10-26T21:00:00Z"))).toBe(true);
+    expect(missedAssessment({ ...invite, answer: "CANT" }, null, now)).toBe(false);
+    expect(missedAssessment({ ...invite, answer: null }, null, now)).toBe(false);
   });
 });

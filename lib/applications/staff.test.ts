@@ -82,7 +82,7 @@ describe("listApplications", () => {
 
     const todo = await listApplications({ seasonId, viewerId: katya.id, scope: "mine", filter: "todo", query: "" });
     expect(todo.rows.map((row) => row.name)).toEqual(["Ковалёв Имя"]);
-    expect(todo.counts).toEqual({ all: 2, todo: 1, done: 1 });
+    expect(todo.counts).toEqual({ all: 2, todo: 1, done: 1, missed: 0 });
   });
 
   it("фильтр по факультету: строки и счётчики вкладок — по нему, разбивка — по всем", async () => {
@@ -160,5 +160,34 @@ describe("сохранение оценки", () => {
     const card = await loadStaffApplication(app.id, ilya.id);
     expect(card?.reviews[0]).toMatchObject({ isMine: false, updatedBy: "Екатерина Орлова", touched: true });
     expect(card?.reviews[0]?.summary).toEqual({ total: 4, max: 6, status: "progress" });
+  });
+});
+
+
+describe("явка ЦО и оценивание", () => {
+  it("неявка видна в списке и карточке, но баллы сохраняются; отметка явки снимает предупреждение", async () => {
+    const session = await db.assessmentSession.create({ data: { seasonId, title: "Прошедший", startsAt: new Date("2020-01-01T10:00:00Z") } });
+    const { app, review } = await application("Неявка", katya.id);
+    const invite = await db.assessmentInvite.create({ data: { applicationId: app.id, sessionId: session.id, answer: "GOING" } });
+    const args = { seasonId, viewerId: katya.id, scope: "mine" as const, filter: "missed" as const, query: "" };
+    expect((await listApplications(args)).rows.map(row => row.id)).toEqual([app.id]);
+    expect((await loadStaffApplication(app.id, katya.id))?.missedAssessment).toBe(true);
+    expect((await saveScore({ reviewId: review!.id, actorId: katya.id, criterionId: interest.id, score: 3 })).ok).toBe(true);
+    expect((await loadStaffApplication(app.id, katya.id))?.reviews[0]?.scores[interest.id]).toBe(3);
+    await db.assessmentInvite.update({ where: { id: invite.id }, data: { attended: true } });
+    expect((await listApplications(args)).rows).toHaveLength(0);
+    expect((await loadStaffApplication(app.id, katya.id))?.missedAssessment).toBe(false);
+  });
+
+  it("неответившие, отказавшиеся, очередь и чужие анкеты исключены из моих неявок", async () => {
+    const session = await db.assessmentSession.create({ data: { seasonId, title: "Прошедший", startsAt: new Date("2020-01-01T10:00:00Z") } });
+    for (const answer of [null, "CANT", "RESERVE"] as const) {
+      const { app } = await application(String(answer), katya.id);
+      await db.assessmentInvite.create({ data: { applicationId: app.id, sessionId: session.id, answer, reserveQueued: answer === "RESERVE" } });
+    }
+    const { app } = await application("Чужая", ilya.id);
+    await db.assessmentInvite.create({ data: { applicationId: app.id, sessionId: session.id, answer: "GOING" } });
+    expect((await listApplications({ seasonId, viewerId: katya.id, scope: "mine", filter: "missed", query: "" })).rows).toHaveLength(0);
+    expect((await listApplications({ seasonId, viewerId: katya.id, scope: "all", filter: "missed", query: "" })).rows.map(row => row.id)).toEqual([app.id]);
   });
 });

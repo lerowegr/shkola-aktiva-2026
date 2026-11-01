@@ -11,7 +11,17 @@ import type { EvaluatedStage } from "~~/lib/applications/staff";
 definePageMeta({ layout: "staff" });
 useHead({ title: "Дашборды" });
 
-const { data, status, refresh } = await useFetch("/api/staff/dashboards");
+const faculty = useFacultyFilter();
+const assessmentDay = ref("");
+const interviewDay = ref("");
+const { data, status, error, refresh } = await useFetch("/api/staff/dashboards", {
+  query: { faculty, assessmentDay, interviewDay },
+});
+const assessmentSeries = computed(() => [
+  { name: "Пришли", color: "var(--color-brand-blue)", values: data.value?.assessment.days.map(d => d.attended) ?? [] },
+  { name: "Нет отметки явки", color: "var(--color-brand-orange)", values: data.value?.assessment.days.map(d => d.missed) ?? [] },
+  { name: "День ещё не завершён", color: "var(--color-line)", values: data.value?.assessment.days.map(d => d.pending) ?? [] },
+]);
 const updatedAt = ref(new Date());
 async function reload() {
   await refresh();
@@ -90,6 +100,7 @@ function time(date: Date) {
       </button>
     </div>
 
+    <p v-if="error" role="alert" class="text-danger">Не удалось загрузить статистику. Попробуйте обновить страницу.</p>
     <div v-if="data" class="flex flex-col gap-6 transition-opacity" :class="{ 'opacity-60': status === 'pending' }">
       <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <DashStat
@@ -128,6 +139,46 @@ function time(date: Date) {
           />
         </DashCard>
       </div>
+
+      <DashCard title="ЦО и собеседования" hint="Фильтры ниже относятся только к этому блоку. Неявка не ограничивает оценку анкеты и ДЗ.">
+        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+          <StaffFacultyFilter v-model="faculty" />
+          <label class="flex flex-col gap-1 text-sm">День ЦО
+            <UiSelect v-model="assessmentDay" aria-label="День ЦО">
+              <option value="">Все дни ЦО</option>
+              <option v-for="day in data.assessment.options" :key="day.day" :value="day.day">{{ shortDay(day.day) }}{{ day.reserve ? ' · резерв' : '' }}</option>
+            </UiSelect>
+          </label>
+          <label class="flex flex-col gap-1 text-sm">День собеседования
+            <UiSelect v-model="interviewDay" aria-label="День собеседования">
+              <option value="">Все дни собеседований</option>
+              <option v-for="day in data.interviews.options" :key="day.day" :value="day.day">{{ shortDay(day.day) }}</option>
+            </UiSelect>
+          </label>
+        </div>
+        <p class="text-ink-soft text-sm">«Нет отметки явки» — подтвердили участие, день прошёл, явка не отмечена. Отказавшиеся, неответившие и очередь резерва сюда не входят.</p>
+        <div class="grid gap-6 lg:grid-cols-2">
+          <div class="flex min-w-0 flex-col gap-3">
+            <h3 class="font-semibold">Явка на ЦО по дням</h3>
+            <DashColumns v-if="data.assessment.days.length" :labels="data.assessment.days.map(day => shortDay(day.day))" :series="assessmentSeries" caption="Явка на ЦО по московским дням" />
+            <p v-else class="text-ink-soft text-sm">Сборы ЦО пока не созданы.</p>
+          </div>
+          <div class="flex min-w-0 flex-col gap-3">
+            <h3 class="font-semibold">Путь пришедших на ЦО</h3>
+            <p class="text-ink-soft text-sm">От пришедших — к записи, полной оценке собеседования и опубликованному принятию. При выборе дня собеседования учитывается запись на этот день.</p>
+            <DashBarList :rows="data.assessment.conversion.map(step => ({ label: step.label, value: step.count }))" />
+          </div>
+        </div>
+        <h3 class="font-semibold">Собеседования по дням</h3>
+        <p class="text-ink-soft text-sm">Показаны активные записи. Полная оценка означает, что хотя бы один мастер заполнил все критерии; это не отметка явки.</p>
+        <div v-if="data.interviews.days.length" class="border-line overflow-x-auto rounded-xl border">
+          <table class="w-full text-sm tabular-nums">
+            <thead><tr><th class="p-3 text-left">День</th><th class="p-3">Слотов</th><th class="p-3">Записались</th><th class="p-3">Оценены</th></tr></thead>
+            <tbody><tr v-for="day in data.interviews.days" :key="day.day" class="border-line border-t"><th class="p-3 text-left font-normal">{{ shortDay(day.day) }}</th><td class="p-3 text-center">{{ day.slots }}</td><td class="p-3 text-center">{{ day.booked }}</td><td class="p-3 text-center">{{ day.scored }}</td></tr></tbody>
+          </table>
+        </div>
+        <p v-else class="text-ink-soft text-sm">Слоты собеседований пока не созданы.</p>
+      </DashCard>
 
       <DashCard title="Проверка" hint="Сколько проверил каждый мастер и как его средний итог отличается от общего.">
         <!-- Вкладки этапов переносятся на новую строку, а не прячутся за прокруткой. -->
