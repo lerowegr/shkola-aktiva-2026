@@ -53,7 +53,7 @@ async function book(slotId: string) {
           <section v-if="iv.booking" class="bg-ink text-paper flex flex-col gap-3 rounded-3xl p-5">
             <p class="flex items-center gap-2 font-semibold"><CalendarCheck class="size-5 shrink-0" aria-hidden="true" /><span>{{ mskDay(iv.booking.startsAt) }}, {{ mskTime(iv.booking.startsAt) }}–{{ mskTime(iv.booking.endsAt) }}</span></p>
             <p class="flex items-start gap-2 text-sm"><MapPin class="size-4 shrink-0" aria-hidden="true" />{{ iv.booking.location }}</p>
-            <p class="text-sm">{{ iv.booking.room ? `Аудитория ${iv.booking.room}` : 'Аудиторию сообщим дополнительно — пришлём уведомление.' }}</p>
+            <p class="text-sm">{{ iv.booking.room ? `Аудитория ${iv.booking.room}` : 'Аудиторию и подробности мастер напишет в личные сообщения за 5 минут до встречи.' }}</p>
             <p v-if="past" class="text-paper/80 text-sm">Время собеседования прошло. Информацию об итогах опубликуем в кабинете.</p>
             <template v-else>
               <p class="text-paper/80 text-sm">Самостоятельная перезапись — один раз, до {{ mskFormat(iv.booking.changeDeadline, 'd MMMM, HH:mm') }} по Москве.</p>
@@ -68,6 +68,7 @@ async function book(slotId: string) {
           <section v-if="showSlots" class="flex flex-col gap-4">
             <h2 class="font-display text-xl">{{ iv.booking ? 'Перезапись на собеседование' : 'Запись на собеседование' }}</h2>
             <p class="text-ink-soft text-sm">Выберите удобный корпус, затем день и время. Время московское. Записаться можно один раз и один раз самостоятельно перенести запись до 18:00 предыдущего дня.</p>
+            <p class="text-ink-soft text-sm">На 2 ноября запись заканчивается 2 ноября в 02:00 ночи. На остальные дни — в 20:00 накануне. Все сроки — по Москве.</p>
             <p v-if="!campuses.length" class="bg-card border-line rounded-3xl border p-5 text-sm">Свободного времени сейчас нет. Организаторы добавят слоты — проверьте позже.</p>
             <label v-else class="flex flex-col gap-2 text-sm font-medium">1. Корпус
               <UiSelect v-model="campus" aria-label="Корпус"><option value="">Выберите корпус</option><option v-for="place in campuses" :key="place" :value="place">{{ place }}</option></UiSelect>

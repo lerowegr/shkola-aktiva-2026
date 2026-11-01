@@ -28,6 +28,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   "interview.booking_manage": "Ручное изменение записи на собеседование",
   "interview.slot_interviewers": "Изменение мастера собеседования",
   "interview.slots_create": "Нарезка слотов",
+  "interview.schedule_import": "Загрузка расписания собеседований из таблицы",
   "interview.slot_delete": "Удаление слота",
   "role.save": "Изменение роли",
   "role.delete": "Удаление роли",

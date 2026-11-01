@@ -3,23 +3,21 @@ import { fullName } from "~~/lib/applications/staff";
 import { db } from "~~/lib/db";
 import { notify } from "~~/lib/notifications/notify";
 import { ASSESSMENT_REQUIRED, hasAssessmentAttendance } from "./eligibility";
-import { BOOKING_LOCK, canReschedule, changeDeadline, interviewPlace } from "./rules";
+import { BOOKING_LOCK, bookingDeadline, canBook, canReschedule, changeDeadline, interviewPlace } from "./rules";
 import { checkOverlap, InterviewScheduleError, validateInterviewer } from "./scheduling";
 import { stageState, type StageState } from "~~/lib/stages";
 
 /**
  * Запись кандидата на собеседование.
  *
- * Записаться — не позже чем за 2 часа до начала: собеседующим нужно успеть
- * прочитать анкету и домашку. Перенести самостоятельно можно один раз,
+ * Первичная запись — до 20:00 накануне (на 02.11.2026 — до 02:00 того дня).
+ * Перенести самостоятельно можно один раз,
  * до 18:00 предыдущего дня по Москве. Отмена — через организатора.
  *
  * Вместимость слота и правило «одна активная запись на анкету» держатся
  * под замком базы: два человека, нажавшие «Записаться» на один слот в одну
  * секунду, не займут его оба.
  */
-export const BOOK_BEFORE_MS = 2 * 60 * 60 * 1000;
-
 
 export type BookingResult = { ok: true; message: string } | { ok: false; message: string };
 
@@ -80,7 +78,7 @@ export async function loadInterview(userId: string, now = new Date()): Promise<C
     allowed && state === "open" && ((!booking && ctx.application!._count.bookings === 0) || (booking && canReschedule(booking.slot.startsAt, ctx.application!.interviewReschedulesUsed, now)))
       ? (
           await db.interviewSlot.findMany({
-            where: { seasonId: ctx.season.id, capacity: 1, startsAt: { gte: new Date(now.getTime() + BOOK_BEFORE_MS) } },
+            where: { seasonId: ctx.season.id, capacity: 1, startsAt: { gt: now } },
             orderBy: { startsAt: "asc" },
             select: {
               id: true,
@@ -94,7 +92,7 @@ export async function loadInterview(userId: string, now = new Date()): Promise<C
             },
           })
         )
-          .filter((slot) => slot.interviewers.length === 1 && slot._count.bookings < slot.capacity && slot.id !== booking?.slot.id && (!booking || now <= changeDeadline(slot.startsAt)))
+          .filter((slot) => slot.interviewers.length === 1 && slot._count.bookings < slot.capacity && slot.id !== booking?.slot.id && (booking ? now <= changeDeadline(slot.startsAt) : canBook(slot.startsAt, now)))
           .map(({ id, startsAt, endsAt, location, room }) => ({ id, startsAt, endsAt, location, room }))
       : [];
 
@@ -210,15 +208,12 @@ export async function book(userId: string, slotId: string, now = new Date()): Pr
     if (slot.capacity !== 1 || slot.interviewers.length !== 1) return { ok: false as const, message: "Этот слот уточняется организаторами. Выберите другое время." };
     try { await validateInterviewer(tx, slot.interviewers[0]!.userId); }
     catch (error) { if (error instanceof InterviewScheduleError) return { ok: false as const, message: error.message }; throw error; }
-    if (slot.startsAt.getTime() - now.getTime() < BOOK_BEFORE_MS) {
-      return { ok: false as const, message: "На это время уже нельзя записаться — выберите более позднее." };
-    }
-
     const current = await tx.interviewBooking.findFirst({
       where: { applicationId: application.id, cancelledAt: null },
       select: { id: true, slotId: true, slot: { select: { startsAt: true } } },
     });
     if (current?.slotId === slot.id) return { ok: true as const, slot, moved: false, changed: false };
+    if (!current && !canBook(slot.startsAt, now)) return { ok: false as const, message: `Запись на этот день закончилась ${when(bookingDeadline(slot.startsAt))} по Москве. Выберите другой день или обратитесь к организаторам.` };
     const applicationState = await tx.application.findUniqueOrThrow({ where: { id: application.id }, select: { interviewReschedulesUsed: true } });
     if (current && !canReschedule(current.slot.startsAt, applicationState.interviewReschedulesUsed, now)) {
       return { ok: false as const, message: applicationState.interviewReschedulesUsed >= 1 ? "Вы уже использовали единственную перезапись. Для дополнительного переноса обратитесь к организаторам." : "Срок переноса закончился в 18:00 предыдущего дня. Обратитесь к организаторам." };

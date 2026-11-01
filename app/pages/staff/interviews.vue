@@ -15,7 +15,7 @@ const message = useAction("/api/staff/messages/open");
 async function writeTo(applicationId: string) { const result = await message.submit({ applicationId }); if (result.ok && typeof result.threadId === "string") await navigateTo(`/staff/messages?thread=${result.threadId}`); }
 const onlyMine = ref(false);
 const faculty = useFacultyFilter();
-const form = reactive({ date: "2026-11-02", from: "08:30", to: "09:30", duration: 20, gap: 0, location: "", interviewerId: "" });
+const form = reactive({ date: "2026-11-02", from: "08:30", to: "10:00", duration: 45, gap: 0, location: "", interviewerId: "" });
 const week = Array.from({ length: 7 }, (_, i) => `2026-11-${String(i + 2).padStart(2, '0')}`);
 const dates = computed(() => [...new Set([...week, ...(data.value?.slots.map(s => mskDayKey(s.startsAt)) ?? [])])].sort());
 const dateLabel = (date: string) => mskFormat(`${date}T12:00:00+03:00`, "EEE, d MMM");
@@ -56,6 +56,7 @@ async function deleteSlot(slotId: string) { const result = await remove.submit({
         <p class="text-ink-soft text-sm">2–8 ноября. Слотов {{ stats.slots }}, записались {{ stats.booked }}. В каждом слоте один мастер и один кандидат. Перезапись кандидата — один раз, до 18:00 предыдущего дня по Москве.</p>
       </div>
       <StaffInterviewInvitations v-if="canManage" />
+      <StaffInterviewScheduleImport v-if="canManage && pool" :people="pool.people" @saved="refresh()" />
       <UiNotice :ok="message.result.value?.ok" :message="message.result.value?.message" />
       <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <UiCheckbox v-model="onlyMine">Только мои собеседования</UiCheckbox>

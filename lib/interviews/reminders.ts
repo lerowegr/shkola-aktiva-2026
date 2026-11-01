@@ -55,6 +55,16 @@ export async function materializeReminders(now = new Date()): Promise<void> {
     bookings.map((booking) => ({ id: booking.id, startsAt: booking.slot.startsAt })),
     now,
   );
+  const meetingSoon = bookings.filter(booking => {
+    const left = booking.slot.startsAt.getTime() - now.getTime();
+    return left > 0 && left <= 5 * 60_000;
+  });
+  await notify(meetingSoon.flatMap(booking => booking.slot.interviewers.map(item => ({
+    userId: item.userId, category: "REVIEW" as const,
+    title: "Собеседование через 5 минут — напишите участнику",
+    body: `В ${at(booking.slot.startsAt)}, ${interviewPlace(booking.slot)}. Отправьте участнику точное место и подробности встречи в личные сообщения.`,
+    url: `/staff/applications/${booking.application.id}?stage=INTERVIEW`, key: `booking:${booking.id}:meeting-place`,
+  }))), { now, urgent: true });
   if (due.length === 0) return;
 
   const byId = new Map(bookings.map((booking) => [booking.id, booking]));
@@ -97,10 +107,11 @@ export async function materializeReminders(now = new Date()): Promise<void> {
 
 /** Очередь могла задержать доставку: устаревший дедлайн или отменённую запись не отправляем. */
 export async function interviewReminderIsCurrent(key: string | null, now: Date): Promise<boolean> {
-  const match = key?.match(/^booking:([^:]+):(24h|1h|change-deadline)$/);
+  const match = key?.match(/^booking:([^:]+):(24h|1h|change-deadline|meeting-place)$/);
   if (!match) return true;
   const booking = await db.interviewBooking.findUnique({ where: { id: match[1]! }, select: { cancelledAt: true, slot: { select: { startsAt: true } }, application: { select: { interviewReschedulesUsed: true, assessmentInvite: { select: { attended: true } } } } } });
   if (!booking || booking.cancelledAt || booking.slot.startsAt <= now) return false;
+  if (match[2] === "meeting-place") return booking.slot.startsAt.getTime() - now.getTime() <= 5 * 60_000;
   if (match[2] !== "change-deadline") return true;
   const deadline = changeDeadline(booking.slot.startsAt).getTime();
   return booking.application.assessmentInvite?.attended === true && booking.application.interviewReschedulesUsed < 1 && now.getTime() >= deadline - 2 * HOUR && now.getTime() < deadline;

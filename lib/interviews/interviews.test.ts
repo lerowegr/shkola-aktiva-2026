@@ -146,15 +146,52 @@ describe("запись на собеседование", () => {
     const soon = await slot("2026-10-15T20:00:00", [katya.id]);
     const later = await slot("2026-10-20T10:00:00", [katya.id]);
 
-    expect(await book(user.id, soon.id, NOW)).toMatchObject({ ok: true });
+    expect(await book(user.id, soon.id, msk("2026-10-14T19:00:00"))).toMatchObject({ ok: true });
     expect(await book(user.id, later.id, NOW)).toMatchObject({ ok: false });
     expect(await cancel(user.id, NOW)).toMatchObject({ ok: false });
   });
 
-  it("записаться позже чем за 2 часа до начала нельзя", async () => {
+  it("в день встречи первичная запись закрыта, даже если до начала больше двух часов", async () => {
     const { user } = await candidate("Алина", true);
-    const s = await slot("2026-10-15T13:30:00", [katya.id]);
+    const s = await slot("2026-10-15T19:30:00", [katya.id]);
     expect(await book(user.id, s.id, NOW)).toMatchObject({ ok: false });
+  });
+
+  it("первичная запись и список слотов используют дедлайн 20:00, а не срок переноса 18:00", async () => {
+    const a = await candidate("А", true);
+    const b = await candidate("Б", true);
+    const s = await slot("2026-11-03T08:30:00", [katya.id]);
+    expect((await loadInterview(a.user.id, msk("2026-11-02T19:59:59")))?.slots.map(s => s.id)).toContain(s.id);
+    expect((await loadInterview(a.user.id, msk("2026-11-02T20:00:01")))?.slots).toHaveLength(0);
+    expect(await book(a.user.id, s.id, msk("2026-11-02T20:00:01"))).toMatchObject({ ok: false });
+    expect(await book(b.user.id, s.id, msk("2026-11-02T20:00:00"))).toMatchObject({ ok: true });
+  });
+
+  it("на первый понедельник запись до двух ночи, после двух закрыта", async () => {
+    const a = await candidate("А", true);
+    const b = await candidate("Б", true);
+    const s = await slot("2026-11-02T08:30:00", [katya.id]);
+    expect((await loadInterview(a.user.id, msk("2026-11-02T01:59:59")))?.slots).toHaveLength(1);
+    expect((await loadInterview(a.user.id, msk("2026-11-02T02:00:01")))?.slots).toHaveLength(0);
+    expect(await book(a.user.id, s.id, msk("2026-11-02T02:00:01"))).toMatchObject({ ok: false });
+    expect(await book(b.user.id, s.id, msk("2026-11-02T02:00:00"))).toMatchObject({ ok: true });
+  });
+
+  it("напоминание о месте за пять минут приходит только мастеру и отменённое не доставляется", async () => {
+    const a = await candidate("А", true);
+    const s = await slot("2026-11-03T10:00:00", [katya.id]);
+    await book(a.user.id, s.id, NOW);
+    const booking = await db.interviewBooking.findFirstOrThrow();
+    const key = `booking:${booking.id}:meeting-place`;
+    await materializeReminders(msk("2026-11-03T09:54:59"));
+    expect(await db.notification.count({ where: { key } })).toBe(0);
+    await materializeReminders(msk("2026-11-03T09:55:00"));
+    await materializeReminders(msk("2026-11-03T09:56:00"));
+    const notices = await db.notification.findMany({ where: { key } });
+    expect(notices.map(n => n.userId)).toEqual([katya.id]);
+    expect(await interviewReminderIsCurrent(key, msk("2026-11-03T10:00:00"))).toBe(false);
+    await db.interviewBooking.update({ where: { id: booking.id }, data: { cancelledAt: NOW } });
+    expect(await interviewReminderIsCurrent(key, msk("2026-11-03T09:56:00"))).toBe(false);
   });
 
   it("ручная отмена освобождает слот", async () => {
@@ -172,7 +209,7 @@ describe("запись на собеседование", () => {
   it("напоминания создаются по одному разу", async () => {
     const { user } = await candidate("Алина", true);
     const s = await slot("2026-10-15T20:00:00", [katya.id]);
-    await book(user.id, s.id, NOW);
+    expect(await book(user.id, s.id, msk("2026-10-14T19:00:00"))).toMatchObject({ ok: true });
 
     await materializeReminders(NOW);
     await materializeReminders(NOW);
