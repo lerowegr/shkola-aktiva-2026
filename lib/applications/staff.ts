@@ -1,5 +1,5 @@
 import { displayName } from "~~/lib/auth/actor";
-import { assessmentBookingIssue, missedAssessment, slotStartsAt, type AssessmentBookingIssue } from "~~/lib/assessment/rules";
+import { assessmentBookingIssue, missedAssessment, slotStartsAt } from "~~/lib/assessment/rules";
 import { db } from "~~/lib/db";
 import type { StageKind } from "~~/lib/generated/prisma/enums";
 import type { GuideView } from "~~/lib/interviews/guide";
@@ -61,7 +61,7 @@ export async function criteriaFor(seasonId: string, stage: StageKind) {
 // ---------------------------------------------------------------------------
 
 export type ListScope = "mine" | "all";
-export type ListFilter = "all" | "todo" | "done" | "missed" | "unbooked";
+export type ListFilter = "all" | "todo" | "done" | "missed";
 
 export interface ListRow {
   id: string;
@@ -74,9 +74,8 @@ export interface ListRow {
   reviewers: { id: string; name: string; isMe: boolean; released: boolean }[];
   mine: boolean;
   summary: ReviewSummary;
-  /** День ЦО прошёл, а отметки «пришёл» нет. */
+  /** ЦО не пройден: нет явки после подтверждённого дня либо нет записи после всех дней. */
   missedAssessment: boolean;
-  assessmentBookingIssue: AssessmentBookingIssue | null;
   /** Маркеры, по которым мастер что-то написал, — чипы в списке. */
   markers: string[];
 }
@@ -190,8 +189,7 @@ export async function listApplications(params: {
       })),
       mine: application.reviews.some((review) => review.reviewerId === viewerId && review.releasedAt === null),
       summary: reviewSummary(criteria, main?.scores ?? []),
-      assessmentBookingIssue: assessmentBookingIssue(application.assessmentInvite, lastSessionAt),
-      missedAssessment: application.assessmentInvite
+      missedAssessment: assessmentBookingIssue(application.assessmentInvite, lastSessionAt) !== null || (application.assessmentInvite
         ? missedAssessment(
             {
               attended: application.assessmentInvite.attended,
@@ -201,7 +199,7 @@ export async function listApplications(params: {
             },
             reserveStartsAt,
           )
-        : false,
+        : false),
       markers: (main?.markers ?? [])
         .map((item) => item.marker)
         .sort((a, b) => a.order - b.order)
@@ -216,19 +214,15 @@ export async function listApplications(params: {
   }
   const inFaculty = all.filter((row) => facultyMatches(row.faculty, faculty));
 
-  const active = inFaculty.filter(row => !row.assessmentBookingIssue);
   const counts = {
-    all: active.length,
-    todo: active.filter((row) => row.summary.status !== "done").length,
-    done: active.filter((row) => row.summary.status === "done").length,
+    all: inFaculty.length,
+    todo: inFaculty.filter((row) => row.summary.status !== "done").length,
+    done: inFaculty.filter((row) => row.summary.status === "done").length,
     missed: inFaculty.filter((row) => row.missedAssessment).length,
-    unbooked: inFaculty.filter(row => row.assessmentBookingIssue !== null).length,
   };
 
   const rows = inFaculty
     .filter((row) => {
-      if (filter === "unbooked") return row.assessmentBookingIssue !== null;
-      if (filter !== "missed" && row.assessmentBookingIssue) return false;
       if (filter === "all") return true;
       if (filter === "missed") return row.missedAssessment;
       return (filter === "done") === (row.summary.status === "done");
@@ -236,7 +230,7 @@ export async function listApplications(params: {
     .filter((row) => matches(row, row.studentId, query))
     .map(({ studentId: _studentId, ...row }) => row);
 
-  return { rows, counts, unassigned: all.filter((row) => !row.assessmentBookingIssue && row.reviewers.length === 0).length, faculties };
+  return { rows, counts, unassigned: all.filter((row) => row.reviewers.length === 0).length, faculties };
 }
 
 // ---------------------------------------------------------------------------
@@ -294,9 +288,8 @@ export interface StaffApplication {
   stage: EvaluatedStage;
   /** Запись на собеседование — для этапа собеседования. */
   interview: StaffInterview | null;
-  /** День ЦО прошёл, а отметки «пришёл» нет. */
+  /** ЦО не пройден: нет явки после подтверждённого дня либо нет записи после всех дней. */
   missedAssessment: boolean;
-  assessmentBookingIssue: AssessmentBookingIssue | null;
   /** Текст задания этапа — для домашки. */
   task: string | null;
   /** Формулировки заданий ДЗ (подсказки вопросов раздела ДЗ) — для ДЗ и собеседования. */
@@ -445,13 +438,12 @@ export async function loadStaffApplication(
 
   return {
     stage,
-    assessmentBookingIssue: assessmentBookingIssue(application.assessmentInvite, lastSessionAt),
-    missedAssessment: application.assessmentInvite ? missedAssessment({
+    missedAssessment: assessmentBookingIssue(application.assessmentInvite, lastSessionAt) !== null || (application.assessmentInvite ? missedAssessment({
       attended: application.assessmentInvite.attended,
       answer: application.assessmentInvite.answer,
       reserveQueued: application.assessmentInvite.reserveQueued,
       sessionStartsAt: slotStartsAt(application.assessmentInvite.session),
-    }, reserve ? slotStartsAt(reserve) : null) : false,
+    }, reserve ? slotStartsAt(reserve) : null) : false),
     interview:
       stage === "INTERVIEW" && booking
         ? {

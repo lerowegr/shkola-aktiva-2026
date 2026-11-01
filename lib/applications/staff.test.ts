@@ -82,7 +82,7 @@ describe("listApplications", () => {
 
     const todo = await listApplications({ seasonId, viewerId: katya.id, scope: "mine", filter: "todo", query: "" });
     expect(todo.rows.map((row) => row.name)).toEqual(["Ковалёв Имя"]);
-    expect(todo.counts).toEqual({ all: 2, todo: 1, done: 1, missed: 0, unbooked: 0 });
+    expect(todo.counts).toEqual({ all: 2, todo: 1, done: 1, missed: 0 });
   });
 
   it("фильтр по факультету: строки и счётчики вкладок — по нему, разбивка — по всем", async () => {
@@ -179,12 +179,13 @@ describe("явка ЦО и оценивание", () => {
     expect((await loadStaffApplication(app.id, katya.id))?.missedAssessment).toBe(false);
   });
 
-  it("неответившие, отказавшиеся, очередь и чужие анкеты исключены из моих неявок", async () => {
+  it("до окончания всех дней ЦО неответившие, отказы и очередь не отмечены; чужие анкеты не входят в мои", async () => {
     const session = await db.assessmentSession.create({ data: { seasonId, title: "Прошедший", startsAt: new Date("2020-01-01T10:00:00Z") } });
     for (const answer of [null, "CANT", "RESERVE"] as const) {
       const { app } = await application(String(answer), katya.id);
       await db.assessmentInvite.create({ data: { applicationId: app.id, sessionId: session.id, answer, reserveQueued: answer === "RESERVE" } });
     }
+    await db.assessmentSession.create({ data: { seasonId, title: "Будущий резерв", reserve: true, startsAt: new Date("2099-01-01T10:00:00Z") } });
     const { app } = await application("Чужая", ilya.id);
     await db.assessmentInvite.create({ data: { applicationId: app.id, sessionId: session.id, answer: "GOING" } });
     expect((await listApplications({ seasonId, viewerId: katya.id, scope: "mine", filter: "missed", query: "" })).rows).toHaveLength(0);
@@ -194,28 +195,31 @@ describe("явка ЦО и оценивание", () => {
 
 
 describe("анкеты без записи на ЦО", () => {
-  it("отдельная вкладка для неответивших, очереди и отказов; оценки сохранены, пришедшие остаются", async () => {
+  it("все анкеты видны; неответившие, очередь, отказы и неявка объединены одной пометкой", async () => {
     const session = await db.assessmentSession.create({ data: { seasonId, title: "ЦО", startsAt: new Date("2020-01-01T10:00:00Z") } });
     const reserve = await db.assessmentSession.create({ data: { seasonId, title: "Резерв", reserve: true, startsAt: new Date("2020-01-02T10:00:00Z") } });
     for (const [name, answer, attended] of [["Не ответил", null, false], ["Очередь", "RESERVE", false], ["Отказ", "CANT", false], ["Пришёл", null, true], ["Записан", "GOING", false]] as const) {
       const { app, review } = await application(name, katya.id);
       await db.assessmentInvite.create({ data: { applicationId: app.id, sessionId: session.id, answer, reserveQueued: answer === "RESERVE", attended } });
       await saveScore({ reviewId: review!.id, actorId: katya.id, criterionId: interest.id, score: 3 });
+      if (name === "Не ответил") await saveScore({ reviewId: review!.id, actorId: katya.id, criterionId: deadline.id, score: 2 });
     }
     const args = { seasonId, viewerId: katya.id, scope: "mine" as const, query: "" };
     const normal = await listApplications({ ...args, filter: "all" });
-    expect(normal.rows.map(row => row.name)).toEqual(expect.arrayContaining(["Пришёл Имя", "Записан Имя"]));
-    expect(normal.rows).toHaveLength(2);
-    expect(normal.counts).toEqual({ all: 2, todo: 2, done: 0, missed: 1, unbooked: 3 });
-    const separate = await listApplications({ ...args, filter: "unbooked" });
-    expect(separate.rows.map(row => row.assessmentBookingIssue)).toEqual(expect.arrayContaining(["not_selected", "reserve_queue", "declined"]));
-    expect(separate.rows).toHaveLength(3);
+    expect(normal.rows.map(row => row.name)).toEqual(expect.arrayContaining(["Не ответил Имя", "Очередь Имя", "Отказ Имя", "Пришёл Имя", "Записан Имя"]));
+    expect(normal.rows).toHaveLength(5);
+    expect(normal.counts).toEqual({ all: 5, todo: 4, done: 1, missed: 4 });
+    expect((await listApplications({ ...args, filter: "done" })).rows.map(row => row.name)).toEqual(["Не ответил Имя"]);
+    expect((await listApplications({ ...args, filter: "todo" })).rows).toHaveLength(4);
+    const separate = await listApplications({ ...args, filter: "missed" });
+    expect(separate.rows.every(row => row.missedAssessment)).toBe(true);
+    expect(separate.rows).toHaveLength(4);
     const card = await loadStaffApplication(separate.rows[0]!.id, katya.id);
-    expect(card?.assessmentBookingIssue).not.toBeNull();
+    expect(card?.missedAssessment).toBe(true);
     expect(card?.reviews[0]?.scores[interest.id]).toBe(3);
     // Пока резерв впереди, приглашённые не скрываются из обычной проверки.
     await db.assessmentSession.update({ where: { id: reserve.id }, data: { startsAt: new Date("2099-01-01T10:00:00Z") } });
     expect((await listApplications({ ...args, filter: "all" })).rows).toHaveLength(5);
-    expect((await listApplications({ ...args, filter: "unbooked" })).rows).toHaveLength(0);
+    expect((await listApplications({ ...args, filter: "missed" })).rows).toHaveLength(1);
   });
 });

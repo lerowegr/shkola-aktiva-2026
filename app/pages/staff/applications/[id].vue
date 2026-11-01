@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ASSESSMENT_BOOKING_LABELS } from "~~/lib/assessment/rules";
 import { CalendarClock, ChevronDown, ChevronLeft, ChevronRight, FileText, MapPin, Send } from "lucide-vue-next";
 
 import type { StaffApplication, StaffApplicationResponse } from "~~/lib/applications/staff";
@@ -173,11 +172,8 @@ async function pass() {
 
     <UiNotice v-if="openThread.result.value?.ok === false" :message="openThread.result.value.message" />
 
-    <p v-if="card.assessmentBookingIssue" class="border-line text-danger rounded-2xl border p-4 text-sm" role="status">
-      {{ ASSESSMENT_BOOKING_LABELS[card.assessmentBookingIssue] }}. Анкета вынесена во вкладку «Без записи ЦО». Ответы и оценки сохранены.
-    </p>
     <p v-if="card.missedAssessment" class="border-line text-danger rounded-2xl border p-4 text-sm" role="status">
-      Нет отметки явки на ЦО: подтверждённый день уже прошёл. Оценивать анкету и ДЗ можно в обычном порядке. Если кандидат был на ЦО, проверьте отметку явки в сборе.
+      ЦО не пройден. Оценивать анкету и ДЗ можно в обычном порядке. Если кандидат был на ЦО, проверьте отметку явки в сборе.
     </p>
 
     <!-- Анкета — две колонки: ответы и оценка рядом. ДЗ и собеседование — одной

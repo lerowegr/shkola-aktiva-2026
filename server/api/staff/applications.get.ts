@@ -8,7 +8,7 @@ import { requireUser } from "~~/server/utils/session";
 
 const query = z.object({
   scope: z.enum(["mine", "all"]).default("mine"),
-  filter: z.enum(["all", "todo", "done", "missed", "unbooked"]).default("all"),
+  filter: z.enum(["all", "todo", "done", "missed"]).default("all"),
   q: z.string().max(100).default(""),
   stage: z.enum(EVALUATED_STAGES).default("APPLICATION"),
   faculty: z.string().max(20).default(""),

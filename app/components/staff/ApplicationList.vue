@@ -2,7 +2,6 @@
 import { refDebounced } from "@vueuse/core";
 import { ChevronRight, Search } from "lucide-vue-next";
 
-import { ASSESSMENT_BOOKING_LABELS } from "~~/lib/assessment/rules";
 import type { EvaluatedStage, ListFilter, ListResult, ListScope } from "~~/lib/applications/staff";
 
 /**
@@ -31,8 +30,7 @@ const FILTERS: { key: ListFilter; label: string }[] = [
   { key: "all", label: "Все" },
   { key: "todo", label: "Не проверены" },
   { key: "done", label: "Проверены" },
-  { key: "missed", label: "Нет явки ЦО" },
-  { key: "unbooked", label: "Без записи ЦО" },
+  { key: "missed", label: "ЦО не пройден" },
 ];
 
 const link = (id: string) =>
@@ -73,7 +71,7 @@ const link = (id: string) =>
       </div>
     </div>
 
-    <p class="text-ink-soft px-4 pb-3 text-xs">После завершения всех дней ЦО не выбравшие время, очередь резерва и отказы находятся во вкладке «Без записи ЦО». Анкеты и оценки сохранены.</p>
+    <p class="text-ink-soft px-4 pb-3 text-xs">Во вкладке «Все» — все анкеты выбранного списка и факультета. Пометка «ЦО не пройден» не ограничивает оценку.</p>
 
     <!-- Шапка таблицы — только на широком экране -->
     <div
@@ -104,8 +102,7 @@ const link = (id: string) =>
             <StaffAvatar :seed="row.id" :text="row.initials" />
             <span class="min-w-0">
               <span class="block truncate text-sm font-semibold">{{ row.name }}</span>
-              <span v-if="row.assessmentBookingIssue" class="text-danger block text-xs">{{ ASSESSMENT_BOOKING_LABELS[row.assessmentBookingIssue] }}</span>
-              <span v-if="row.missedAssessment" class="text-danger block text-xs">Нет отметки явки на ЦО</span>
+              <span v-if="row.missedAssessment" class="text-danger block text-xs">ЦО не пройден</span>
               <span class="text-ink-soft block truncate text-xs">
                 {{ [row.faculty, row.telegramUsername ? `@${row.telegramUsername}` : null].filter(Boolean).join(" · ") }}
               </span>
@@ -151,10 +148,8 @@ const link = (id: string) =>
           ? "Никого не нашли. Проверьте написание."
           : faculty
             ? "С этого факультета здесь никого нет."
-          : filter === "unbooked"
-            ? "Нет кандидатов без записи после завершения всех дней ЦО."
           : filter === "missed"
-            ? "Нет кандидатов без отметки явки после подтверждённого дня ЦО."
+            ? "Нет кандидатов с пометкой «ЦО не пройден»."
           : filter === "todo"
             ? "Всё проверено 🎉"
             : stage === "HOMEWORK"

@@ -205,13 +205,7 @@ export function canChangeAnswer(
 
 
 export type AssessmentBookingIssue = "not_selected" | "reserve_queue" | "declined";
-export const ASSESSMENT_BOOKING_LABELS: Record<AssessmentBookingIssue, string> = {
-  not_selected: "Не выбрано время ЦО",
-  reserve_queue: "Очередь резерва — время не выбрано",
-  declined: "Отказ от ЦО",
-};
-
-/** После всех дней ЦО выносим незаписавшихся отдельно. Ручная явка имеет приоритет. */
+/** После всех дней ЦО учитываем незаписавшихся в общей пометке. Ручная явка имеет приоритет. */
 export function assessmentBookingIssue(
   invite: { attended: boolean; answer: AssessmentAnswerKind | null; reserveQueued?: boolean } | null,
   lastSessionAt: Date | string | null,
