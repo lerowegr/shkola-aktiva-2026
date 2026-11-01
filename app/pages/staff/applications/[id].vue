@@ -182,6 +182,8 @@ async function pass() {
       @saved="refresh"
     />
 
+    <StaffReviewHistory v-if="card.stage === 'INTERVIEW'" :key="id" :application-id="id" />
+
     <!-- Анкета — две колонки: ответы и оценка рядом. ДЗ и собеседование — одной
          колонкой: работа, сценарий собеса, а критерии в самом низу. -->
     <div class="items-start gap-5" :class="stacked ? 'flex flex-col' : 'grid lg:grid-cols-[minmax(0,1fr)_400px]'">

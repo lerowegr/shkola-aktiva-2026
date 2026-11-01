@@ -29,7 +29,7 @@ export async function funnel(seasonId: string): Promise<FunnelStep[]> {
   const count = (where: object) =>
     db.application.count({ where: { seasonId, ...where } });
 
-  // Отсева между этапами нет: воронка — кто дошёл до какого шага.
+  // Воронка показывает, кто дошёл до каждого шага; запись требует явки на ЦО.
   const [
     registered,
     started,

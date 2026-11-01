@@ -2,6 +2,7 @@ import { candidateDecision } from "~~/lib/applications/decisions";
 import { fullName } from "~~/lib/applications/staff";
 import { db } from "~~/lib/db";
 import { notify } from "~~/lib/notifications/notify";
+import { ASSESSMENT_REQUIRED, hasAssessmentAttendance } from "./eligibility";
 import { BOOKING_LOCK, canReschedule, changeDeadline, interviewPlace } from "./rules";
 import { checkOverlap, InterviewScheduleError, validateInterviewer } from "./scheduling";
 import { stageState, type StageState } from "~~/lib/stages";
@@ -41,15 +42,16 @@ async function context(userId: string) {
   const stage = season.stages[0];
   const application = await db.application.findUnique({
     where: { seasonId_userId: { seasonId: season.id, userId } },
-    select: { id: true, lastName: true, firstName: true, middleName: true, status: true, interviewReschedulesUsed: true, _count: { select: { bookings: true } } },
+    select: { id: true, lastName: true, firstName: true, middleName: true, status: true, interviewReschedulesUsed: true, assessmentInvite: { select: { attended: true } }, _count: { select: { bookings: true } } },
   });
   return { season, stage, application };
 }
 
 export interface CandidateInterview {
   state: StageState;
-  /** Отсева между этапами нет: записаться может каждый, кто отправил анкету. */
+  /** Для записи нужны отправленная анкета и отметка явки на ЦО. */
   allowed: boolean;
+  eligibilityMessage: string | null;
   final: "PASSED" | "REJECTED" | null;
   booking: { slotId: string; startsAt: Date; endsAt: Date; location: string; room: string | null; canChange: boolean; changeDeadline: Date } | null;
   reschedulesUsed: number;
@@ -61,7 +63,8 @@ export async function loadInterview(userId: string, now = new Date()): Promise<C
   const ctx = await context(userId);
   if (!ctx?.stage) return null;
 
-  const allowed = ctx.application?.status === "SUBMITTED";
+  const submitted = ctx.application?.status === "SUBMITTED";
+  const allowed = submitted && ctx.application?.assessmentInvite?.attended === true;
   const final = await candidateDecision(userId, ctx.season.id, "INTERVIEW");
   const state = stageState(ctx.stage, now);
 
@@ -98,11 +101,12 @@ export async function loadInterview(userId: string, now = new Date()): Promise<C
   return {
     state,
     allowed,
+    eligibilityMessage: allowed ? null : submitted ? ASSESSMENT_REQUIRED : "Сначала отправьте анкету — после этого откроется запись на собеседование.",
     final,
     reschedulesUsed: ctx.application?.interviewReschedulesUsed ?? 0,
     bookingCancelled: !booking && Boolean(ctx.application?._count.bookings),
     booking: booking
-      ? { ...booking.slot, slotId: booking.slot.id, canChange: state === "open" && canReschedule(booking.slot.startsAt, ctx.application!.interviewReschedulesUsed, now), changeDeadline: changeDeadline(booking.slot.startsAt) }
+      ? { ...booking.slot, slotId: booking.slot.id, canChange: allowed && state === "open" && canReschedule(booking.slot.startsAt, ctx.application!.interviewReschedulesUsed, now), changeDeadline: changeDeadline(booking.slot.startsAt) }
       : null,
     slots,
   };
@@ -180,12 +184,15 @@ export async function book(userId: string, slotId: string, now = new Date()): Pr
   if (ctx.application.status !== "SUBMITTED") {
     return { ok: false, message: "Сначала отправьте анкету — после этого откроется запись на собеседование." };
   }
+  if (!ctx.application.assessmentInvite?.attended) return { ok: false, message: ASSESSMENT_REQUIRED };
   if (stageState(ctx.stage, now) !== "open") return { ok: false, message: "Запись на собеседования сейчас закрыта." };
 
   const application = ctx.application;
 
   const outcome = await db.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BOOKING_LOCK})`);
+
+    if (!await hasAssessmentAttendance(tx, application.id)) return { ok: false as const, message: ASSESSMENT_REQUIRED };
 
     const slot = await tx.interviewSlot.findFirst({
       where: { id: slotId, seasonId: ctx.season.id },

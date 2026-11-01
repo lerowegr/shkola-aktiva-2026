@@ -1,3 +1,4 @@
+import { interviewInviteIsCurrent } from "~~/lib/interviews/invitations";
 import { interviewReminderIsCurrent } from "~~/lib/interviews/reminders";
 import { db } from "~~/lib/db";
 
@@ -99,6 +100,11 @@ export async function processDeliveries(params: {
 
     if (!await interviewReminderIsCurrent(delivery.notification.key, now)) {
       await skip("Напоминание о записи больше не актуально");
+      continue;
+    }
+
+    if (!await interviewInviteIsCurrent(delivery.notification.key, delivery.userId, now)) {
+      await skip("Приглашение на собеседование больше не актуально");
       continue;
     }
 

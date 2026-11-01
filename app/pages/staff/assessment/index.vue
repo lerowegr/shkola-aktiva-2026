@@ -59,6 +59,7 @@ async function saved() { editing.value = null; notice.value = { ok: true, messag
     <header class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       <div class="min-w-0">
         <h1 class="font-display text-3xl">Центр оценки</h1>
+        <NuxtLink v-if="data?.manage || data?.viewAll" to="/staff/assessment/non-attendance" class="text-accent mt-2 inline-block text-sm font-semibold hover:underline">ЦО не пройден — список по дням и резерву →</NuxtLink>
         <p class="text-ink-soft mt-2 max-w-2xl text-sm">День → факультет → время → подгруппы. Приглашаем на день и факультет, кандидаты сами выбирают время. Место занимает только подтверждённая запись.</p>
         <p v-if="data?.manage" class="text-ink-soft mt-2 text-sm">Времён: {{ data.sessions.length }} · ещё не приглашены: {{ data.notInvited }}<template v-if="data.noFaculty"> · без факультета: {{ data.noFaculty }} (пригласите вручную на странице времени)</template></p>
       </div>

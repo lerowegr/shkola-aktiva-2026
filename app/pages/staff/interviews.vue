@@ -9,6 +9,10 @@ const { data: nav } = await useFetch("/api/staff/nav", { key: "staff-nav" });
 const canManage = computed(() => nav.value?.can.interviews ?? false);
 const { data, refresh } = await useFetch<{ slots: ScheduleSlot[] }>("/api/staff/interviews");
 const { data: pool } = await useFetch<{ people: { id: string; name: string }[] }>("/api/staff/interviewers", { immediate: canManage.value });
+const session = await useSession();
+const canMessage = computed(() => session.value?.isOwner || session.value?.permissions.includes("messages.reply"));
+const message = useAction("/api/staff/messages/open");
+async function writeTo(applicationId: string) { const result = await message.submit({ applicationId }); if (result.ok && typeof result.threadId === "string") await navigateTo(`/staff/messages?thread=${result.threadId}`); }
 const onlyMine = ref(false);
 const faculty = useFacultyFilter();
 const form = reactive({ date: "2026-11-02", from: "08:30", to: "09:30", duration: 20, gap: 0, location: "", interviewerId: "" });
@@ -51,6 +55,8 @@ async function deleteSlot(slotId: string) { const result = await remove.submit({
         <h1 class="font-display text-3xl">Собеседования</h1>
         <p class="text-ink-soft text-sm">2–8 ноября. Слотов {{ stats.slots }}, записались {{ stats.booked }}. В каждом слоте один мастер и один кандидат. Перезапись кандидата — один раз, до 18:00 предыдущего дня по Москве.</p>
       </div>
+      <StaffInterviewInvitations v-if="canManage" />
+      <UiNotice :ok="message.result.value?.ok" :message="message.result.value?.message" />
       <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <UiCheckbox v-model="onlyMine">Только мои собеседования</UiCheckbox>
         <StaffFacultyFilter v-model="faculty" />
@@ -75,6 +81,8 @@ async function deleteSlot(slotId: string) { const result = await remove.submit({
           </div>
           <div v-for="booking in slot.bookings" :key="booking.applicationId" class="flex flex-col gap-2">
             <NuxtLink :to="`/staff/applications/${booking.applicationId}?stage=INTERVIEW&from=all`" class="text-sm font-semibold hover:underline">{{ booking.name }}<span class="text-ink-soft font-normal">{{ booking.faculty ? ` · ${booking.faculty}` : '' }}</span></NuxtLink>
+            <p v-if="booking.scoreSummary.length" class="text-ink-soft text-xs">{{ booking.scoreSummary.map(s => `${s.label}: ${s.percent === null ? 'нет полной оценки' : `${s.percent}%`}`).join(' · ') }}</p>
+            <div class="flex flex-wrap gap-3"><button v-if="canMessage" type="button" class="text-accent text-sm hover:underline" :disabled="message.pending.value" @click="writeTo(booking.applicationId)">{{ booking.hasTelegram ? 'Написать в Telegram' : 'Написать' }}</button><NuxtLink :to="`/staff/applications/${booking.applicationId}?stage=INTERVIEW&from=all#previous-reviews`" class="text-accent text-sm hover:underline">Оценки и комментарии</NuxtLink></div>
             <p class="text-ink-soft text-xs">{{ booking.reschedulesUsed >= 1 ? 'Самостоятельная перезапись использована' : 'Самостоятельная перезапись ещё не использована' }}</p>
             <button v-if="canManage" type="button" class="text-accent self-start text-sm hover:underline" @click="editBooking(booking.applicationId, slot.id)">Изменить запись</button>
             <form v-if="canManage && editingBooking === booking.applicationId" class="bg-paper flex flex-col gap-3 rounded-2xl p-3" @submit.prevent="moveBooking(booking.applicationId)">

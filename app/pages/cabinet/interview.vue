@@ -47,8 +47,9 @@ async function book(slotId: string) {
           </p>
         </div>
 
-        <p v-else-if="!iv.allowed" class="bg-card border-line rounded-3xl border p-5">Сначала отправьте анкету — после этого откроется запись на собеседование.</p>
+        <p v-else-if="!iv.allowed && !iv.booking" class="bg-card border-line rounded-3xl border p-5">{{ iv.eligibilityMessage }}</p>
         <template v-else>
+          <p v-if="!iv.allowed" role="status" class="bg-card border-line rounded-3xl border p-5 text-sm">{{ iv.eligibilityMessage }}</p>
           <section v-if="iv.booking" class="bg-ink text-paper flex flex-col gap-3 rounded-3xl p-5">
             <p class="flex items-center gap-2 font-semibold"><CalendarCheck class="size-5 shrink-0" aria-hidden="true" /><span>{{ mskDay(iv.booking.startsAt) }}, {{ mskTime(iv.booking.startsAt) }}–{{ mskTime(iv.booking.endsAt) }}</span></p>
             <p class="flex items-start gap-2 text-sm"><MapPin class="size-4 shrink-0" aria-hidden="true" />{{ iv.booking.location }}</p>
@@ -56,7 +57,7 @@ async function book(slotId: string) {
             <p v-if="past" class="text-paper/80 text-sm">Время собеседования прошло. Информацию об итогах опубликуем в кабинете.</p>
             <template v-else>
               <p class="text-paper/80 text-sm">Самостоятельная перезапись — один раз, до {{ mskFormat(iv.booking.changeDeadline, 'd MMMM, HH:mm') }} по Москве.</p>
-              <p class="text-paper/70 text-xs">{{ iv.reschedulesUsed >= 1 ? 'Единственная перезапись уже использована. Для изменений обратитесь к организаторам.' : canChangeNow ? 'В 16:00 накануне напомним о сроке перезаписи.' : 'Срок самостоятельного переноса закончился или запись закрыта. Для изменений обратитесь к организаторам.' }}</p>
+              <p class="text-paper/70 text-xs">{{ iv.reschedulesUsed >= 1 ? 'Единственная перезапись уже использована. Для изменений обратитесь к организаторам.' : canChangeNow ? 'В 16:00 накануне напомним о сроке перезаписи.' : 'Самостоятельный перенос недоступен. Для изменений обратитесь к организаторам.' }}</p>
               <button v-if="canChangeNow" type="button" class="self-start rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20" @click="choosing = !choosing">{{ choosing ? 'Оставить как есть' : 'Выбрать другое время' }}</button>
             </template>
           </section>

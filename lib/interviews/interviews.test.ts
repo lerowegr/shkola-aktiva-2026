@@ -61,12 +61,14 @@ describe("запись на собеседование", () => {
     ilya = await db.user.create({ data: { firstName: "Илья", roles: { create: { roleId: role.id } } } });
   });
 
-  // Отсева между этапами нет: записаться может каждый, кто отправил анкету.
+  // По умолчанию кандидат прошёл ЦО; отдельные тесты ниже снимают явку.
   async function candidate(name: string, submitted: boolean) {
     const user = await db.user.create({ data: { firstName: name } });
     const application = await db.application.create({
       data: { seasonId, userId: user.id, status: submitted ? "SUBMITTED" : "DRAFT", lastName: name, firstName: "И" },
     });
+    const session = await db.assessmentSession.create({ data: { seasonId, title: "ЦО", startsAt: msk("2026-10-01T10:00:00") } });
+    await db.assessmentInvite.create({ data: { applicationId: application.id, sessionId: session.id, attended: true } });
     return { user, application };
   }
 
@@ -294,6 +296,36 @@ describe("запись на собеседование", () => {
     expect((await loadInterview(a.user.id, NOW))?.bookingCancelled).toBe(true);
     expect((await loadInterview(a.user.id, NOW))?.slots).toHaveLength(0);
     expect(await book(a.user.id, s.id, NOW)).toMatchObject({ ok: false });
+  });
+
+  it("без явки нельзя записаться ни кандидату, ни через ручное назначение; ручная явка допускает без ответа", async () => {
+    const a = await candidate("А", true);
+    const owner = await db.user.create({ data: { isOwner: true } });
+    const s = await slot("2026-11-05T10:00:00", [katya.id]);
+    await db.assessmentInvite.update({ where: { applicationId: a.application.id }, data: { attended: false, answer: "RESERVE", reserveQueued: true } });
+    expect((await loadInterview(a.user.id, NOW))?.allowed).toBe(false);
+    expect((await loadInterview(a.user.id, NOW))?.slots).toHaveLength(0);
+    expect(await book(a.user.id, s.id, NOW)).toMatchObject({ ok: false });
+    expect(await manageBooking({ actorId: owner.id, seasonId, applicationId: a.application.id, slotId: s.id, restoreChange: false }, {}, NOW)).toMatchObject({ ok: false });
+    expect(await db.interviewBooking.count()).toBe(0);
+    await db.assessmentInvite.update({ where: { applicationId: a.application.id }, data: { attended: true, answer: null, reserveQueued: false } });
+    expect((await loadInterview(a.user.id, NOW))?.allowed).toBe(true);
+    expect(await book(a.user.id, s.id, NOW)).toMatchObject({ ok: true });
+  });
+
+  it("снятая явка блокирует перенос, но не отменяет текущую запись; без приглашения допуск закрыт", async () => {
+    const a = await candidate("А", true);
+    const first = await slot("2026-11-05T10:00:00", [katya.id]);
+    const next = await slot("2026-11-06T10:00:00", [katya.id]);
+    await book(a.user.id, first.id, NOW);
+    await db.assessmentInvite.update({ where: { applicationId: a.application.id }, data: { attended: false } });
+    const view = await loadInterview(a.user.id, NOW);
+    expect(view?.allowed).toBe(false); expect(view?.booking?.slotId).toBe(first.id); expect(view?.booking?.canChange).toBe(false);
+    expect(await book(a.user.id, next.id, NOW)).toMatchObject({ ok: false });
+    expect(await db.interviewBooking.count({ where: { applicationId: a.application.id, cancelledAt: null } })).toBe(1);
+    const b = await candidate("Б", true);
+    await db.assessmentInvite.delete({ where: { applicationId: b.application.id } });
+    expect(await book(b.user.id, next.id, NOW)).toMatchObject({ ok: false });
   });
 
 });

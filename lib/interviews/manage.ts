@@ -4,6 +4,7 @@ import { db } from "~~/lib/db";
 import { notify } from "~~/lib/notifications/notify";
 import { can } from "~~/lib/permissions";
 import { validateInterviewer, InterviewScheduleError } from "./scheduling";
+import { ASSESSMENT_REQUIRED, hasAssessmentAttendance } from "./eligibility";
 import { syncReviews } from "./booking";
 import { BOOKING_LOCK, interviewPlace } from "./rules";
 
@@ -50,6 +51,7 @@ export async function manageBooking(params: { actorId: string; seasonId: string;
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BOOKING_LOCK})`);
     const application = await tx.application.findFirst({ where: { id: params.applicationId, seasonId: params.seasonId, status: "SUBMITTED" }, select: { userId: true, interviewReschedulesUsed: true } });
     if (!application) return { ok: false as const, message: "Отправленная анкета не найдена." };
+    if (params.slotId && !await hasAssessmentAttendance(tx, params.applicationId)) return { ok: false as const, message: ASSESSMENT_REQUIRED };
     const current = await tx.interviewBooking.findFirst({ where: { applicationId: params.applicationId, cancelledAt: null }, select: { id: true, slotId: true } });
     const slot = params.slotId ? await tx.interviewSlot.findFirst({ where: { id: params.slotId, seasonId: params.seasonId }, select: { id: true, startsAt: true, location: true, room: true, capacity: true, interviewers: { select: { userId: true } }, _count: { select: { bookings: { where: { cancelledAt: null } } } } } }) : null;
     if (params.slotId && (!slot || slot.startsAt <= now || slot.capacity !== 1 || slot.interviewers.length !== 1)) return { ok: false as const, message: "Выберите будущий слот с одним мастером и одним местом." };

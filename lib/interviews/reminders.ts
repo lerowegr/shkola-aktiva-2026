@@ -35,14 +35,14 @@ export async function materializeReminders(now = new Date()): Promise<void> {
     where: { cancelledAt: null, slot: { startsAt: { gt: now, lte: new Date(now.getTime() + 36 * HOUR) } } },
     select: {
       id: true,
-      application: { select: { id: true, userId: true, interviewReschedulesUsed: true } },
+      application: { select: { id: true, userId: true, interviewReschedulesUsed: true, assessmentInvite: { select: { attended: true } } } },
       slot: { select: { startsAt: true, location: true, room: true, interviewers: { select: { userId: true } } } },
     },
   });
 
   const deadlineBookings = bookings.filter(booking => {
     const deadline = changeDeadline(booking.slot.startsAt).getTime();
-    return booking.application.interviewReschedulesUsed < 1 && now.getTime() >= deadline - 2 * HOUR && now.getTime() < deadline;
+    return booking.application.assessmentInvite?.attended === true && booking.application.interviewReschedulesUsed < 1 && now.getTime() >= deadline - 2 * HOUR && now.getTime() < deadline;
   });
   await notify(deadlineBookings.map(booking => ({
     userId: booking.application.userId, category: "SELECTION" as const,
@@ -99,9 +99,9 @@ export async function materializeReminders(now = new Date()): Promise<void> {
 export async function interviewReminderIsCurrent(key: string | null, now: Date): Promise<boolean> {
   const match = key?.match(/^booking:([^:]+):(24h|1h|change-deadline)$/);
   if (!match) return true;
-  const booking = await db.interviewBooking.findUnique({ where: { id: match[1]! }, select: { cancelledAt: true, slot: { select: { startsAt: true } }, application: { select: { interviewReschedulesUsed: true } } } });
+  const booking = await db.interviewBooking.findUnique({ where: { id: match[1]! }, select: { cancelledAt: true, slot: { select: { startsAt: true } }, application: { select: { interviewReschedulesUsed: true, assessmentInvite: { select: { attended: true } } } } } });
   if (!booking || booking.cancelledAt || booking.slot.startsAt <= now) return false;
   if (match[2] !== "change-deadline") return true;
   const deadline = changeDeadline(booking.slot.startsAt).getTime();
-  return booking.application.interviewReschedulesUsed < 1 && now.getTime() >= deadline - 2 * HOUR && now.getTime() < deadline;
+  return booking.application.assessmentInvite?.attended === true && booking.application.interviewReschedulesUsed < 1 && now.getTime() >= deadline - 2 * HOUR && now.getTime() < deadline;
 }

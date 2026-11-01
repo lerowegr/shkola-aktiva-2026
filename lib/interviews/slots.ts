@@ -1,4 +1,6 @@
-import { displayName } from "~~/lib/auth/actor";
+import { can } from "~~/lib/permissions";
+import { reviewSummary } from "~~/lib/applications/review";
+import { displayName, loadUser } from "~~/lib/auth/actor";
 import { fullName } from "~~/lib/applications/staff";
 import { db } from "~~/lib/db";
 import { BOOKING_LOCK } from "./rules";
@@ -81,7 +83,7 @@ export interface ScheduleSlot {
   capacity: number;
   interviewers: { id: string; name: string }[];
   mine: boolean;
-  bookings: { applicationId: string; name: string; telegramUsername: string | null; faculty: string | null; reschedulesUsed: number }[];
+  bookings: { applicationId: string; name: string; telegramUsername: string | null; faculty: string | null; hasTelegram: boolean; reschedulesUsed: number; scoreSummary: { label: string; percent: number | null }[] }[];
 }
 
 /** Расписание организаторов: все слоты сезона по времени. */
@@ -109,7 +111,8 @@ export async function schedule(seasonId: string, viewerId: string): Promise<Sche
               firstName: true,
               middleName: true,
               interviewReschedulesUsed: true,
-              user: { select: { telegramUsername: true, faculty: true } },
+              user: { select: { telegramUsername: true, telegramId: true, faculty: true } },
+              reviews: { where: { releasedAt: null }, select: { stageKind: true, scores: { select: { criterionId: true, score: true } } } },
             },
           },
         },
@@ -117,6 +120,8 @@ export async function schedule(seasonId: string, viewerId: string): Promise<Sche
     },
   });
 
+  const [viewer, criteria] = await Promise.all([loadUser(viewerId), db.criterion.findMany({ where: { seasonId }, select: { id: true, stageKind: true, maxScore: true } })]);
+  const stages = [{ kind: "APPLICATION", label: "Анкета" }, { kind: "HOMEWORK", label: "ДЗ" }, { kind: "ASSESSMENT", label: "ЦО" }] as const;
   return slots.map((slot) => ({
     id: slot.id,
     startsAt: slot.startsAt,
@@ -130,6 +135,13 @@ export async function schedule(seasonId: string, viewerId: string): Promise<Sche
       applicationId: booking.application.id,
       name: fullName(booking.application),
       reschedulesUsed: booking.application.interviewReschedulesUsed,
+      hasTelegram: booking.application.user.telegramId !== null,
+      scoreSummary: viewer && (can(viewer, "applications.view_all") || (can(viewer, "applications.review") && slot.interviewers.some(i => i.user.id === viewerId))) ? stages.map(stage => {
+        const fields = criteria.filter(c => c.stageKind === stage.kind);
+        const complete = booking.application.reviews.filter(r => r.stageKind === stage.kind).map(r => reviewSummary(fields, r.scores)).filter(r => r.status === "done");
+        const percent = complete.length && complete[0]!.max > 0 ? Math.round(complete.reduce((n, r) => n + (r.total ?? 0) / r.max * 100, 0) / complete.length) : null;
+        return { label: stage.label, percent };
+      }) : [],
       telegramUsername: booking.application.user.telegramUsername,
       faculty: booking.application.user.faculty,
     })),
