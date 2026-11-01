@@ -237,6 +237,18 @@ const LISTS = [
                 <span v-if="person.faculty" class="text-ink-soft text-xs"> · {{ person.faculty }}</span>
               </span>
               <div class="flex min-w-0 flex-col gap-2 sm:w-1/2 sm:shrink-0 sm:flex-row sm:items-start sm:justify-end">
+                <button
+                  v-if="manage"
+                  type="button"
+                  class="min-h-9 shrink-0 rounded-xl border px-3 text-sm font-medium transition"
+                  :class="person.attended ? 'border-ok bg-ok/10 text-ok' : 'border-line text-ink-soft'"
+                  :aria-label="`Явка: ${person.name}`"
+                  :aria-pressed="person.attended"
+                  :disabled="busy === `a:${person.applicationId}`"
+                  @click="attend(person)"
+                >
+                  {{ person.attended ? "Пришёл ✓" : "Пришёл?" }}
+                </button>
                 <StaffAssessmentHomeworkLinks :links="person.homeworkLinks" :name="person.name" />
                 <StaffAssessmentMove
                   v-if="manage"
