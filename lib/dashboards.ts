@@ -313,7 +313,7 @@ export async function interviewsReport(
       select: { id: true, maxScore: true },
     }),
     db.interviewSlot.findMany({
-      where: { seasonId },
+      where: { seasonId, archivedAt: null },
       orderBy: { startsAt: "asc" },
       select: {
         startsAt: true,

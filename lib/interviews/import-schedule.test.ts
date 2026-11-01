@@ -12,7 +12,7 @@ describe("загрузка расписания", () => {
   async function setup() {
     const season = await db.season.create({ data: { slug: "s", title: "S", year: 2026 } });
     const actor = await db.user.create({ data: { isOwner: true } });
-    const row = { date: "2026-11-02", from: "14:00", to: "15:30", location: "Верхняя Масловка 15", interviewerId: actor.id };
+    const row = { date: "2026-11-02", from: "14:00", to: "15:35", location: "Верхняя Масловка 15", interviewerId: actor.id };
     return { season, actor, row, params: { seasonId: season.id, actorId: actor.id, rows: [row], preview: false } };
   }
   it("предпросмотр не пишет, повтор не дублирует, аудит атомарен", async () => {
@@ -31,7 +31,7 @@ describe("загрузка расписания", () => {
     const { params, row } = await setup();
     await importSchedule(params, now);
     const ids = (await db.interviewSlot.findMany()).map(s => s.id).sort();
-    expect(await importSchedule({ ...params, rows: [{ ...row, from: "15:40", to: "17:10" }] }, now)).toMatchObject({ ok: true, updated: 2, created: 0 });
+    expect(await importSchedule({ ...params, rows: [{ ...row, from: "15:40", to: "17:15" }] }, now)).toMatchObject({ ok: true, updated: 2, created: 0 });
     expect((await db.interviewSlot.findMany()).map(s => s.id).sort()).toEqual(ids);
     expect(await importSchedule({ ...params, rows: [{ ...row, to: "14:45" }] }, now)).toMatchObject({ ok: false });
     expect(await db.interviewSlot.count()).toBe(2);
@@ -53,7 +53,7 @@ describe("загрузка расписания", () => {
     const candidate = await db.user.create({ data: {} });
     const app = await db.application.create({ data: { userId: candidate.id, seasonId: season.id } });
     await db.interviewBooking.create({ data: { slotId: slot.id, applicationId: app.id } });
-    expect(await importSchedule({ ...params, rows: [{ ...row, from: "15:40", to: "17:10" }] }, now)).toMatchObject({ ok: false });
+    expect(await importSchedule({ ...params, rows: [{ ...row, from: "15:40", to: "17:15" }] }, now)).toMatchObject({ ok: false });
     expect((await db.interviewSlot.findUniqueOrThrow({ where: { id: slot.id } })).startsAt).toEqual(slot.startsAt);
   });
   it("сбой журнала откатывает все слоты", async () => {

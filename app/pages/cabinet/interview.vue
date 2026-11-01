@@ -56,9 +56,10 @@ async function book(slotId: string) {
             <p class="text-sm">{{ iv.booking.room ? `Аудитория ${iv.booking.room}` : 'Аудиторию и подробности мастер напишет в личные сообщения за 5 минут до встречи.' }}</p>
             <p v-if="past" class="text-paper/80 text-sm">Время собеседования прошло. Информацию об итогах опубликуем в кабинете.</p>
             <template v-else>
-              <p class="text-paper/80 text-sm">Самостоятельная перезапись — один раз, до {{ mskFormat(iv.booking.changeDeadline, 'd MMMM, HH:mm') }} по Москве.</p>
+              <p class="text-paper/80 text-sm">Перезаписаться можно 1 раз. Осталось перезаписей: {{ Math.max(0, 1 - iv.reschedulesUsed) }} из 1.</p>
+              <p class="text-paper/80 text-sm">Срок перезаписи — до {{ mskFormat(iv.booking.changeDeadline, 'd MMMM, HH:mm') }} по Москве.</p>
               <p class="text-paper/70 text-xs">{{ iv.reschedulesUsed >= 1 ? 'Единственная перезапись уже использована. Для изменений обратитесь к организаторам.' : canChangeNow ? 'В 16:00 накануне напомним о сроке перезаписи.' : 'Самостоятельный перенос недоступен. Для изменений обратитесь к организаторам.' }}</p>
-              <button v-if="canChangeNow" type="button" class="self-start rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20" @click="choosing = !choosing">{{ choosing ? 'Оставить как есть' : 'Выбрать другое время' }}</button>
+              <button type="button" :disabled="!canChangeNow" class="self-start rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50" @click="choosing = !choosing">{{ choosing ? 'Оставить как есть' : 'Перезаписаться (1 раз)' }}</button>
             </template>
           </section>
           <p v-if="iv.bookingCancelled" class="bg-card border-line rounded-3xl border p-5 text-sm">Ваша запись отменена. Для новой записи свяжитесь с организаторами.</p>

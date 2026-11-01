@@ -1,4 +1,5 @@
 import { materializeReminders } from "~~/lib/interviews/reminders";
+import { materializeReserveInvitations } from "~~/lib/interviews/reserve-invitations";
 import { materializeApplicationDeadline, materializeAssessmentReminders } from "~~/lib/notifications/selection-reminders";
 import { materializeStageOpen } from "~~/lib/notifications/stage-open";
 import { createPushSender } from "~~/lib/notifications/push-sender";
@@ -38,6 +39,7 @@ export default defineNitroPlugin((nitroApp) => {
         await materializeApplicationDeadline();
         await materializeAssessmentReminders();
       }
+      await materializeReserveInvitations();
       const result = await processDeliveries({ senders });
       if (result.sent + result.failed > 0) {
         console.info(`[уведомления] отправлено ${result.sent}, не дошло ${result.failed}`);

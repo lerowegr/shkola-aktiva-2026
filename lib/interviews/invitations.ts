@@ -20,7 +20,7 @@ async function invitationContext(seasonId: string, now: Date) {
     seasonId, status: "SUBMITTED", assessmentInvite: { is: { attended: true } }, bookings: { none: { cancelledAt: null } }, decisions: { none: { stageKind: "INTERVIEW", publishedAt: { not: null } } },
     user: { status: "ACTIVE", isOwner: false, roles: { none: {} }, notifications: { none: { key: keyFor(seasonId) } } },
   }, select: { userId: true } });
-  const slots = await db.interviewSlot.findMany({ where: { seasonId, capacity: 1, startsAt: { gt: now } }, select: { startsAt: true, interviewers: { select: { userId: true } }, _count: { select: { bookings: { where: { cancelledAt: null } } } } } });
+  const slots = await db.interviewSlot.findMany({ where: { seasonId, archivedAt: null, capacity: 1, startsAt: { gt: now } }, select: { startsAt: true, interviewers: { select: { userId: true } }, _count: { select: { bookings: { where: { cancelledAt: null } } } } } });
   const availableSlots = slots.filter(s => canBook(s.startsAt, now) && s.interviewers.length === 1 && s._count.bookings === 0).length;
   const state = stageState(stage, now);
   return { stage, state, people, availableSlots, text: interviewInvitationText(stage.opensAt, state) };

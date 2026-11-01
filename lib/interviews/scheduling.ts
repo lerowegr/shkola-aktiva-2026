@@ -1,4 +1,5 @@
 import type { db } from "~~/lib/db";
+import { INTERVIEW_BREAK_MS } from "./rules";
 
 export type InterviewTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -15,7 +16,7 @@ export async function validateInterviewer(tx: InterviewTx, userId: string): Prom
 export async function checkOverlap(tx: InterviewTx, userId: string, startsAt: Date, endsAt: Date, exceptId?: string): Promise<void> {
   const conflict = await tx.slotInterviewer.findFirst({ where: {
     userId,
-    slot: { ...(exceptId ? { id: { not: exceptId } } : {}), startsAt: { lt: endsAt }, endsAt: { gt: startsAt } },
+    slot: { archivedAt: null, ...(exceptId ? { id: { not: exceptId } } : {}), startsAt: { lt: new Date(+endsAt + INTERVIEW_BREAK_MS) }, endsAt: { gt: new Date(+startsAt - INTERVIEW_BREAK_MS) } },
   }, select: { id: true } });
-  if (conflict) throw new InterviewScheduleError("У этого мастера уже есть собеседование в выбранное время. Выберите другое время или другого мастера.");
+  if (conflict) throw new InterviewScheduleError("У этого мастера уже есть собеседование в выбранное время или нет перерыва 5 минут. Выберите другое время или другого мастера.");
 }

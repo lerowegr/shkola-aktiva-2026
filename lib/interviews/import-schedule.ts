@@ -4,8 +4,8 @@ import { writeAudit } from "~~/lib/audit";
 import { loadUser } from "~~/lib/auth/actor";
 import { can } from "~~/lib/permissions";
 import { BOOKING_LOCK } from "./rules";
-import { cutSlots } from "./slots";
-import { validInterval, type InterviewInterval } from "./import-table";
+import { availabilitySlots } from "./availability";
+import type { InterviewInterval } from "./import-table";
 import { InterviewScheduleError, validateInterviewer } from "./scheduling";
 
 const dayKey = (date: Date) => new Date(date.getTime() + 3 * 60 * 60_000).toISOString().slice(0, 10);
@@ -21,12 +21,9 @@ export async function importSchedule(params: {
   if (!actor || actor.status !== "ACTIVE" || !can(actor, "interviews.manage")) return { ok: false, message: "Нет права изменять расписание собеседований." };
   try {
     if (!params.rows.length || params.rows.length > 500) throw new InterviewScheduleError("Вставьте от 1 до 500 интервалов.");
-    const wanted = params.rows.flatMap((row, index) => {
-      if (!validInterval(row) || !row.location.trim() || row.location.length > 300 || !row.interviewerId) throw new InterviewScheduleError(`Строка ${index + 1}: проверьте дату, время, корпус и мастера.`);
-      const slots = cutSlots({ ...row, duration: 45, gap: 0 });
-      if (!slots.length || slots[0]!.startsAt <= now) throw new InterviewScheduleError(`Строка ${index + 1}: время прошло или интервал короче 45 минут.`);
-      return slots.map(slot => ({ ...slot, location: row.location.trim(), interviewerId: row.interviewerId, date: row.date }));
-    }).sort((a, b) => a.interviewerId.localeCompare(b.interviewerId) || a.startsAt.getTime() - b.startsAt.getTime());
+    let wanted;
+    try { wanted = availabilitySlots(params.rows); } catch (error) { throw new InterviewScheduleError((error as Error).message); }
+    if (!wanted.length || wanted.some(s => s.startsAt <= now)) throw new InterviewScheduleError("Проверьте будущие интервалы: слотов нет или время уже прошло.");
     if (wanted.length > 2000) throw new InterviewScheduleError("В расписании больше 2000 слотов. Разделите его на несколько частей.");
     for (let i = 1; i < wanted.length; i++) {
       const prev = wanted[i - 1]!, next = wanted[i]!;
@@ -37,7 +34,7 @@ export async function importSchedule(params: {
       const masters = [...new Set(wanted.map(s => s.interviewerId))];
       for (const id of masters) await validateInterviewer(tx, id);
       const existing = await tx.interviewSlot.findMany({
-        where: { seasonId: params.seasonId, interviewers: { some: { userId: { in: masters } } } },
+        where: { seasonId: params.seasonId, archivedAt: null, interviewers: { some: { userId: { in: masters } } } },
         select: { id: true, startsAt: true, endsAt: true, location: true, capacity: true, interviewers: { select: { userId: true } }, _count: { select: { bookings: { where: { cancelledAt: null } } } } },
         orderBy: { startsAt: "asc" },
       });
@@ -66,7 +63,7 @@ export async function importSchedule(params: {
         if (changed && old._count.bookings) throw new InterviewScheduleError(`На ${slot.date} уже есть запись участника. Занятые слоты можно менять только через индивидуальный перенос.`);
         if (changed && old!.startsAt <= now) throw new InterviewScheduleError("Прошедшие слоты не изменяются при импорте.");
         // Проверяем другие сезоны и всё, что не входит в обновляемый набор.
-        const conflict = await tx.slotInterviewer.findFirst({ where: { userId: slot.interviewerId, slot: { id: { notIn: managed.map(s => s.id) }, startsAt: { lt: slot.endsAt }, endsAt: { gt: slot.startsAt } } }, select: { id: true } });
+        const conflict = await tx.slotInterviewer.findFirst({ where: { userId: slot.interviewerId, slot: { archivedAt: null, id: { notIn: managed.map(s => s.id) }, startsAt: { lt: new Date(+slot.endsAt + 300000) }, endsAt: { gt: new Date(+slot.startsAt - 300000) } } }, select: { id: true } });
         if (conflict) throw new InterviewScheduleError(`У мастера уже есть пересекающееся собеседование (${slot.date}).`);
         if (!old) creates.push({ id: randomUUID(), startsAt: slot.startsAt, endsAt: slot.endsAt, location: slot.location, interviewerId: slot.interviewerId });
         else if (changed) updates.push({ id: old.id, startsAt: slot.startsAt, endsAt: slot.endsAt, location: slot.location });

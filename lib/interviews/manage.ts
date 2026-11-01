@@ -3,12 +3,29 @@ import { loadUser } from "~~/lib/auth/actor";
 import { db } from "~~/lib/db";
 import { notify } from "~~/lib/notifications/notify";
 import { can } from "~~/lib/permissions";
-import { validateInterviewer, InterviewScheduleError } from "./scheduling";
+import { validateInterviewer, checkOverlap, InterviewScheduleError } from "./scheduling";
 import { ASSESSMENT_REQUIRED, hasAssessmentAttendance } from "./eligibility";
 import { syncReviews } from "./booking";
 import { BOOKING_LOCK, interviewPlace } from "./rules";
 
 type Meta = { ip?: string | null; userAgent?: string | null };
+
+export async function restoreSlot(actorId: string, seasonId: string, slotId: string, now = new Date()) {
+  const actor = await loadUser(actorId);
+  if (!actor || !can(actor, "interviews.manage") || actor.status !== "ACTIVE") return { ok: false, message: "Нет права восстанавливать слоты." };
+  try {
+    return await db.$transaction(async tx => {
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BOOKING_LOCK})`);
+      const slot = await tx.interviewSlot.findFirst({ where: { id: slotId, seasonId, archivedAt: { not: null } }, include: { interviewers: true, bookings: { where: { cancelledAt: null } } } });
+      if (!slot || slot.startsAt <= now || slot.interviewers.length !== 1 || slot.capacity !== 1 || slot.bookings.length) return { ok: false, message: "Можно восстановить только будущий свободный слот с одним мастером." };
+      await validateInterviewer(tx, slot.interviewers[0]!.userId);
+      await checkOverlap(tx, slot.interviewers[0]!.userId, slot.startsAt, slot.endsAt, slotId);
+      await tx.interviewSlot.update({ where: { id: slotId }, data: { archivedAt: null } });
+      await writeAudit({ actorId, action: "interview.slot_restore", entityType: "slot", entityId: slotId }, tx);
+      return { ok: true, message: "Слот восстановлен." };
+    });
+  } catch (error) { if (error instanceof InterviewScheduleError) return { ok: false, message: error.message }; throw error; }
+}
 
 export async function updateRoom(actorId: string, seasonId: string, slotId: string, room: string | null, meta: Meta = {}) {
   const actor = await loadUser(actorId);
@@ -17,7 +34,7 @@ export async function updateRoom(actorId: string, seasonId: string, slotId: stri
   if (value && value.length > 100) return { ok: false, message: "Аудитория — не длиннее 100 символов." };
   const result = await db.$transaction(async tx => {
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BOOKING_LOCK})`);
-    const slot = await tx.interviewSlot.findFirst({ where: { id: slotId, seasonId }, select: {
+    const slot = await tx.interviewSlot.findFirst({ where: { id: slotId, seasonId, archivedAt: null }, select: {
       id: true, room: true, location: true, startsAt: true,
       interviewers: { select: { userId: true } },
       bookings: { where: { cancelledAt: null }, select: { application: { select: { userId: true } } } },
@@ -53,7 +70,7 @@ export async function manageBooking(params: { actorId: string; seasonId: string;
     if (!application) return { ok: false as const, message: "Отправленная анкета не найдена." };
     if (params.slotId && !await hasAssessmentAttendance(tx, params.applicationId)) return { ok: false as const, message: ASSESSMENT_REQUIRED };
     const current = await tx.interviewBooking.findFirst({ where: { applicationId: params.applicationId, cancelledAt: null }, select: { id: true, slotId: true } });
-    const slot = params.slotId ? await tx.interviewSlot.findFirst({ where: { id: params.slotId, seasonId: params.seasonId }, select: { id: true, startsAt: true, location: true, room: true, capacity: true, interviewers: { select: { userId: true } }, _count: { select: { bookings: { where: { cancelledAt: null } } } } } }) : null;
+    const slot = params.slotId ? await tx.interviewSlot.findFirst({ where: { id: params.slotId, seasonId: params.seasonId, archivedAt: null }, select: { id: true, startsAt: true, location: true, room: true, capacity: true, interviewers: { select: { userId: true } }, _count: { select: { bookings: { where: { cancelledAt: null } } } } } }) : null;
     if (params.slotId && (!slot || slot.startsAt <= now || slot.capacity !== 1 || slot.interviewers.length !== 1)) return { ok: false as const, message: "Выберите будущий слот с одним мастером и одним местом." };
     if (slot) {
       try { await validateInterviewer(tx, slot.interviewers[0]!.userId); }
@@ -76,6 +93,6 @@ export async function manageBooking(params: { actorId: string; seasonId: string;
   if (result.changed) await notify([{
     userId: result.userId, category: "SELECTION", title: result.slot ? "Организатор изменил запись на собеседование" : "Запись на собеседование отменена организатором",
     body: result.slot ? `${when(result.slot.startsAt)}, ${interviewPlace(result.slot)}.${params.restoreChange ? " Право на одну самостоятельную перезапись восстановлено." : ""}` : "Для выбора нового времени свяжитесь с организаторами.", url: "/cabinet/interview",
-  }, ...(result.slot?.interviewers.map(i => ({ userId: i.userId, category: "REVIEW" as const, title: "Организатор изменил запись на собеседование", body: when(result.slot!.startsAt), url: `/staff/applications/${params.applicationId}?stage=INTERVIEW` })) ?? [])], { urgent: true });
+  }, ...(result.slot?.interviewers.map(i => ({ userId: i.userId, category: "SYSTEM" as const, title: "Организатор изменил запись на собеседование", body: `${when(result.slot!.startsAt)}, ${interviewPlace(result.slot!)}`, url: `/staff/applications/${params.applicationId}?stage=INTERVIEW` })) ?? [])], { urgent: true });
   return { ok: true, message: "Запись обновлена. Изменение сохранено в журнале." };
 }

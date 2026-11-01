@@ -25,3 +25,4 @@ export function interviewPlace(slot: { location: string; room?: string | null })
 
 /** Один общий замок расписания и записи: защищает и место, и доступность мастера. */
 export const BOOKING_LOCK = 918_274;
+export const INTERVIEW_BREAK_MS = 5 * 60_000;

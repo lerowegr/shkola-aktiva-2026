@@ -78,7 +78,7 @@ export async function loadInterview(userId: string, now = new Date()): Promise<C
     allowed && state === "open" && ((!booking && ctx.application!._count.bookings === 0) || (booking && canReschedule(booking.slot.startsAt, ctx.application!.interviewReschedulesUsed, now)))
       ? (
           await db.interviewSlot.findMany({
-            where: { seasonId: ctx.season.id, capacity: 1, startsAt: { gt: now } },
+            where: { seasonId: ctx.season.id, archivedAt: null, capacity: 1, startsAt: { gt: now } },
             orderBy: { startsAt: "asc" },
             select: {
               id: true,
@@ -150,12 +150,12 @@ export async function setSlotInterviewers(
     const slot = await tx.interviewSlot.findUnique({
       where: { id: slotId },
       select: {
-        id: true, startsAt: true, endsAt: true,
+        id: true, startsAt: true, endsAt: true, archivedAt: true,
         interviewers: { select: { userId: true } },
         bookings: { where: { cancelledAt: null }, select: { applicationId: true } },
       },
     });
-    if (!slot) return { ok: false as const, message: "Слот не найден — обновите страницу." };
+    if (!slot || slot.archivedAt) return { ok: false as const, message: "Слот не найден или снят с записи — обновите страницу." };
 
     if (slot.bookings.length > 1) return { ok: false as const, message: "В старом слоте несколько кандидатов. Сначала перенесите их по отдельным собеседованиям." };
     try {
@@ -193,10 +193,11 @@ export async function book(userId: string, slotId: string, now = new Date()): Pr
     if (!await hasAssessmentAttendance(tx, application.id)) return { ok: false as const, message: ASSESSMENT_REQUIRED };
 
     const slot = await tx.interviewSlot.findFirst({
-      where: { id: slotId, seasonId: ctx.season.id },
+      where: { id: slotId, seasonId: ctx.season.id, archivedAt: null },
       select: {
         id: true,
         startsAt: true,
+        endsAt: true,
         location: true,
         room: true,
         capacity: true,
@@ -210,7 +211,7 @@ export async function book(userId: string, slotId: string, now = new Date()): Pr
     catch (error) { if (error instanceof InterviewScheduleError) return { ok: false as const, message: error.message }; throw error; }
     const current = await tx.interviewBooking.findFirst({
       where: { applicationId: application.id, cancelledAt: null },
-      select: { id: true, slotId: true, slot: { select: { startsAt: true } } },
+      select: { id: true, slotId: true, slot: { select: { startsAt: true, interviewers: { select: { userId: true } } } } },
     });
     if (current?.slotId === slot.id) return { ok: true as const, slot, moved: false, changed: false };
     if (!current && !canBook(slot.startsAt, now)) return { ok: false as const, message: `Запись на этот день закончилась ${when(bookingDeadline(slot.startsAt))} по Москве. Выберите другой день или обратитесь к организаторам.` };
@@ -231,7 +232,7 @@ export async function book(userId: string, slotId: string, now = new Date()): Pr
     await tx.interviewBooking.create({ data: { slotId: slot.id, applicationId: application.id, createdAt: now } });
     await syncReviews(tx, application.id, slot.interviewers.map((item) => item.userId));
 
-    return { ok: true as const, slot, moved: Boolean(current), changed: true };
+    return { ok: true as const, slot, moved: Boolean(current), changed: true, previousMasters: current?.slot.interviewers.map(i => i.userId) ?? [] };
   });
 
   if (!outcome.ok) return outcome;
@@ -248,12 +249,16 @@ export async function book(userId: string, slotId: string, now = new Date()): Pr
     },
     ...outcome.slot.interviewers.map((item) => ({
       userId: item.userId,
-      category: "REVIEW" as const,
+      category: "SYSTEM" as const,
       title: "Новая запись на собеседование",
-      body: `${fullName(application)} — ${at}`,
+      body: `${fullName(application)} — ${at}–${new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" }).format(outcome.slot.endsAt)} (МСК). ${interviewPlace(outcome.slot)}.${outcome.moved ? " Участник перезаписался на это время." : ""}`,
       url: `/staff/applications/${application.id}?stage=INTERVIEW`,
     })),
-  ]);
+    ...(outcome.previousMasters ?? []).filter(id => !outcome.slot.interviewers.some(i => i.userId === id)).map(id => ({
+      userId: id, category: "SYSTEM" as const, title: "Запись на собеседование перенесена",
+      body: `${fullName(application)} выбрал другое собеседование. Его прежнее время у вас освободилось.`, url: "/staff/interviews",
+    })),
+  ], { urgent: true, now, deliverAt: now });
 
   return { ok: true, message: `Вы записаны: ${at}, ${interviewPlace(outcome.slot)}.` };
 }

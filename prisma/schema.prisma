@@ -662,6 +662,8 @@ model InterviewSlot {
   capacity    Int      @default(1)
   createdById String?
   createdAt   DateTime @default(now())
+  /// Снят с записи, но сохранён для истории и восстановления.
+  archivedAt  DateTime?
 
   season       Season             @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   interviewers SlotInterviewer[]

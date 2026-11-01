@@ -12,7 +12,7 @@ const schema = z.object({
   from: time,
   to: time,
   duration: z.number().int().min(5, "Собеседование не короче 5 минут.").max(240),
-  gap: z.number().int().min(0).max(120),
+  gap: z.number().int().min(5, "Между собеседованиями нужен перерыв не меньше 5 минут.").max(120),
   capacity: z.literal(1),
   location: z.string().trim().min(1, "Укажите корпус или адрес.").max(300),
   interviewerIds: z.array(z.string().min(1)).length(1, "Выберите одного мастера."),

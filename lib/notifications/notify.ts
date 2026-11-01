@@ -26,7 +26,7 @@ export interface NotifyInput {
   key?: string | null;
 }
 
-export async function notify(inputs: NotifyInput[], options: { urgent?: boolean; now?: Date } = {}): Promise<number> {
+export async function notify(inputs: NotifyInput[], options: { urgent?: boolean; now?: Date; deliverAt?: Date } = {}): Promise<number> {
   if (inputs.length === 0) return 0;
 
   try {
@@ -61,7 +61,7 @@ export async function notify(inputs: NotifyInput[], options: { urgent?: boolean;
     const telegram = new Set(users.filter((user) => user.telegramId).map((user) => user.id));
     const active = new Set(users.map((user) => user.id));
     const push = new Set(subscriptions.map((row) => row.userId));
-    const scheduledAt = deliveryTime(options.now ?? new Date(), { urgent: options.urgent ?? false });
+    const scheduledAt = options.deliverAt ?? deliveryTime(options.now ?? new Date(), { urgent: options.urgent ?? false });
 
     const deliveries = created.flatMap((notification) => {
       if (!active.has(notification.userId)) return [];

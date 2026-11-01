@@ -3,7 +3,7 @@ import { reviewSummary } from "~~/lib/applications/review";
 import { displayName, loadUser } from "~~/lib/auth/actor";
 import { fullName } from "~~/lib/applications/staff";
 import { db } from "~~/lib/db";
-import { BOOKING_LOCK } from "./rules";
+import { BOOKING_LOCK, INTERVIEW_BREAK_MS } from "./rules";
 import { checkOverlap, validateInterviewer, InterviewScheduleError } from "./scheduling";
 
 /**
@@ -12,29 +12,9 @@ import { checkOverlap, validateInterviewer, InterviewScheduleError } from "./sch
  * Время вводят по Москве: «20 октября, с 10:00 до 12:00» — и мы так его и
  * понимаем, независимо от часового пояса сервера или браузера.
  */
-const MOSCOW = "+03:00";
+export { cutSlots } from "./availability";
 
-export interface SlotTime {
-  startsAt: Date;
-  endsAt: Date;
-}
-
-export function cutSlots(params: { date: string; from: string; to: string; duration: number; gap: number }): SlotTime[] {
-  if (params.duration <= 0 || params.gap < 0) return [];
-
-  const start = new Date(`${params.date}T${params.from}:00${MOSCOW}`);
-  const end = new Date(`${params.date}T${params.to}:00${MOSCOW}`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return [];
-
-  const slots: SlotTime[] = [];
-  const step = (params.duration + params.gap) * 60_000;
-  for (let at = start.getTime(); at + params.duration * 60_000 <= end.getTime(); at += step) {
-    slots.push({ startsAt: new Date(at), endsAt: new Date(at + params.duration * 60_000) });
-    // Защита от ошибки в параметрах: больше сорока слотов за раз — опечатка.
-    if (slots.length >= 40) break;
-  }
-  return slots;
-}
+export interface SlotTime { startsAt: Date; endsAt: Date }
 
 export async function createSlots(params: {
   seasonId: string;
@@ -51,7 +31,7 @@ export async function createSlots(params: {
     await validateInterviewer(tx, params.interviewerIds[0]!);
     const ordered = [...params.slots].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
     for (const [i, slot] of ordered.entries()) {
-      if (!Number.isFinite(slot.startsAt.getTime()) || !Number.isFinite(slot.endsAt.getTime()) || slot.endsAt <= slot.startsAt || (i > 0 && ordered[i - 1]!.endsAt > slot.startsAt)) throw new InterviewScheduleError("Время некорректно или слоты пересекаются.");
+      if (!Number.isFinite(slot.startsAt.getTime()) || !Number.isFinite(slot.endsAt.getTime()) || slot.endsAt <= slot.startsAt || (i > 0 && +ordered[i - 1]!.endsAt + INTERVIEW_BREAK_MS > +slot.startsAt)) throw new InterviewScheduleError("Время некорректно или слоты пересекаются.");
       await checkOverlap(tx, params.interviewerIds[0]!, slot.startsAt, slot.endsAt);
     }
     const created: { id: string }[] = [];
@@ -76,6 +56,7 @@ export async function deleteSlot(slotId: string): Promise<{ ok: true } | { ok: f
 
 export interface ScheduleSlot {
   id: string;
+  archivedAt: Date | null;
   startsAt: Date;
   endsAt: Date;
   location: string;
@@ -87,12 +68,13 @@ export interface ScheduleSlot {
 }
 
 /** Расписание организаторов: все слоты сезона по времени. */
-export async function schedule(seasonId: string, viewerId: string): Promise<ScheduleSlot[]> {
+export async function schedule(seasonId: string, viewerId: string, archived = false): Promise<ScheduleSlot[]> {
   const slots = await db.interviewSlot.findMany({
-    where: { seasonId },
+    where: { seasonId, archivedAt: archived ? { not: null } : null },
     orderBy: { startsAt: "asc" },
     select: {
       id: true,
+      archivedAt: true,
       startsAt: true,
       endsAt: true,
       location: true,
@@ -124,6 +106,7 @@ export async function schedule(seasonId: string, viewerId: string): Promise<Sche
   const stages = [{ kind: "APPLICATION", label: "Анкета" }, { kind: "HOMEWORK", label: "ДЗ" }, { kind: "ASSESSMENT", label: "ЦО" }] as const;
   return slots.map((slot) => ({
     id: slot.id,
+    archivedAt: slot.archivedAt,
     startsAt: slot.startsAt,
     endsAt: slot.endsAt,
     location: slot.location,

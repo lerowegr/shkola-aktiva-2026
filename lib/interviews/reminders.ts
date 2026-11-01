@@ -32,7 +32,7 @@ function at(date: Date): string {
 
 export async function materializeReminders(now = new Date()): Promise<void> {
   const bookings = await db.interviewBooking.findMany({
-    where: { cancelledAt: null, slot: { startsAt: { gt: now, lte: new Date(now.getTime() + 36 * HOUR) } } },
+    where: { cancelledAt: null, slot: { archivedAt: null, startsAt: { gt: now, lte: new Date(now.getTime() + 36 * HOUR) } } },
     select: {
       id: true,
       application: { select: { id: true, userId: true, interviewReschedulesUsed: true, assessmentInvite: { select: { attended: true } } } },
@@ -60,7 +60,7 @@ export async function materializeReminders(now = new Date()): Promise<void> {
     return left > 0 && left <= 5 * 60_000;
   });
   await notify(meetingSoon.flatMap(booking => booking.slot.interviewers.map(item => ({
-    userId: item.userId, category: "REVIEW" as const,
+    userId: item.userId, category: "SYSTEM" as const,
     title: "Собеседование через 5 минут — напишите участнику",
     body: `В ${at(booking.slot.startsAt)}, ${interviewPlace(booking.slot)}. Отправьте участнику точное место и подробности встречи в личные сообщения.`,
     url: `/staff/applications/${booking.application.id}?stage=INTERVIEW`, key: `booking:${booking.id}:meeting-place`,
@@ -94,7 +94,7 @@ export async function materializeReminders(now = new Date()): Promise<void> {
       },
       ...booking.slot.interviewers.map((item) => ({
         userId: item.userId,
-        category: "REVIEW" as const,
+        category: "SYSTEM" as const,
         title: "Собеседование через час",
         body: `В ${at(booking.slot.startsAt)}, ${interviewPlace(booking.slot)}`,
         url: `/staff/applications/${booking.application.id}?stage=INTERVIEW`,

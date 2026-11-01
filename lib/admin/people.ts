@@ -173,7 +173,7 @@ export async function deleteCheck(userId: string, now = new Date()): Promise<Del
     db.review.count({ where: { reviewerId: userId, ...touched } }),
     db.review.count({ where: { reviewerId: userId } }),
     db.interviewNote.count({ where: { authorId: userId } }),
-    db.slotInterviewer.count({ where: { userId, slot: { startsAt: { gt: now } } } }),
+    db.slotInterviewer.count({ where: { userId, slot: { archivedAt: null, startsAt: { gt: now } } } }),
     db.assessmentExpert.count({ where: { userId } }),
   ]);
   return { name: displayName(user), scored, assigned: all - scored, notes, interviews, groups };
