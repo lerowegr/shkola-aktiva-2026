@@ -1,5 +1,5 @@
 import { displayName } from "~~/lib/auth/actor";
-import { missedAssessment, slotStartsAt } from "~~/lib/assessment/rules";
+import { assessmentBookingIssue, missedAssessment, slotStartsAt, type AssessmentBookingIssue } from "~~/lib/assessment/rules";
 import { db } from "~~/lib/db";
 import type { StageKind } from "~~/lib/generated/prisma/enums";
 import type { GuideView } from "~~/lib/interviews/guide";
@@ -61,7 +61,7 @@ export async function criteriaFor(seasonId: string, stage: StageKind) {
 // ---------------------------------------------------------------------------
 
 export type ListScope = "mine" | "all";
-export type ListFilter = "all" | "todo" | "done" | "missed";
+export type ListFilter = "all" | "todo" | "done" | "missed" | "unbooked";
 
 export interface ListRow {
   id: string;
@@ -76,6 +76,7 @@ export interface ListRow {
   summary: ReviewSummary;
   /** День ЦО прошёл, а отметки «пришёл» нет. */
   missedAssessment: boolean;
+  assessmentBookingIssue: AssessmentBookingIssue | null;
   /** Маркеры, по которым мастер что-то написал, — чипы в списке. */
   markers: string[];
 }
@@ -110,7 +111,7 @@ export async function listApplications(params: {
   const faculty = params.faculty ?? "";
   const stage = params.stage ?? "APPLICATION";
 
-  const [criteria, applications, reserve] = await Promise.all([
+  const [criteria, applications, sessions] = await Promise.all([
     criteriaFor(seasonId, stage),
     db.application.findMany({
       where: {
@@ -156,14 +157,16 @@ export async function listApplications(params: {
         },
       },
     }),
-    db.assessmentSession.findFirst({
-      where: { seasonId, reserve: true },
+    db.assessmentSession.findMany({
+      where: { seasonId },
       orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-      select: { startsAt: true, invited: true },
+      select: { startsAt: true, invited: true, reserve: true },
     }),
   ]);
 
+  const reserve = sessions.find(session => session.reserve);
   const reserveStartsAt = reserve ? slotStartsAt(reserve) : null;
+  const lastSessionAt = sessions.map(slotStartsAt).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null;
 
   const all: (ListRow & { studentId: string | null })[] = applications.map((application) => {
     // В «Моих» показываем свою оценку, во «Всех» — оценку первого мастера.
@@ -187,6 +190,7 @@ export async function listApplications(params: {
       })),
       mine: application.reviews.some((review) => review.reviewerId === viewerId && review.releasedAt === null),
       summary: reviewSummary(criteria, main?.scores ?? []),
+      assessmentBookingIssue: assessmentBookingIssue(application.assessmentInvite, lastSessionAt),
       missedAssessment: application.assessmentInvite
         ? missedAssessment(
             {
@@ -212,15 +216,19 @@ export async function listApplications(params: {
   }
   const inFaculty = all.filter((row) => facultyMatches(row.faculty, faculty));
 
+  const active = inFaculty.filter(row => !row.assessmentBookingIssue);
   const counts = {
-    all: inFaculty.length,
-    todo: inFaculty.filter((row) => row.summary.status !== "done").length,
-    done: inFaculty.filter((row) => row.summary.status === "done").length,
+    all: active.length,
+    todo: active.filter((row) => row.summary.status !== "done").length,
+    done: active.filter((row) => row.summary.status === "done").length,
     missed: inFaculty.filter((row) => row.missedAssessment).length,
+    unbooked: inFaculty.filter(row => row.assessmentBookingIssue !== null).length,
   };
 
   const rows = inFaculty
     .filter((row) => {
+      if (filter === "unbooked") return row.assessmentBookingIssue !== null;
+      if (filter !== "missed" && row.assessmentBookingIssue) return false;
       if (filter === "all") return true;
       if (filter === "missed") return row.missedAssessment;
       return (filter === "done") === (row.summary.status === "done");
@@ -228,7 +236,7 @@ export async function listApplications(params: {
     .filter((row) => matches(row, row.studentId, query))
     .map(({ studentId: _studentId, ...row }) => row);
 
-  return { rows, counts, unassigned: all.filter((row) => row.reviewers.length === 0).length, faculties };
+  return { rows, counts, unassigned: all.filter((row) => !row.assessmentBookingIssue && row.reviewers.length === 0).length, faculties };
 }
 
 // ---------------------------------------------------------------------------
@@ -288,6 +296,7 @@ export interface StaffApplication {
   interview: StaffInterview | null;
   /** День ЦО прошёл, а отметки «пришёл» нет. */
   missedAssessment: boolean;
+  assessmentBookingIssue: AssessmentBookingIssue | null;
   /** Текст задания этапа — для домашки. */
   task: string | null;
   /** Формулировки заданий ДЗ (подсказки вопросов раздела ДЗ) — для ДЗ и собеседования. */
@@ -384,7 +393,7 @@ export async function loadStaffApplication(
   // Черновики организаторам не показываем: человек ещё пишет.
   if (!application || application.status !== "SUBMITTED") return null;
 
-  const [questions, criteria, stageRow, markers, reserve] = await Promise.all([
+  const [questions, criteria, stageRow, markers, sessions] = await Promise.all([
     // Ответы анкеты показываем на любом этапе: мастеру ДЗ полезно помнить,
     // кто перед ним.
     db.formQuestion.findMany({
@@ -403,12 +412,14 @@ export async function loadStaffApplication(
       orderBy: { order: "asc" },
       select: { id: true, title: true, example: true },
     }),
-    db.assessmentSession.findFirst({
-      where: { seasonId: application.seasonId, reserve: true },
+    db.assessmentSession.findMany({
+      where: { seasonId: application.seasonId },
       orderBy: [{ startsAt: "asc" }, { id: "asc" }],
-      select: { startsAt: true, invited: true },
+      select: { startsAt: true, invited: true, reserve: true },
     }),
   ]);
+  const reserve = sessions.find(session => session.reserve);
+  const lastSessionAt = sessions.map(slotStartsAt).sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null;
   const homeworkSections =
     stage === "APPLICATION"
       ? new Set<string>()
@@ -434,6 +445,7 @@ export async function loadStaffApplication(
 
   return {
     stage,
+    assessmentBookingIssue: assessmentBookingIssue(application.assessmentInvite, lastSessionAt),
     missedAssessment: application.assessmentInvite ? missedAssessment({
       attended: application.assessmentInvite.attended,
       answer: application.assessmentInvite.answer,

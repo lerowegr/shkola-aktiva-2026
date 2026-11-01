@@ -202,3 +202,24 @@ export function canChangeAnswer(
 ): boolean {
   return days.every((day) => !day || new Date(day).getTime() - now.getTime() >= ASSESSMENT_CHANGE_MS);
 }
+
+
+export type AssessmentBookingIssue = "not_selected" | "reserve_queue" | "declined";
+export const ASSESSMENT_BOOKING_LABELS: Record<AssessmentBookingIssue, string> = {
+  not_selected: "Не выбрано время ЦО",
+  reserve_queue: "Очередь резерва — время не выбрано",
+  declined: "Отказ от ЦО",
+};
+
+/** После всех дней ЦО выносим незаписавшихся отдельно. Ручная явка имеет приоритет. */
+export function assessmentBookingIssue(
+  invite: { attended: boolean; answer: AssessmentAnswerKind | null; reserveQueued?: boolean } | null,
+  lastSessionAt: Date | string | null,
+  now = new Date(),
+): AssessmentBookingIssue | null {
+  if (!invite || invite.attended || !lastSessionAt || mskDayKey(lastSessionAt) >= mskDayKey(now)) return null;
+  if (invite.answer === "CANT") return "declined";
+  if (invite.reserveQueued) return "reserve_queue";
+  if (invite.answer === null) return "not_selected";
+  return null;
+}

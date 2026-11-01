@@ -82,7 +82,7 @@ describe("listApplications", () => {
 
     const todo = await listApplications({ seasonId, viewerId: katya.id, scope: "mine", filter: "todo", query: "" });
     expect(todo.rows.map((row) => row.name)).toEqual(["Ковалёв Имя"]);
-    expect(todo.counts).toEqual({ all: 2, todo: 1, done: 1, missed: 0 });
+    expect(todo.counts).toEqual({ all: 2, todo: 1, done: 1, missed: 0, unbooked: 0 });
   });
 
   it("фильтр по факультету: строки и счётчики вкладок — по нему, разбивка — по всем", async () => {
@@ -189,5 +189,33 @@ describe("явка ЦО и оценивание", () => {
     await db.assessmentInvite.create({ data: { applicationId: app.id, sessionId: session.id, answer: "GOING" } });
     expect((await listApplications({ seasonId, viewerId: katya.id, scope: "mine", filter: "missed", query: "" })).rows).toHaveLength(0);
     expect((await listApplications({ seasonId, viewerId: katya.id, scope: "all", filter: "missed", query: "" })).rows.map(row => row.id)).toEqual([app.id]);
+  });
+});
+
+
+describe("анкеты без записи на ЦО", () => {
+  it("отдельная вкладка для неответивших, очереди и отказов; оценки сохранены, пришедшие остаются", async () => {
+    const session = await db.assessmentSession.create({ data: { seasonId, title: "ЦО", startsAt: new Date("2020-01-01T10:00:00Z") } });
+    const reserve = await db.assessmentSession.create({ data: { seasonId, title: "Резерв", reserve: true, startsAt: new Date("2020-01-02T10:00:00Z") } });
+    for (const [name, answer, attended] of [["Не ответил", null, false], ["Очередь", "RESERVE", false], ["Отказ", "CANT", false], ["Пришёл", null, true], ["Записан", "GOING", false]] as const) {
+      const { app, review } = await application(name, katya.id);
+      await db.assessmentInvite.create({ data: { applicationId: app.id, sessionId: session.id, answer, reserveQueued: answer === "RESERVE", attended } });
+      await saveScore({ reviewId: review!.id, actorId: katya.id, criterionId: interest.id, score: 3 });
+    }
+    const args = { seasonId, viewerId: katya.id, scope: "mine" as const, query: "" };
+    const normal = await listApplications({ ...args, filter: "all" });
+    expect(normal.rows.map(row => row.name)).toEqual(expect.arrayContaining(["Пришёл Имя", "Записан Имя"]));
+    expect(normal.rows).toHaveLength(2);
+    expect(normal.counts).toEqual({ all: 2, todo: 2, done: 0, missed: 1, unbooked: 3 });
+    const separate = await listApplications({ ...args, filter: "unbooked" });
+    expect(separate.rows.map(row => row.assessmentBookingIssue)).toEqual(expect.arrayContaining(["not_selected", "reserve_queue", "declined"]));
+    expect(separate.rows).toHaveLength(3);
+    const card = await loadStaffApplication(separate.rows[0]!.id, katya.id);
+    expect(card?.assessmentBookingIssue).not.toBeNull();
+    expect(card?.reviews[0]?.scores[interest.id]).toBe(3);
+    // Пока резерв впереди, приглашённые не скрываются из обычной проверки.
+    await db.assessmentSession.update({ where: { id: reserve.id }, data: { startsAt: new Date("2099-01-01T10:00:00Z") } });
+    expect((await listApplications({ ...args, filter: "all" })).rows).toHaveLength(5);
+    expect((await listApplications({ ...args, filter: "unbooked" })).rows).toHaveLength(0);
   });
 });

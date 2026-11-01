@@ -2,6 +2,7 @@
 import { refDebounced } from "@vueuse/core";
 import { ChevronRight, Search } from "lucide-vue-next";
 
+import { ASSESSMENT_BOOKING_LABELS } from "~~/lib/assessment/rules";
 import type { EvaluatedStage, ListFilter, ListResult, ListScope } from "~~/lib/applications/staff";
 
 /**
@@ -31,6 +32,7 @@ const FILTERS: { key: ListFilter; label: string }[] = [
   { key: "todo", label: "Не проверены" },
   { key: "done", label: "Проверены" },
   { key: "missed", label: "Нет явки ЦО" },
+  { key: "unbooked", label: "Без записи ЦО" },
 ];
 
 const link = (id: string) =>
@@ -54,7 +56,7 @@ const link = (id: string) =>
       <StaffFacultyFilter v-model="faculty" :counts="data?.faculties" />
       </div>
 
-      <div role="tablist" class="bg-paper grid grid-cols-2 gap-1 rounded-2xl p-1 sm:flex">
+      <div role="tablist" class="bg-paper grid grid-cols-2 gap-1 rounded-2xl p-1 sm:flex sm:flex-wrap">
         <button
           v-for="item in FILTERS"
           :key="item.key"
@@ -70,6 +72,8 @@ const link = (id: string) =>
         </button>
       </div>
     </div>
+
+    <p class="text-ink-soft px-4 pb-3 text-xs">После завершения всех дней ЦО не выбравшие время, очередь резерва и отказы находятся во вкладке «Без записи ЦО». Анкеты и оценки сохранены.</p>
 
     <!-- Шапка таблицы — только на широком экране -->
     <div
@@ -100,6 +104,7 @@ const link = (id: string) =>
             <StaffAvatar :seed="row.id" :text="row.initials" />
             <span class="min-w-0">
               <span class="block truncate text-sm font-semibold">{{ row.name }}</span>
+              <span v-if="row.assessmentBookingIssue" class="text-danger block text-xs">{{ ASSESSMENT_BOOKING_LABELS[row.assessmentBookingIssue] }}</span>
               <span v-if="row.missedAssessment" class="text-danger block text-xs">Нет отметки явки на ЦО</span>
               <span class="text-ink-soft block truncate text-xs">
                 {{ [row.faculty, row.telegramUsername ? `@${row.telegramUsername}` : null].filter(Boolean).join(" · ") }}
@@ -146,6 +151,8 @@ const link = (id: string) =>
           ? "Никого не нашли. Проверьте написание."
           : faculty
             ? "С этого факультета здесь никого нет."
+          : filter === "unbooked"
+            ? "Нет кандидатов без записи после завершения всех дней ЦО."
           : filter === "missed"
             ? "Нет кандидатов без отметки явки после подтверждённого дня ЦО."
           : filter === "todo"

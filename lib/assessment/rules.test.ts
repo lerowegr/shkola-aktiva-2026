@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { balance, canChangeAnswer, dayOf, invitesFaculty, missedAssessment, attendanceDay, placeChanged, placeLine, placeOf, placeProblem, readPlace } from "./rules";
+import { balance, canChangeAnswer, dayOf, invitesFaculty, assessmentBookingIssue, missedAssessment, attendanceDay, placeChanged, placeLine, placeOf, placeProblem, readPlace } from "./rules";
 
 describe("balance", () => {
   it("без групп — никого не раскладывает", () => {
@@ -99,5 +99,18 @@ describe("сборы ЦО", () => {
     expect(missedAssessment(invite, null, new Date("2026-10-26T21:00:00Z"))).toBe(true);
     expect(missedAssessment({ ...invite, answer: "CANT" }, null, now)).toBe(false);
     expect(missedAssessment({ ...invite, answer: null }, null, now)).toBe(false);
+  });
+});
+
+
+describe("нет записи после всех дней ЦО", () => {
+  it("полночь Москвы, ручная явка и отсутствие приглашения", () => {
+    const invite = { answer: null, attended: false };
+    const last = "2026-10-31T14:00:00Z";
+    expect(assessmentBookingIssue(invite, last, new Date("2026-10-31T20:59:59Z"))).toBeNull();
+    expect(assessmentBookingIssue(invite, last, new Date("2026-10-31T21:00:00Z"))).toBe("not_selected");
+    expect(assessmentBookingIssue({ ...invite, attended: true }, last, new Date("2026-11-01T10:00:00Z"))).toBeNull();
+    expect(assessmentBookingIssue(null, last)).toBeNull();
+    expect(assessmentBookingIssue(invite, null)).toBeNull();
   });
 });
