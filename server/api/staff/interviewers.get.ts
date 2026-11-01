@@ -8,7 +8,7 @@ export default defineEventHandler(async (event) => {
   const people = await db.user.findMany({
     where: {
       status: "ACTIVE",
-      roles: { some: { role: { permissions: { hasSome: ["applications.review", "interviews.manage"] } } } },
+      OR: [{ isOwner: true }, { roles: { some: { role: { permissions: { hasSome: ["applications.review", "interviews.manage"] } } } } }],
     },
     select: { id: true, firstName: true, lastName: true, telegramUsername: true, email: true },
   });

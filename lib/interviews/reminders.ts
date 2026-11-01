@@ -1,4 +1,5 @@
 import { db } from "~~/lib/db";
+import { changeDeadline, interviewPlace } from "./rules";
 import { notify } from "~~/lib/notifications/notify";
 
 /**
@@ -31,13 +32,24 @@ function at(date: Date): string {
 
 export async function materializeReminders(now = new Date()): Promise<void> {
   const bookings = await db.interviewBooking.findMany({
-    where: { cancelledAt: null, slot: { startsAt: { gt: now, lte: new Date(now.getTime() + 24 * HOUR) } } },
+    where: { cancelledAt: null, slot: { startsAt: { gt: now, lte: new Date(now.getTime() + 36 * HOUR) } } },
     select: {
       id: true,
-      application: { select: { id: true, userId: true } },
-      slot: { select: { startsAt: true, location: true, interviewers: { select: { userId: true } } } },
+      application: { select: { id: true, userId: true, interviewReschedulesUsed: true } },
+      slot: { select: { startsAt: true, location: true, room: true, interviewers: { select: { userId: true } } } },
     },
   });
+
+  const deadlineBookings = bookings.filter(booking => {
+    const deadline = changeDeadline(booking.slot.startsAt).getTime();
+    return booking.application.interviewReschedulesUsed < 1 && now.getTime() >= deadline - 2 * HOUR && now.getTime() < deadline;
+  });
+  await notify(deadlineBookings.map(booking => ({
+    userId: booking.application.userId, category: "SELECTION" as const,
+    title: "Перезапись на собеседование — до 18:00 сегодня",
+    body: "Если хотите выбрать другое время, сделайте это в кабинете до 18:00 по Москве. Самостоятельная перезапись доступна один раз. После 18:00 перенос возможен только через организаторов.",
+    url: "/cabinet/interview", key: `booking:${booking.id}:change-deadline`,
+  })), { urgent: true });
 
   const due = dueReminders(
     bookings.map((booking) => ({ id: booking.id, startsAt: booking.slot.startsAt })),
@@ -53,8 +65,8 @@ export async function materializeReminders(now = new Date()): Promise<void> {
     daily.map((booking) => ({
       userId: booking.application.userId,
       category: "SELECTION" as const,
-      title: "Завтра собеседование",
-      body: `В ${at(booking.slot.startsAt)}, ${booking.slot.location}. Если не получается — перенесите в кабинете.`,
+      title: "Напоминание о собеседовании",
+      body: `${new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", day: "numeric", month: "long" }).format(booking.slot.startsAt)}, в ${at(booking.slot.startsAt)}, ${interviewPlace(booking.slot)}.`,
       url: "/cabinet/interview",
       key: `booking:${booking.id}:24h`,
     })),
@@ -66,7 +78,7 @@ export async function materializeReminders(now = new Date()): Promise<void> {
         userId: booking.application.userId,
         category: "SELECTION" as const,
         title: "Собеседование через час",
-        body: `В ${at(booking.slot.startsAt)}, ${booking.slot.location}. Ждём вас!`,
+        body: `В ${at(booking.slot.startsAt)}, ${interviewPlace(booking.slot)}. Ждём вас!`,
         url: "/cabinet/interview",
         key: `booking:${booking.id}:1h`,
       },
@@ -74,11 +86,22 @@ export async function materializeReminders(now = new Date()): Promise<void> {
         userId: item.userId,
         category: "REVIEW" as const,
         title: "Собеседование через час",
-        body: `В ${at(booking.slot.startsAt)}, ${booking.slot.location}`,
+        body: `В ${at(booking.slot.startsAt)}, ${interviewPlace(booking.slot)}`,
         url: `/staff/applications/${booking.application.id}?stage=INTERVIEW`,
         key: `booking:${booking.id}:1h`,
       })),
     ]),
     { urgent: true },
   );
+}
+
+/** Очередь могла задержать доставку: устаревший дедлайн или отменённую запись не отправляем. */
+export async function interviewReminderIsCurrent(key: string | null, now: Date): Promise<boolean> {
+  const match = key?.match(/^booking:([^:]+):(24h|1h|change-deadline)$/);
+  if (!match) return true;
+  const booking = await db.interviewBooking.findUnique({ where: { id: match[1]! }, select: { cancelledAt: true, slot: { select: { startsAt: true } }, application: { select: { interviewReschedulesUsed: true } } } });
+  if (!booking || booking.cancelledAt || booking.slot.startsAt <= now) return false;
+  if (match[2] !== "change-deadline") return true;
+  const deadline = changeDeadline(booking.slot.startsAt).getTime();
+  return booking.application.interviewReschedulesUsed < 1 && now.getTime() >= deadline - 2 * HOUR && now.getTime() < deadline;
 }

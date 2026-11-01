@@ -448,6 +448,7 @@ model Application {
   middleName String?
   studentId  String?
 
+  interviewReschedulesUsed Int @default(0)
   submittedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -654,8 +655,9 @@ model InterviewSlot {
   seasonId    String
   startsAt    DateTime
   endsAt      DateTime
-  /// Аудитория или ссылка на звонок.
+  /// Корпус или адрес.
   location    String
+  room        String?
   /// Сколько кандидатов одновременно. Обычно один.
   capacity    Int      @default(1)
   createdById String?

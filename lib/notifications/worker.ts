@@ -1,3 +1,4 @@
+import { interviewReminderIsCurrent } from "~~/lib/interviews/reminders";
 import { db } from "~~/lib/db";
 
 /**
@@ -66,7 +67,7 @@ export async function processDeliveries(params: {
       channel: true,
       attempts: true,
       userId: true,
-      notification: { select: { title: true, body: true, url: true, readAt: true } },
+      notification: { select: { title: true, body: true, url: true, readAt: true, key: true } },
       user: { select: { telegramId: true, status: true } },
     },
   });
@@ -93,6 +94,11 @@ export async function processDeliveries(params: {
     }
     if (delivery.user.status !== "ACTIVE") {
       await skip("Доступ закрыт");
+      continue;
+    }
+
+    if (!await interviewReminderIsCurrent(delivery.notification.key, now)) {
+      await skip("Напоминание о записи больше не актуально");
       continue;
     }
 

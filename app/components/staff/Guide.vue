@@ -82,9 +82,9 @@ function hasNotes(authorId: string) {
 const label = (column: Column) => (column.isMine && column.name !== "Вы" ? `${column.name} (вы)` : column.name);
 const legend = computed(() => {
   const list = visible.value;
-  if (list.length === 2) return `Слева — ${label(list[0]!)}, справа — ${label(list[1]!)}. Каждый пишет в своей колонке, текст второго появляется сразу, пока он пишет.`;
-  if (list.length > 2) return `Колонки слева направо: ${list.map(label).join(", ")}. Каждый пишет в своей, чужой текст появляется сразу.`;
-  return "Пока пишет только один мастер — колонка второго появится, как только его назначат.";
+  if (list.length === 2) return `Записи мастеров: ${label(list[0]!)}, ${label(list[1]!)}. Комментарии прежнего мастера сохраняются после переноса.`;
+  if (list.length > 2) return `Сохранённые записи мастеров: ${list.map(label).join(", ")}. Каждый редактирует только свои комментарии.`;
+  return "Сценарий заполняет мастер собеседования. Комментарии сохраняются автоматически.";
 });
 
 const gridClass = computed(() =>

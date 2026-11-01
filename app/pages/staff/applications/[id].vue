@@ -176,6 +176,12 @@ async function pass() {
       ЦО не пройден. Оценивать анкету и ДЗ можно в обычном порядке. Если кандидат был на ЦО, проверьте отметку явки в сборе.
     </p>
 
+    <StaffInterviewBookingControl
+      v-if="card.stage === 'INTERVIEW' && session?.permissions.includes('interviews.manage')"
+      :application-id="id"
+      @saved="refresh"
+    />
+
     <!-- Анкета — две колонки: ответы и оценка рядом. ДЗ и собеседование — одной
          колонкой: работа, сценарий собеса, а критерии в самом низу. -->
     <div class="items-start gap-5" :class="stacked ? 'flex flex-col' : 'grid lg:grid-cols-[minmax(0,1fr)_400px]'">
@@ -190,7 +196,7 @@ async function pass() {
             <p class="text-paper/80 flex items-center gap-2 text-sm">
               <MapPin class="size-4" aria-hidden="true" /> {{ card.interview.location }}
             </p>
-            <p class="text-paper/60 text-xs">Собеседуют: {{ card.interview.interviewers.join(", ") }}</p>
+            <p class="text-paper/60 text-xs">Мастер отбора: {{ card.interview.interviewers.join(", ") }}</p>
           </section>
 
           <section v-if="card.task" class="bg-card border-line rounded-3xl border p-5">

@@ -1,6 +1,8 @@
 import { displayName } from "~~/lib/auth/actor";
 import { fullName } from "~~/lib/applications/staff";
 import { db } from "~~/lib/db";
+import { BOOKING_LOCK } from "./rules";
+import { checkOverlap, validateInterviewer, InterviewScheduleError } from "./scheduling";
 
 /**
  * Слоты собеседований: нарезка, создание, расписание.
@@ -40,30 +42,34 @@ export async function createSlots(params: {
   interviewerIds: string[];
   createdById: string | null;
 }) {
-  return db.$transaction(
-    params.slots.map((slot) =>
-      db.interviewSlot.create({
-        data: {
-          seasonId: params.seasonId,
-          startsAt: slot.startsAt,
-          endsAt: slot.endsAt,
-          location: params.location,
-          capacity: params.capacity,
-          createdById: params.createdById,
-          interviewers: { create: params.interviewerIds.map((userId) => ({ userId })) },
-        },
-        select: { id: true },
-      }),
-    ),
-  );
+  if (params.interviewerIds.length !== 1 || params.capacity !== 1) throw new InterviewScheduleError("На собеседовании должны быть ровно один мастер и один кандидат.");
+  if (!params.location.trim() || params.location.length > 300 || !params.slots.length || params.slots.length > 40) throw new InterviewScheduleError("Укажите корпус и корректный диапазон времени.");
+  return db.$transaction(async tx => {
+    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BOOKING_LOCK})`);
+    await validateInterviewer(tx, params.interviewerIds[0]!);
+    const ordered = [...params.slots].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+    for (const [i, slot] of ordered.entries()) {
+      if (!Number.isFinite(slot.startsAt.getTime()) || !Number.isFinite(slot.endsAt.getTime()) || slot.endsAt <= slot.startsAt || (i > 0 && ordered[i - 1]!.endsAt > slot.startsAt)) throw new InterviewScheduleError("Время некорректно или слоты пересекаются.");
+      await checkOverlap(tx, params.interviewerIds[0]!, slot.startsAt, slot.endsAt);
+    }
+    const created: { id: string }[] = [];
+    for (const slot of params.slots) created.push(await tx.interviewSlot.create({ data: {
+      seasonId: params.seasonId, ...slot, location: params.location.trim(), capacity: 1,
+      createdById: params.createdById, interviewers: { create: { userId: params.interviewerIds[0]! } },
+    }, select: { id: true } }));
+    return created;
+  });
 }
 
 /** Удалить слот можно, только пока на него никто не записан. */
 export async function deleteSlot(slotId: string): Promise<{ ok: true } | { ok: false; message: string }> {
-  const active = await db.interviewBooking.count({ where: { slotId, cancelledAt: null } });
-  if (active > 0) return { ok: false, message: "На слот уже записан кандидат — сначала договоритесь с ним о переносе." };
-  await db.interviewSlot.delete({ where: { id: slotId } }).catch(() => null);
-  return { ok: true };
+  return db.$transaction(async tx => {
+    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BOOKING_LOCK})`);
+    const active = await tx.interviewBooking.count({ where: { slotId, cancelledAt: null } });
+    if (active > 0) return { ok: false as const, message: "На слот уже записан кандидат — сначала договоритесь с ним о переносе." };
+    await tx.interviewSlot.deleteMany({ where: { id: slotId } });
+    return { ok: true as const };
+  });
 }
 
 export interface ScheduleSlot {
@@ -71,10 +77,11 @@ export interface ScheduleSlot {
   startsAt: Date;
   endsAt: Date;
   location: string;
+  room: string | null;
   capacity: number;
   interviewers: { id: string; name: string }[];
   mine: boolean;
-  bookings: { applicationId: string; name: string; telegramUsername: string | null; faculty: string | null }[];
+  bookings: { applicationId: string; name: string; telegramUsername: string | null; faculty: string | null; reschedulesUsed: number }[];
 }
 
 /** Расписание организаторов: все слоты сезона по времени. */
@@ -87,6 +94,7 @@ export async function schedule(seasonId: string, viewerId: string): Promise<Sche
       startsAt: true,
       endsAt: true,
       location: true,
+      room: true,
       capacity: true,
       interviewers: {
         select: { user: { select: { id: true, firstName: true, lastName: true, telegramUsername: true, email: true } } },
@@ -100,6 +108,7 @@ export async function schedule(seasonId: string, viewerId: string): Promise<Sche
               lastName: true,
               firstName: true,
               middleName: true,
+              interviewReschedulesUsed: true,
               user: { select: { telegramUsername: true, faculty: true } },
             },
           },
@@ -113,12 +122,14 @@ export async function schedule(seasonId: string, viewerId: string): Promise<Sche
     startsAt: slot.startsAt,
     endsAt: slot.endsAt,
     location: slot.location,
+    room: slot.room,
     capacity: slot.capacity,
     interviewers: slot.interviewers.map((item) => ({ id: item.user.id, name: displayName(item.user) })),
     mine: slot.interviewers.some((item) => item.user.id === viewerId),
     bookings: slot.bookings.map((booking) => ({
       applicationId: booking.application.id,
       name: fullName(booking.application),
+      reschedulesUsed: booking.application.interviewReschedulesUsed,
       telegramUsername: booking.application.user.telegramUsername,
       faculty: booking.application.user.faculty,
     })),

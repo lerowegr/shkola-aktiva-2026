@@ -1,10 +1,13 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import * as audit from "~~/lib/audit";
 import { db } from "~~/lib/db";
 import { resetDatabase } from "~~/lib/test/db";
 
-import { book, cancel, setSlotInterviewers } from "./booking";
-import { dueReminders, materializeReminders } from "./reminders";
+import { changeDeadline } from "./rules";
+import { manageBooking, updateRoom } from "./manage";
+import { book, cancel, loadInterview, setSlotInterviewers } from "./booking";
+import { dueReminders, materializeReminders, interviewReminderIsCurrent } from "./reminders";
 import { createSlots, cutSlots } from "./slots";
 
 const msk = (iso: string) => new Date(`${iso}+03:00`);
@@ -53,8 +56,9 @@ describe("запись на собеседование", () => {
     await resetDatabase();
     seasonId = (await db.season.create({ data: { slug: "s", title: "S", year: 2026, isCurrent: true } })).id;
     await db.stage.create({ data: { seasonId, kind: "INTERVIEW", title: "Собес", order: 3, mode: "OPEN" } });
-    katya = await db.user.create({ data: { firstName: "Катя" } });
-    ilya = await db.user.create({ data: { firstName: "Илья" } });
+    const role = await db.role.create({ data: { name: "Мастер", slug: "interview-master", permissions: ["applications.review"] } });
+    katya = await db.user.create({ data: { firstName: "Катя", roles: { create: { roleId: role.id } } } });
+    ilya = await db.user.create({ data: { firstName: "Илья", roles: { create: { roleId: role.id } } } });
   });
 
   // Отсева между этапами нет: записаться может каждый, кто отправил анкету.
@@ -84,13 +88,13 @@ describe("запись на собеседование", () => {
     expect(await book(user.id, s.id, NOW)).toMatchObject({ ok: false });
   });
 
-  it("запись создаёт оценку каждому собеседующему", async () => {
+  it("запись создаёт оценку единственному мастеру", async () => {
     const { user, application } = await candidate("Алина", true);
-    const s = await slot("2026-10-20T10:00:00", [katya.id, ilya.id]);
+    const s = await slot("2026-10-20T10:00:00", [katya.id]);
 
     expect(await book(user.id, s.id, NOW)).toMatchObject({ ok: true });
     const reviewers = await db.review.findMany({ where: { applicationId: application.id, stageKind: "INTERVIEW" } });
-    expect(reviewers.map((review) => review.reviewerId).sort()).toEqual([katya.id, ilya.id].sort());
+    expect(reviewers.map((review) => review.reviewerId).sort()).toEqual([katya.id]);
   });
 
   it("собеседующих слота можно поменять: новым — оценка, начатая у снятого остаётся", async () => {
@@ -98,13 +102,13 @@ describe("запись на собеседование", () => {
     const olya = await db.user.create({ data: { firstName: "Оля", roles: { create: { roleId: role.id } } } });
     await db.userRole.createMany({ data: [katya.id, ilya.id].map((userId) => ({ userId, roleId: role.id })) });
     const { user, application } = await candidate("Алина", true);
-    const s = await slot("2026-10-20T10:00:00", [katya.id, ilya.id]);
+    const s = await slot("2026-10-20T10:00:00", [katya.id]);
     await book(user.id, s.id, NOW);
     await db.review.updateMany({ where: { applicationId: application.id, reviewerId: katya.id }, data: { comment: "Начала" } });
 
     expect(await setSlotInterviewers(s.id, [olya.id])).toMatchObject({ ok: true, added: [olya.id] });
     const reviewers = (await db.review.findMany({ where: { applicationId: application.id, stageKind: "INTERVIEW" } })).map((r) => r.reviewerId);
-    // Илья (пусто) снят, Катя (начала) осталась, Оля добавлена.
+    // Катя начала оценку: она остаётся, Оля добавлена.
     expect(reviewers.sort()).toEqual([katya.id, olya.id].sort());
     expect((await db.slotInterviewer.findMany({ where: { slotId: s.id } })).map((i) => i.userId)).toEqual([olya.id]);
 
@@ -135,7 +139,7 @@ describe("запись на собеседование", () => {
     expect(reviews.map((review) => review.reviewerId)).toEqual([ilya.id]);
   });
 
-  it("перенести и отменить меньше чем за 12 часов нельзя", async () => {
+  it("перенести в день собеседования нельзя; самостоятельная отмена не обходит лимит", async () => {
     const { user } = await candidate("Алина", true);
     const soon = await slot("2026-10-15T20:00:00", [katya.id]);
     const later = await slot("2026-10-20T10:00:00", [katya.id]);
@@ -151,13 +155,15 @@ describe("запись на собеседование", () => {
     expect(await book(user.id, s.id, NOW)).toMatchObject({ ok: false });
   });
 
-  it("отмена освобождает слот", async () => {
+  it("ручная отмена освобождает слот", async () => {
     const a = await candidate("Алина", true);
     const b = await candidate("Борис", true);
     const s = await slot("2026-10-20T10:00:00", [katya.id]);
     await book(a.user.id, s.id, NOW);
 
-    expect(await cancel(a.user.id, NOW)).toMatchObject({ ok: true });
+    const owner = await db.user.create({ data: { isOwner: true } });
+    expect(await cancel(a.user.id, NOW)).toMatchObject({ ok: false });
+    expect(await manageBooking({ actorId: owner.id, seasonId, applicationId: a.application.id, slotId: null, restoreChange: false }, {}, NOW)).toMatchObject({ ok: true });
     expect(await book(b.user.id, s.id, NOW)).toMatchObject({ ok: true });
   });
 
@@ -171,4 +177,123 @@ describe("запись на собеседование", () => {
     const reminders = await db.notification.findMany({ where: { userId: user.id, key: { contains: ":24h" } } });
     expect(reminders).toHaveLength(1);
   });
+  it("ровно одна перезапись; конкурентные переносы не обходят лимит", async () => {
+    const { user, application } = await candidate("Алина", true);
+    const first = await slot("2026-11-04T10:00:00", [katya.id]);
+    const second = await slot("2026-11-05T10:00:00", [katya.id]);
+    const third = await slot("2026-11-06T10:00:00", [katya.id]);
+    await book(user.id, first.id, NOW);
+    const results = await Promise.all([book(user.id, second.id, NOW), book(user.id, third.id, NOW)]);
+    expect(results.filter(r => r.ok)).toHaveLength(1);
+    expect((await db.application.findUniqueOrThrow({ where: { id: application.id } })).interviewReschedulesUsed).toBe(1);
+    const current = await db.interviewBooking.findFirstOrThrow({ where: { applicationId: application.id, cancelledAt: null } });
+    expect(await book(user.id, current.slotId, NOW)).toMatchObject({ ok: true });
+    expect((await loadInterview(user.id, NOW))?.booking?.canChange).toBe(false);
+    expect((await loadInterview(user.id, NOW))?.slots).toHaveLength(0);
+  });
+
+  it("18:00 предыдущего дня включительно; в 18:00:01 перенос запрещён", async () => {
+    const at = msk("2026-11-04T18:00:00");
+    const first = await slot("2026-11-05T23:00:00", [katya.id]);
+    const next = await slot("2026-11-06T10:00:00", [katya.id]);
+    expect(changeDeadline(msk("2026-11-05T23:00:00"))).toEqual(at);
+    const a = await candidate("А", true);
+    await book(a.user.id, first.id, NOW);
+    expect(await book(a.user.id, next.id, new Date(at.getTime() + 1000))).toMatchObject({ ok: false });
+    expect(await book(a.user.id, next.id, at)).toMatchObject({ ok: true });
+  });
+
+  it("новое время также должно допускать перенос; занятое не расходует попытку", async () => {
+    const a = await candidate("А", true);
+    const b = await candidate("Б", true);
+    const first = await slot("2026-11-07T10:00:00", [katya.id]);
+    const next = await slot("2026-11-06T10:00:00", [katya.id]);
+    await book(a.user.id, first.id, NOW);
+    await book(b.user.id, next.id, NOW);
+    expect(await book(a.user.id, next.id, NOW)).toMatchObject({ ok: false });
+    expect((await db.application.findUniqueOrThrow({ where: { id: a.application.id } })).interviewReschedulesUsed).toBe(0);
+    expect(await book(a.user.id, next.id, msk("2026-11-05T18:00:01"))).toMatchObject({ ok: false });
+  });
+
+  it("пересечения мастера запрещены, параллельное время разных мастеров разрешено", async () => {
+    await slot("2026-11-02T10:00:00", [katya.id]);
+    await expect(slot("2026-11-02T10:10:00", [katya.id])).rejects.toThrow(/уже есть собеседование/);
+    await expect(slot("2026-11-02T10:00:00", [ilya.id])).resolves.toHaveProperty("id");
+    await expect(slot("2026-11-02T11:00:00", [katya.id, ilya.id])).rejects.toThrow(/ровно один/);
+  });
+
+  it("аудитория: только свой мастер/организатор, уведомление срочное и аудит; повтор не дублирует", async () => {
+    const a = await candidate("А", true);
+    const s = await slot("2026-11-05T10:00:00", [katya.id]);
+    await book(a.user.id, s.id, NOW);
+    expect(await updateRoom(ilya.id, seasonId, s.id, "602")).toMatchObject({ ok: false });
+    expect(await updateRoom(a.user.id, seasonId, s.id, "602")).toMatchObject({ ok: false });
+    expect(await updateRoom(katya.id, seasonId, s.id, "602")).toMatchObject({ ok: true });
+    expect(await updateRoom(katya.id, seasonId, s.id, "602")).toMatchObject({ ok: true });
+    const notifications = await db.notification.findMany({ where: { userId: a.user.id, title: "Уточнена аудитория собеседования" } });
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]?.body).toContain("602");
+    expect(await db.auditLog.count({ where: { action: "interview.room_update" } })).toBe(1);
+    expect((await loadInterview(a.user.id, NOW))?.booking?.room).toBe("602");
+  });
+
+  it("организатор переносит вне дедлайна и явно восстанавливает попытку, мастер не может", async () => {
+    const a = await candidate("А", true);
+    const owner = await db.user.create({ data: { isOwner: true } });
+    const first = await slot("2026-11-03T10:00:00", [katya.id]);
+    const second = await slot("2026-11-04T10:00:00", [katya.id]);
+    const third = await slot("2026-11-06T10:00:00", [katya.id]);
+    await book(a.user.id, first.id, NOW);
+    await book(a.user.id, second.id, NOW);
+    const params = { actorId: owner.id, seasonId, applicationId: a.application.id, slotId: third.id, restoreChange: true };
+    expect(await manageBooking({ ...params, actorId: ilya.id }, {}, msk("2026-11-04T09:00:00"))).toMatchObject({ ok: false });
+    expect(await manageBooking(params, {}, msk("2026-11-04T09:00:00"))).toMatchObject({ ok: true });
+    expect((await db.application.findUniqueOrThrow({ where: { id: a.application.id } })).interviewReschedulesUsed).toBe(0);
+    expect(await db.auditLog.count({ where: { action: "interview.booking_manage" } })).toBe(1);
+  });
+
+  it("напоминание дедлайна: с 16 до 18 накануне, не после; использовавшим перенос не приходит", async () => {
+    const a = await candidate("А", true);
+    const s = await slot("2026-11-05T23:30:00", [katya.id]);
+    await book(a.user.id, s.id, NOW);
+    const count = () => db.notification.count({ where: { userId: a.user.id, key: { endsWith: ":change-deadline" } } });
+    await materializeReminders(msk("2026-11-04T15:59:59")); expect(await count()).toBe(0);
+    await materializeReminders(msk("2026-11-04T16:00:00"));
+    await materializeReminders(msk("2026-11-04T17:00:00")); expect(await count()).toBe(1);
+    await materializeReminders(msk("2026-11-04T18:00:00")); expect(await count()).toBe(1);
+    await db.notification.deleteMany({ where: { userId: a.user.id } });
+    await db.application.update({ where: { id: a.application.id }, data: { interviewReschedulesUsed: 1 } });
+    await materializeReminders(msk("2026-11-04T16:01:00")); expect(await count()).toBe(0);
+  });
+
+  it("создание пересекающихся слотов одного мастера одновременно: только один", async () => {
+    const results = await Promise.allSettled([slot("2026-11-02T10:00:00", [katya.id]), slot("2026-11-02T10:00:00", [katya.id])]);
+    expect(results.filter(r => r.status === "fulfilled")).toHaveLength(1);
+    expect(await db.interviewSlot.count()).toBe(1);
+  });
+
+  it("ошибка аудита откатывает аудиторию; уведомление не создаётся", async () => {
+    const s = await slot("2026-11-02T10:00:00", [katya.id]);
+    const spy = vi.spyOn(audit, "writeAudit").mockRejectedValueOnce(new Error("audit unavailable"));
+    try { await expect(updateRoom(katya.id, seasonId, s.id, "602")).rejects.toThrow("audit unavailable"); }
+    finally { spy.mockRestore(); }
+    expect((await db.interviewSlot.findUniqueOrThrow({ where: { id: s.id } })).room).toBeNull();
+    expect(await db.notification.count({ where: { title: "Уточнена аудитория собеседования" } })).toBe(0);
+  });
+
+  it("отмена и истёкший дедлайн делают доставку неактуальной; отмена не предлагает новую запись", async () => {
+    const a = await candidate("А", true);
+    const s = await slot("2026-11-05T10:00:00", [katya.id]);
+    await book(a.user.id, s.id, NOW);
+    const booking = await db.interviewBooking.findFirstOrThrow({ where: { applicationId: a.application.id } });
+    const key = `booking:${booking.id}:change-deadline`;
+    expect(await interviewReminderIsCurrent(key, msk("2026-11-04T16:00:00"))).toBe(true);
+    expect(await interviewReminderIsCurrent(key, msk("2026-11-04T18:00:00"))).toBe(false);
+    await db.interviewBooking.update({ where: { id: booking.id }, data: { cancelledAt: NOW } });
+    expect(await interviewReminderIsCurrent(key, msk("2026-11-04T16:00:00"))).toBe(false);
+    expect((await loadInterview(a.user.id, NOW))?.bookingCancelled).toBe(true);
+    expect((await loadInterview(a.user.id, NOW))?.slots).toHaveLength(0);
+    expect(await book(a.user.id, s.id, NOW)).toMatchObject({ ok: false });
+  });
+
 });

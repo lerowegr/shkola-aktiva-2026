@@ -1,3 +1,4 @@
+import { interviewPlace } from "~~/lib/interviews/rules";
 import { displayName } from "~~/lib/auth/actor";
 import { assessmentBookingIssue, missedAssessment, slotStartsAt } from "~~/lib/assessment/rules";
 import { db } from "~~/lib/db";
@@ -345,6 +346,7 @@ export async function loadStaffApplication(
               startsAt: true,
               endsAt: true,
               location: true,
+              room: true,
               interviewers: {
                 select: { user: { select: { firstName: true, lastName: true, telegramUsername: true, email: true } } },
               },
@@ -449,7 +451,7 @@ export async function loadStaffApplication(
         ? {
             startsAt: booking.startsAt,
             endsAt: booking.endsAt,
-            location: booking.location,
+            location: interviewPlace(booking),
             interviewers: booking.interviewers.map((item) => displayName(item.user)),
           }
         : null,

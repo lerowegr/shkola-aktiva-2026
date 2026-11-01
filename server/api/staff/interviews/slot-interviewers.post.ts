@@ -5,7 +5,7 @@ import { requirePermission } from "~~/server/utils/session";
 
 const schema = z.object({
   slotId: z.string().min(1),
-  interviewerIds: z.array(z.string().min(1)).min(1, "Выберите хотя бы одного собеседующего.").max(10, "Не больше десяти собеседующих на слот."),
+  interviewerIds: z.array(z.string().min(1)).length(1, "Выберите ровно одного мастера."),
 });
 
 /** Поменять собеседующих у готового слота. */

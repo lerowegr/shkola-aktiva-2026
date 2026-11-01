@@ -307,9 +307,9 @@ export async function resetDemo(now = new Date()): Promise<{ staff: number; cand
   const [past1, past2, past3, future1, future2] = await createSlots({
     seasonId,
     slots: [slot(-1, 16), slot(-1, 17), slot(-1, 18), slot(2, 16), slot(2, 17)],
-    location: "Корпус 2, аудитория 410",
+    location: "Корпус 2",
     capacity: 1,
-    interviewerIds: [staff.lead!, staff.katya!],
+    interviewerIds: [staff.katya!],
     createdById: staff.lead!,
   });
   const bookings: [string, { id: string } | undefined][] = [
@@ -322,8 +322,8 @@ export async function resetDemo(now = new Date()): Promise<{ staff: number; cand
     if (!booked) continue;
     await db.interviewBooking.create({ data: { slotId: booked.id, applicationId: app(key), createdAt: new Date(now.getTime() - 3 * DAY) } });
     const done = key !== "zhenya";
-    // Собеседуют вдвоём: у каждого своя оценка и своя колонка в сценарии.
-    for (const interviewer of [staff.lead!, staff.katya!]) {
+    // Один мастер на собеседовании.
+    for (const interviewer of [staff.katya!]) {
       await review(app(key), "INTERVIEW", interviewer, done ? (key === "lyova" ? "low" : "high") : "none");
     }
   }

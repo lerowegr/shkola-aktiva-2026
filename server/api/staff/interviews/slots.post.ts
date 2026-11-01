@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { InterviewScheduleError } from "~~/lib/interviews/scheduling";
 import { createSlots, cutSlots } from "~~/lib/interviews/slots";
 import { requireCurrentSeasonId } from "~~/server/utils/season";
 import { requirePermission } from "~~/server/utils/session";
@@ -12,9 +13,9 @@ const schema = z.object({
   to: time,
   duration: z.number().int().min(5, "Собеседование не короче 5 минут.").max(240),
   gap: z.number().int().min(0).max(120),
-  capacity: z.number().int().min(1).max(20),
-  location: z.string().trim().min(1, "Укажите место или ссылку на звонок.").max(300),
-  interviewerIds: z.array(z.string().min(1)).min(1, "Выберите хотя бы одного собеседующего.").max(10),
+  capacity: z.literal(1),
+  location: z.string().trim().min(1, "Укажите корпус или адрес.").max(300),
+  interviewerIds: z.array(z.string().min(1)).length(1, "Выберите одного мастера."),
 });
 
 /** Нарезать слоты на день: с–по, длительность, перерыв. Время — московское. */
@@ -26,6 +27,7 @@ export default defineAction(schema, async ({ body, event }) => {
     return { ok: false, message: "Это время уже прошло — выберите будущий день или более позднее начало." };
   }
 
+  try {
   await createSlots({
     seasonId: await requireCurrentSeasonId(),
     slots,
@@ -34,6 +36,10 @@ export default defineAction(schema, async ({ body, event }) => {
     interviewerIds: body.interviewerIds,
     createdById: actor.id,
   });
+  } catch (error) {
+    if (error instanceof InterviewScheduleError) return { ok: false, message: error.message };
+    throw error;
+  }
 
   await audit(event, { actorId: actor.id, action: "interview.slots_create", meta: { date: body.date, count: slots.length } });
   return { ok: true, message: `Создано слотов: ${slots.length}.` };

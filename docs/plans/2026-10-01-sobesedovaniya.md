@@ -1,3 +1,5 @@
+> Правила записи и переноса обновлены спецификацией `specs/016-interview-campus-booking`; пункты про 12 часов и нескольких собеседующих ниже — исторические.
+
 # Этап 4б «Собеседования и итоги» — план реализации
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
