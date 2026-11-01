@@ -15,11 +15,18 @@ const message = useAction("/api/staff/messages/open");
 async function writeTo(applicationId: string) { const result = await message.submit({ applicationId }); if (result.ok && typeof result.threadId === "string") await navigateTo(`/staff/messages?thread=${result.threadId}`); }
 const onlyMine = ref(false);
 const faculty = useFacultyFilter();
+const route = useRoute();
+const router = useRouter();
+const campus = computed({
+  get: () => typeof route.query.campus === "string" ? route.query.campus : "",
+  set: (value: string) => { void router.replace({ query: { ...route.query, campus: value || undefined } }); },
+});
+const campuses = computed(() => [...new Set((data.value?.slots ?? []).map(slot => slot.location))].sort((a, b) => a.localeCompare(b, "ru")));
 const form = reactive({ date: "2026-11-02", from: "08:30", to: "10:00", duration: 45, gap: 0, location: "", interviewerId: "" });
 const week = Array.from({ length: 7 }, (_, i) => `2026-11-${String(i + 2).padStart(2, '0')}`);
 const dates = computed(() => [...new Set([...week, ...(data.value?.slots.map(s => mskDayKey(s.startsAt)) ?? [])])].sort());
 const dateLabel = (date: string) => mskFormat(`${date}T12:00:00+03:00`, "EEE, d MMM");
-const shown = computed(() => (data.value?.slots ?? []).filter(slot => mskDayKey(slot.startsAt) === form.date && (!onlyMine.value || slot.mine)).map(slot => ({ ...slot, bookings: slot.bookings.filter(b => facultyMatches(b.faculty, faculty.value)) })).filter(slot => !faculty.value || slot.bookings.length));
+const shown = computed(() => (data.value?.slots ?? []).filter(slot => mskDayKey(slot.startsAt) === form.date && (!onlyMine.value || slot.mine) && (!campus.value || slot.location === campus.value)).map(slot => ({ ...slot, bookings: slot.bookings.filter(b => facultyMatches(b.faculty, faculty.value)) })).filter(slot => !faculty.value || slot.bookings.length));
 const stats = computed(() => ({ slots: data.value?.slots.length ?? 0, booked: data.value?.slots.reduce((n,s) => n + s.bookings.length, 0) ?? 0 }));
 const cut = useAction("/api/staff/interviews/slots");
 async function createSlots() {
@@ -61,13 +68,20 @@ async function deleteSlot(slotId: string) { const result = await remove.submit({
       <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <UiCheckbox v-model="onlyMine">Только мои собеседования</UiCheckbox>
         <StaffFacultyFilter v-model="faculty" />
+        <label class="flex min-w-0 flex-col gap-1 text-sm sm:max-w-xs">
+          Корпус
+          <UiSelect v-model="campus" size="md" aria-label="Корпус собеседования">
+            <option value="">Все корпуса</option>
+            <option v-for="place in campuses" :key="place" :value="place">{{ place }}</option>
+          </UiSelect>
+        </label>
       </div>
       <div class="flex flex-wrap gap-2" role="group" aria-label="Дни собеседований">
         <button v-for="date in dates" :key="date" type="button" :aria-pressed="form.date === date" class="border-line min-h-11 rounded-xl border px-3 py-2 text-sm" :class="form.date === date ? 'bg-ink text-paper' : 'bg-card hover:border-accent'" @click="form.date = date">{{ dateLabel(date) }}</button>
       </div>
       <h2 class="font-semibold">{{ dateLabel(form.date) }}</h2>
       <UiNotice v-for="(action, i) in [remove, saveSlot, roomAction, move]" :key="i" :ok="action.result.value?.ok" :message="action.result.value?.message" />
-      <p v-if="!shown.length" class="bg-card border-line text-ink-soft rounded-3xl border p-6 text-sm">{{ onlyMine || faculty ? 'По выбранным фильтрам собеседований нет.' : 'На этот день слотов пока нет. Добавьте корпус, время и мастера.' }}</p>
+      <p v-if="!shown.length" class="bg-card border-line text-ink-soft rounded-3xl border p-6 text-sm">{{ onlyMine || faculty || campus ? 'По выбранным фильтрам собеседований нет.' : 'На этот день слотов пока нет. Добавьте корпус, время и мастера.' }}</p>
       <ul v-else class="bg-card border-line overflow-hidden rounded-3xl border">
         <li v-for="slot in shown" :key="slot.id" class="border-line flex flex-col gap-3 border-t p-4 first:border-t-0" :class="slot.mine ? 'bg-brand-green-soft/30' : ''">
           <div class="flex flex-wrap items-start justify-between gap-2">
