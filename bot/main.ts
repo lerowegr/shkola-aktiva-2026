@@ -2,7 +2,8 @@
  * Telegram-бот Школы Актива.
  *
  * Здесь только входящее: /start, вход на сайт по коду, привязка Telegram
- * к аккаунту и сообщения организаторам. Исходящие уведомления шлёт сайт
+ * к аккаунту, сообщения организаторам и кабинет собеседований через inline-кнопки.
+ * Данные меню берёт прямо из базы без HTTP-запросов к сайту. Исходящие уведомления шлёт сайт
  * (server/plugins/notification-worker.ts) — бот для этого не нужен
  * запущенным.
  *
@@ -18,6 +19,8 @@ import { confirmLoginCode, linkTelegram } from "../lib/auth/telegram-users";
 import { receiveFromTelegram } from "../lib/messages/bot-inbox";
 
 import { entryGreeting, entryKeyboard } from "./entry";
+import { registerInterviewBot } from "./interviews";
+import { interviewBotActor } from "../lib/interviews/bot-staff";
 
 const APP_URL = (process.env.NUXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
@@ -67,6 +70,7 @@ async function sendTempPassword(ctx: Context) {
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
 
+  registerInterviewBot(bot);
   bot.command("password", sendTempPassword);
 
   bot.command("start", async (ctx) => {
@@ -114,9 +118,12 @@ export function createBot(token: string): Bot {
       return;
     }
 
+    const staff = ctx.chat?.type === "private" && await interviewBotActor(String(ctx.from!.id));
+    const keyboard = entryKeyboard(APP_URL);
+    if (staff) keyboard?.row().text("Собеседования — меню мастера", "iv:menu");
     await ctx.reply(
-      entryGreeting(APP_URL),
-      { reply_markup: entryKeyboard(APP_URL) },
+      entryGreeting(APP_URL) + (staff ? "\n\n/help — собеседования прямо здесь, без сайта." : ""),
+      { reply_markup: keyboard },
     );
   });
 
@@ -185,6 +192,11 @@ async function main() {
   const bot = createBot(token);
   await bot.api.setMyCommands([
     { command: "start", description: "Открыть Школу Актива" },
+    { command: "help", description: "Помощь и меню собеседований" },
+    { command: "today", description: "Собеседования на сегодня" },
+    { command: "tomorrow", description: "Собеседования на завтра" },
+    { command: "interviews", description: "Меню собеседований" },
+    { command: "cancel", description: "Отменить ввод сообщения или изменения" },
     { command: "password", description: "Забыли пароль — временный на 24 часа" },
   ]);
 

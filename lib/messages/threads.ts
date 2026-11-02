@@ -56,7 +56,7 @@ export async function postMessage(params: {
   });
 
   if (params.author === "STAFF") await notifyCandidate(params.threadId, text);
-  if (params.author === "CANDIDATE") await notifyReviewers(params.threadId, text);
+  if (params.author === "CANDIDATE") await notifyReviewers(params.threadId, text, now);
 
   return message;
 }
@@ -83,7 +83,7 @@ async function notifyCandidate(threadId: string, text: string) {
 }
 
 /** Сообщение кандидата — его мастерам по анкете, если она уже назначена. */
-async function notifyReviewers(threadId: string, text: string) {
+async function notifyReviewers(threadId: string, text: string, now = new Date()) {
   const thread = await db.messageThread.findUnique({
     where: { id: threadId },
     select: {
@@ -94,7 +94,7 @@ async function notifyReviewers(threadId: string, text: string) {
           lastName: true,
           telegramUsername: true,
           email: true,
-          applications: { select: { seasonId: true, reviews: { select: { reviewerId: true } } } },
+          applications: { select: { seasonId: true, reviews: { select: { reviewerId: true } }, bookings: { where: { cancelledAt: null, slot: { archivedAt: null } }, select: { slotId: true, slot: { select: { interviewers: { select: { userId: true } } } } } } } },
         },
       },
     },
@@ -107,14 +107,18 @@ async function notifyReviewers(threadId: string, text: string) {
       .flatMap((application) => application.reviews.map((review) => review.reviewerId)),
   );
 
+  const interviewSlots = new Map(thread.candidate.applications.filter(a => a.seasonId === thread.seasonId).flatMap(a => a.bookings.flatMap(b => b.slot.interviewers.map(i => [i.userId, b.slotId] as const))));
+  for (const userId of interviewSlots.keys()) reviewers.add(userId);
+
   await notify(
     [...reviewers].map((userId) => ({
       userId,
       category: "MESSAGES" as const,
       title: `${displayName(thread.candidate)} написал(а)`,
-      body: preview(text),
-      url: `/staff/messages?thread=${threadId}`,
+      body: interviewSlots.has(userId) ? text.slice(0, 3500) : preview(text),
+      url: interviewSlots.has(userId) ? `/staff/interviews?botSlot=${interviewSlots.get(userId)}` : `/staff/messages?thread=${threadId}`,
     })),
+    interviewSlots.size ? { urgent: true, now, deliverAt: now } : {},
   );
 }
 
