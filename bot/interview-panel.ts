@@ -5,11 +5,8 @@ import { interviewBotActor } from "../lib/interviews/bot-staff";
 
 const panelSchema = z.object({ chatId: z.number(), messageId: z.number().int().positive() });
 /** Обновляется только панель раздела. Уведомления и переписка сюда не попадают. */
-export async function interviewPanel(ctx: Context, text: string, options: { reply_markup?: InlineKeyboard } = {}) {
+export async function renderBotPanel(ctx: Context, key: string, text: string, options: { reply_markup?: InlineKeyboard } = {}) {
   if (ctx.chat?.type !== "private" || !ctx.from) return;
-  const actor = await interviewBotActor(String(ctx.from.id));
-  if (!actor) { await ctx.reply(text, options); return; }
-  const key = `bot-interview-panel:${actor.id}`;
   const parsed = panelSchema.safeParse((await db.settings.findUnique({ where: { id: key } }))?.data);
   const old = parsed.success && parsed.data.chatId === ctx.chat.id ? parsed.data : null;
   let updated = false;
@@ -31,4 +28,11 @@ export async function interviewPanel(ctx: Context, text: string, options: { repl
   }
   // Только ввод текущего обработанного действия мастера, после сохранения панели.
   if (ctx.message?.message_id) await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id).catch(() => {});
+}
+
+export async function interviewPanel(ctx: Context, text: string, options: { reply_markup?: InlineKeyboard } = {}) {
+  if (ctx.chat?.type !== "private" || !ctx.from) return;
+  const actor = await interviewBotActor(String(ctx.from.id));
+  if (!actor) { await ctx.reply(text, options); return; }
+  await renderBotPanel(ctx, `bot-interview-panel:${actor.id}`, text, options);
 }

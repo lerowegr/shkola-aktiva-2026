@@ -5,6 +5,8 @@ import { can } from "../lib/permissions";
 import { db } from "../lib/db";
 import { writeAudit } from "../lib/audit";
 import { interviewExportFile } from "../lib/interviews/export-data";
+import { candidateExportFile } from "../lib/interviews/candidate-export";
+import { previewBotInterviewAnnouncement, sendBotInterviewAnnouncement } from "../lib/interviews/bot-announcement";
 import { fullName } from "../lib/applications/staff";
 import { beginBotDraft, botCanManageAll, botConversation, botSlotTitle, clearBotDraft, confirmBotDraft, fillBotDraft, getBotDraft, interviewBotActor, listBotSlots, loadBotSlot, type InterviewBotDraft } from "../lib/interviews/bot-staff";
 import { botDay, botTime, parseBotDay, parseBotTime } from "../lib/interviews/bot-rules";
@@ -17,6 +19,8 @@ async function menu(ctx: Context) {
   await clearBotDraft(id);
   const keyboard = new InlineKeyboard().text("Сегодня", `iv:list:${botDay()}:0`).text("Завтра", `iv:list:${botDay(new Date(), 1)}:0`);
   if (botCanManageAll(actor)) keyboard.row().text("Выбрать дату — все мастера", "iv:day");
+  if (botCanManageAll(actor)) keyboard.row().text("Выгрузить всех кандидатов", "iv:export-candidates");
+  if (botCanManageAll(actor)) keyboard.row().text("Сообщить о записи через бот", "iv:announce-preview");
   await interviewPanel(ctx, `${botCanManageAll(actor) ? "Собеседования всех мастеров" : "Мои собеседования"}\n\nВыберите день. В карточке можно написать участнику и изменить время или место. Всё время — московское. /cancel — отменить ввод.${botCanManageAll(actor) ? "\n!выгрузка — Excel всех собеседований." : ""}`, { reply_markup: keyboard });
 }
 async function exportInterviews(ctx: Context) {
@@ -90,6 +94,30 @@ export function registerInterviewBot(bot: Bot) {
     if (!await interviewBotActor(String(ctx.from.id))) { await interviewPanel(ctx, "Раздел доступен действующим мастерам и администраторам с привязанным Telegram."); return; }
     const data = ctx.callbackQuery.data;
     if (data === "iv:menu" || data === "iv:cancel") { await menu(ctx); return; }
+    if (data === "iv:announce-preview" || data === "iv:announce-send") {
+      const actor = await interviewBotActor(String(ctx.from.id));
+      if (!actor || !botCanManageAll(actor)) { await interviewPanel(ctx, "Рассылка доступна только администраторам."); return; }
+      const season = await db.season.findFirst({ where: { isCurrent: true }, select: { id: true } });
+      if (!season) { await interviewPanel(ctx, "Текущий сезон не найден."); return; }
+      if (data === "iv:announce-preview") {
+        const count = await previewBotInterviewAnnouncement(season.id);
+        await interviewPanel(ctx, `Уведомление о команде !собес получат ${count} кандидатов с явкой на ЦО и Telegram. Повторно получившим эту отбивку сообщение не отправится.\n\nТекст: «Отправь боту !собес и выбери корпус, день и время кнопками. Если уже записан, можно один раз перезаписаться до 18:00 накануне».`, { reply_markup: new InlineKeyboard().text(`Отправить ${count}`, "iv:announce-send").row().text("Назад", "iv:menu") });
+      } else {
+        const count = await sendBotInterviewAnnouncement(season.id, actor.id);
+        await interviewPanel(ctx, `Создано уведомлений: ${count}. Доставка в Telegram поставлена в срочную очередь.`, { reply_markup: new InlineKeyboard().text("Меню", "iv:menu") });
+      }
+      return;
+    }
+    if (data === "iv:export-candidates") {
+      const actor = await interviewBotActor(String(ctx.from.id));
+      if (!actor || !botCanManageAll(actor)) { await interviewPanel(ctx, "Выгрузка доступна только администраторам."); return; }
+      const season = await db.season.findFirst({ where: { isCurrent: true }, select: { id: true } });
+      if (!season) { await interviewPanel(ctx, "Текущий сезон не найден."); return; }
+      const file = await candidateExportFile(season.id);
+      const sent = await ctx.replyWithDocument(new InputFile(file.bytes, "sha-candidates.xlsx"), { caption: `Кандидаты текущего сезона: ${file.candidates}. Листы с анкетами, ДЗ, оценками, ЦО, собеседованиями и решениями.` });
+      await writeAudit({ actorId: actor.id, action: "candidate.export", entityType: "season", entityId: season.id, meta: { via: "TELEGRAM", candidates: file.candidates, messageId: sent.message_id } });
+      return;
+    }
     if (data === "iv:day") { await begin(ctx, "day"); return; }
     const list = data.match(/^iv:list:(20\d{2}-\d{2}-\d{2}):(\d{1,4})$/);
     if (list) { await showList(ctx, list[1]!, Number(list[2])); return; }

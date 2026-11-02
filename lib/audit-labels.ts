@@ -35,6 +35,8 @@ export const AUDIT_LABELS: Record<string, string> = {
   "interview.reserve_invites_send": "Отправлены приглашения участникам резервного ЦО",
   "message.reply": "Ответ участнику",
   "interview.export": "Выгрузка расписания собеседований в Excel",
+  "candidate.export": "Выгрузка данных кандидатов в Excel",
+  "interview.bot_announcement": "Сообщили кандидатам о записи через бота",
   "interview.bot_update": "Собеседование изменено через Telegram",
   "interview.slot_delete": "Удаление слота",
   "role.save": "Изменение роли",

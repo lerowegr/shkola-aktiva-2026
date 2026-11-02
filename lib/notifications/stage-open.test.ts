@@ -50,8 +50,9 @@ describe("уведомление «анкета открылась»", () => {
   });
 
   it("открыли вручную раньше даты — считаем от момента переключения", async () => {
-    await db.user.create({ data: { createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000) } });
-    await db.stage.update({ where: { id: stageId }, data: { mode: "OPEN" } });
-    expect(await materializeStageOpen(new Date())).toBe(1);
+    const now = new Date();
+    await db.user.create({ data: { createdAt: new Date(+now - 24 * 60 * 60 * 1000) } });
+    const stage = await db.stage.update({ where: { id: stageId }, data: { mode: "OPEN", opensAt: new Date(+now + 24 * 60 * 60 * 1000) } });
+    expect(await materializeStageOpen(new Date(+stage.updatedAt + 1000))).toBe(1);
   });
 });

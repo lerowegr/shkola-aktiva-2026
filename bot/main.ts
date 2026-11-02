@@ -20,6 +20,7 @@ import { receiveFromTelegram } from "../lib/messages/bot-inbox";
 
 import { entryGreeting, entryKeyboard } from "./entry";
 import { registerInterviewBot } from "./interviews";
+import { registerCandidateInterviewBot } from "./candidate-interviews";
 import { interviewBotActor } from "../lib/interviews/bot-staff";
 
 const APP_URL = (process.env.NUXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
@@ -70,6 +71,7 @@ async function sendTempPassword(ctx: Context) {
 export function createBot(token: string): Bot {
   const bot = new Bot(token);
 
+  registerCandidateInterviewBot(bot);
   registerInterviewBot(bot);
   bot.command("password", sendTempPassword);
 
@@ -122,7 +124,7 @@ export function createBot(token: string): Bot {
     const keyboard = entryKeyboard(APP_URL);
     if (staff) keyboard?.row().text("Собеседования — меню мастера", "iv:menu");
     await ctx.reply(
-      entryGreeting(APP_URL) + (staff ? "\n\n/help — собеседования прямо здесь, без сайта." : ""),
+      entryGreeting(APP_URL) + (staff ? "\n\n/help — собеседования прямо здесь, без сайта." : "\n\n!собес — записаться или один раз перезаписаться на собеседование прямо в боте."),
       { reply_markup: keyboard },
     );
   });

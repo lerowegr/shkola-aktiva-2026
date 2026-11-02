@@ -39,6 +39,7 @@ export function miniAppLink(url: string, base: string): string {
 export function telegramButton(message: OutgoingMessage, base: string): InlineKeyboard | undefined {
   const slot = message.url?.match(/^\/staff\/interviews\?botSlot=([a-zA-Z0-9-]{1,40})$/)?.[1];
   if (slot) return new InlineKeyboard().text("Открыть собеседование / ответить", `iv:slot:${slot}`);
+  if (message.url === "/cabinet/interview") return new InlineKeyboard().text("Собеседование в боте", "ivc:menu");
   if (!message.url || !base.startsWith("https://")) return undefined;
   return new InlineKeyboard().webApp("Открыть", miniAppLink(message.url, base));
 }
