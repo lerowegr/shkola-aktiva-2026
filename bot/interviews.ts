@@ -1,7 +1,10 @@
-import { InlineKeyboard, type Bot, type Context } from "grammy";
+import { InlineKeyboard, InputFile, type Bot, type Context } from "grammy";
 import { interviewPanel } from "./interview-panel";
 import { botReviewHistory } from "../lib/interviews/bot-history";
 import { can } from "../lib/permissions";
+import { db } from "../lib/db";
+import { writeAudit } from "../lib/audit";
+import { interviewExportFile } from "../lib/interviews/export-data";
 import { fullName } from "../lib/applications/staff";
 import { beginBotDraft, botCanManageAll, botConversation, botSlotTitle, clearBotDraft, confirmBotDraft, fillBotDraft, getBotDraft, interviewBotActor, listBotSlots, loadBotSlot, type InterviewBotDraft } from "../lib/interviews/bot-staff";
 import { botDay, botTime, parseBotDay, parseBotTime } from "../lib/interviews/bot-rules";
@@ -14,7 +17,22 @@ async function menu(ctx: Context) {
   await clearBotDraft(id);
   const keyboard = new InlineKeyboard().text("Сегодня", `iv:list:${botDay()}:0`).text("Завтра", `iv:list:${botDay(new Date(), 1)}:0`);
   if (botCanManageAll(actor)) keyboard.row().text("Выбрать дату — все мастера", "iv:day");
-  await interviewPanel(ctx, `${botCanManageAll(actor) ? "Собеседования всех мастеров" : "Мои собеседования"}\n\nВыберите день. В карточке можно написать участнику и изменить время или место. Всё время — московское. /cancel — отменить ввод.`, { reply_markup: keyboard });
+  await interviewPanel(ctx, `${botCanManageAll(actor) ? "Собеседования всех мастеров" : "Мои собеседования"}\n\nВыберите день. В карточке можно написать участнику и изменить время или место. Всё время — московское. /cancel — отменить ввод.${botCanManageAll(actor) ? "\n!выгрузка — Excel всех собеседований." : ""}`, { reply_markup: keyboard });
+}
+async function exportInterviews(ctx: Context) {
+  if (ctx.chat?.type !== "private" || !ctx.from) return;
+  const actor = await interviewBotActor(String(ctx.from.id));
+  if (!actor || !botCanManageAll(actor)) {
+    await interviewPanel(ctx, "Выгрузка доступна только администраторам с правом управления собеседованиями.");
+    return;
+  }
+  const season = await db.season.findFirst({ where: { isCurrent: true }, select: { id: true } });
+  if (!season) { await interviewPanel(ctx, "Текущий сезон не найден. Обратитесь к организаторам."); return; }
+  await clearBotDraft(String(ctx.from.id));
+  const file = await interviewExportFile(season.id);
+  const sent = await ctx.replyWithDocument(new InputFile(file.bytes, "sha-interviews.xlsx"), { caption: "Расписание собеседований: лист — день, строки — мастера, столбцы — время по Москве." });
+  await writeAudit({ actorId: actor.id, action: "interview.export", entityType: "season", entityId: season.id, meta: { via: "TELEGRAM", days: file.days, slots: file.slots, messageId: sent.message_id } });
+  if (ctx.message?.message_id) await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id).catch(() => {});
 }
 async function showList(ctx: Context, day: string, page = 0) {
   const list = await listBotSlots(String(ctx.from!.id), day, page);
@@ -111,6 +129,7 @@ export function registerInterviewBot(bot: Bot) {
     if (ctx.chat.type !== "private") return next();
     const text = ctx.message.text.trim();
     if (/^(?:!\s*)?(?:помощь|help)$|^!$/i.test(text)) { await menu(ctx); return; }
+    if (/^!\s*выгрузка$/i.test(text)) { await exportInterviews(ctx); return; }
     // Команды обрабатываются отдельно и никогда не становятся текстом участнику.
     if (text.startsWith("/")) return next();
     const id = String(ctx.from.id), draft = await getBotDraft(id);

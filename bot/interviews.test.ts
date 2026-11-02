@@ -94,4 +94,21 @@ describe("реальные обработчики команд бота без �
     const saved = await db.settings.findUniqueOrThrow({ where: { id: `bot-interview-panel:${f.master.id}` } });
     expect(saved.data).toMatchObject({ chatId: 11, messageId: expect.any(Number) });
   });
+  it("!выгрузка отправляет Excel только админу в личный чат и пишет журнал", async () => {
+    const f = await setup();
+    const admin = await db.user.create({ data: { telegramId: "13", isOwner: true } });
+    await f.text("!выгрузка", "group", 13);
+    await f.text("!выгрузка");
+    await f.text("!выгрузка", "private", 12);
+    expect(f.calls.filter(c => c.method === "sendDocument")).toHaveLength(0);
+    expect(await db.message.count()).toBe(0);
+    await f.text("!выгрузка", "private", 13);
+    const documents = f.calls.filter(c => c.method === "sendDocument");
+    expect(documents).toHaveLength(1);
+    expect(documents[0]?.payload.chat_id).toBe(13);
+    expect(documents[0]?.payload.caption).toContain("Расписание собеседований");
+    const logs = await db.auditLog.findMany({ where: { action: "interview.export" } });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ actorId: admin.id, entityType: "season", meta: expect.objectContaining({ via: "TELEGRAM", slots: 1 }) });
+  });
 });
