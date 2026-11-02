@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CalendarPlus, MapPin, Trash2 } from "lucide-vue-next";
+import { CalendarPlus, FileSpreadsheet, MapPin, Trash2 } from "lucide-vue-next";
 import type { ScheduleSlot } from "~~/lib/interviews/slots";
 import { facultyMatches } from "~~/lib/profile/faculty";
 
@@ -69,6 +69,7 @@ async function deleteSlot(slotId: string) { const result = await remove.submit({
       <div class="flex flex-col gap-2">
         <h1 class="font-display text-3xl">Собеседования</h1>
         <p class="text-ink-soft text-sm">2–8 ноября. Слотов {{ stats.slots }}, записались {{ stats.booked }}. В каждом слоте один мастер и один кандидат. Перезапись кандидата — один раз, до 18:00 предыдущего дня по Москве.</p>
+        <a v-if="canManage" href="/api/staff/interviews/export" class="border-line bg-card hover:border-accent inline-flex min-h-11 items-center gap-2 self-start rounded-xl border px-4 py-2 text-sm font-semibold" download="sha-interviews.xlsx"><FileSpreadsheet class="size-4" aria-hidden="true" />Скачать Excel</a>
       </div>
       <StaffInterviewInvitations v-if="canManage" />
       <StaffReserveInterviewInvitations v-if="canManage" />

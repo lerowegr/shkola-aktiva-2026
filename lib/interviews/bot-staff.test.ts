@@ -6,6 +6,7 @@ import { botDay, parseBotDay, parseBotTime } from "./bot-rules";
 import { interviewReminderIsCurrent } from "./reminders";
 import { receiveFromTelegram } from "~~/lib/messages/bot-inbox";
 import { telegramButton } from "~~/lib/notifications/telegram-sender";
+import { botReviewHistory } from "./bot-history";
 
 const now = new Date("2026-11-02T09:00:00+03:00");
 beforeEach(resetDatabase);
@@ -39,6 +40,8 @@ describe("кабинет собеседований в боте", () => {
     expect((await listBotSlots("10001", "2026-11-03"))?.total).toBe(1);
     expect((await listBotSlots("10002", "2026-11-03"))?.total).toBe(0);
     expect(await loadBotSlot("10002", f.slot.id)).toBeNull();
+    expect(await botReviewHistory("10002", f.slot.id)).toBeNull();
+    expect((await botReviewHistory("10001", f.slot.id))?.name).toContain("Участник");
     expect(await beginBotDraft("10002", "room", f.slot.id, now)).toBeNull();
     expect(await beginBotDraft("10001", "day", undefined, now)).toBeNull();
     expect((await listBotSlots("10003", "2026-11-03"))?.total).toBe(1);

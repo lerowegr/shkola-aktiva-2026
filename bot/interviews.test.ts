@@ -7,7 +7,7 @@ import { botDay } from "~~/lib/interviews/bot-rules";
 beforeEach(resetDatabase);
 async function setup() {
   const season = await db.season.create({ data: { slug: "bot", title: "S", year: 2026, isCurrent: true } });
-  const role = await db.role.create({ data: { slug: "r", name: "R", permissions: ["applications.review", "messages.reply"] } });
+  const role = await db.role.create({ data: { slug: "r", name: "R", permissions: ["applications.review", "applications.view_all", "messages.reply"] } });
   const master = await db.user.create({ data: { telegramId: "11", roles: { create: { roleId: role.id } } } });
   const user = await db.user.create({ data: { telegramId: "12" } });
   const application = await db.application.create({ data: { seasonId: season.id, userId: user.id, status: "SUBMITTED", firstName: "Тестовый", lastName: "Участник" } });
@@ -15,9 +15,14 @@ async function setup() {
   const bot = createBot("123456:test-local-no-network");
   bot.botInfo = { id: 99, is_bot: true, first_name: "Bot", username: "test_bot", can_join_groups: true, can_read_all_group_messages: false, supports_inline_queries: false, can_connect_to_business: false, has_main_web_app: false, has_topics_enabled: false, allows_users_to_create_topics: false, can_manage_bots: false, supports_join_request_queries: false };
   const calls: { method: string; payload: Record<string, unknown> }[] = [];
+  let missingPanel = false;
   bot.api.config.use(async (previous, method, payload) => {
     calls.push({ method, payload: payload as Record<string, unknown> });
-    return { ok: true, result: method === "answerCallbackQuery" ? true : { message_id: calls.length, date: 1, chat: { id: 11, type: "private" }, text: "" } } as Awaited<ReturnType<typeof previous>>;
+    if (method === "editMessageText" && missingPanel) {
+      missingPanel = false;
+      return { ok: false, error_code: 400, description: "Bad Request: message to edit not found" } as Awaited<ReturnType<typeof previous>>;
+    }
+    return { ok: true, result: method === "answerCallbackQuery" || method === "deleteMessage" ? true : { message_id: 1000 + calls.length, date: 1, chat: { id: 11, type: "private" }, text: "" } } as Awaited<ReturnType<typeof previous>>;
   });
   let serial = 0;
   async function text(text: string, chatType: "private" | "group" = "private", from = 11) {
@@ -26,16 +31,17 @@ async function setup() {
   async function click(data: string, from = 11) {
     await bot.handleUpdate({ update_id: ++serial, callback_query: { id: String(serial), from: { id: from, is_bot: false, first_name: "Тест" }, chat_instance: "x", data, message: { message_id: 1, date: 1, chat: { id: from, type: "private", first_name: "Тест" }, text: "Меню" } } });
   }
-  return { bot, calls, text, click, slot, master };
+  const lastView = () => calls.filter(c => c.method === "sendMessage" || c.method === "editMessageText").at(-1);
+  return { bot, calls, text, click, slot, master, lastView, removePanel: () => { missingPanel = true; } };
 }
 describe("реальные обработчики команд бота без сети", () => {
   it("!помощь и /tomorrow открывают inline-меню, группа не получает расписание", async () => {
     const f = await setup();
     await f.text("!помощь");
-    expect(f.calls.at(-1)?.payload.text).toContain("Мои собеседования");
-    expect(JSON.stringify(f.calls.at(-1)?.payload.reply_markup)).toContain("iv:list:");
+    expect(f.lastView()?.payload.text).toContain("Мои собеседования");
+    expect(JSON.stringify(f.lastView()?.payload.reply_markup)).toContain("iv:list:");
     await f.text("/tomorrow");
-    expect(JSON.stringify(f.calls.at(-1)?.payload.reply_markup)).toContain(`iv:slot:${f.slot.id}`);
+    expect(JSON.stringify(f.lastView()?.payload.reply_markup)).toContain(`iv:slot:${f.slot.id}`);
     const count = f.calls.length;
     await f.text("/today", "group");
     expect(f.calls).toHaveLength(count);
@@ -44,11 +50,11 @@ describe("реальные обработчики команд бота без �
     const f = await setup();
     await f.text("Привет"); expect(await db.message.count()).toBe(0);
     await f.click(`iv:slot:${f.slot.id}`);
-    expect(f.calls.at(-1)?.payload.text).toContain("Тестовый");
+    expect(f.lastView()?.payload.text).toContain("Тестовый");
     await f.click(`iv:message:${f.slot.id}`);
     await f.text("Жду на первом этаже");
     expect(await db.message.count()).toBe(0);
-    const keyboard = f.calls.at(-1)?.payload.reply_markup as { inline_keyboard: { callback_data: string }[][] };
+    const keyboard = f.lastView()?.payload.reply_markup as { inline_keyboard: { callback_data: string }[][] };
     const confirm = keyboard.inline_keyboard[0]![0]!.callback_data;
     await f.click(confirm); await f.click(confirm);
     expect(await db.message.count({ where: { author: "STAFF" } })).toBe(1);
@@ -63,6 +69,29 @@ describe("реальные обработчики команд бота без �
     await f.text("/start");
     await f.text("Не отправлять"); expect(await db.message.count()).toBe(0);
     await f.click(`iv:slot:${f.slot.id}`, 12);
-    expect(f.calls.at(-1)?.payload.text).not.toContain("Тестовый");
+    expect(f.lastView()?.payload.text).not.toContain("Тестовый");
+  });
+  it("переходы и оценки обновляют одно сообщение, обработанный ввод удаляется", async () => {
+    const f = await setup();
+    await f.text("!помощь");
+    await f.click(`iv:slot:${f.slot.id}`);
+    expect(JSON.stringify(f.lastView()?.payload.reply_markup)).toContain("iv:reviews:");
+    await f.click(`iv:reviews:${f.slot.id}:0`);
+    expect(f.lastView()?.payload.text).toContain("Предыдущие оценки");
+    await f.click(`iv:slot:${f.slot.id}`);
+    expect(f.calls.filter(c => c.method === "sendMessage")).toHaveLength(1);
+    expect(f.calls.filter(c => c.method === "editMessageText")).toHaveLength(3);
+    expect(f.calls.filter(c => c.method === "deleteMessage")).toHaveLength(1);
+    expect(await db.settings.count({ where: { id: `bot-interview-panel:${f.master.id}` } })).toBe(1);
+  });
+  it("восстанавливает удалённую панель и удаляет старую", async () => {
+    const f = await setup();
+    await f.text("!помощь");
+    f.removePanel();
+    await f.click(`iv:slot:${f.slot.id}`);
+    expect(f.calls.filter(c => c.method === "sendMessage")).toHaveLength(2);
+    expect(f.calls.filter(c => c.method === "deleteMessage")).toHaveLength(2);
+    const saved = await db.settings.findUniqueOrThrow({ where: { id: `bot-interview-panel:${f.master.id}` } });
+    expect(saved.data).toMatchObject({ chatId: 11, messageId: expect.any(Number) });
   });
 });
