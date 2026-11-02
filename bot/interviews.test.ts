@@ -115,10 +115,12 @@ describe("реальные обработчики команд бота без �
     const f = await setup();
     const app = await db.application.findFirstOrThrow({ where: { user: { telegramId: "12" } } });
     await db.interviewBooking.deleteMany({ where: { applicationId: app.id } });
+    // На завтра после 20:00 запись уже закрыта; берём дни с запасом до дедлайна.
+    await db.interviewSlot.update({ where: { id: f.slot.id }, data: { startsAt: new Date(`${botDay(new Date(), 2)}T10:00:00+03:00`), endsAt: new Date(`${botDay(new Date(), 2)}T10:45:00+03:00`) } });
     await db.stage.create({ data: { seasonId: app.seasonId, kind: "INTERVIEW", title: "Собес", order: 3, mode: "OPEN" } });
     const session = await db.assessmentSession.create({ data: { seasonId: app.seasonId, title: "ЦО", startsAt: new Date("2026-10-30T10:00:00+03:00") } });
     await db.assessmentInvite.create({ data: { applicationId: app.id, sessionId: session.id, attended: true } });
-    const second = await db.interviewSlot.create({ data: { seasonId: app.seasonId, startsAt: new Date(`${botDay(new Date(), 2)}T11:00:00+03:00`), endsAt: new Date(`${botDay(new Date(), 2)}T11:45:00+03:00`), location: "Масловка", interviewers: { create: { userId: f.master.id } } } });
+    const second = await db.interviewSlot.create({ data: { seasonId: app.seasonId, startsAt: new Date(`${botDay(new Date(), 3)}T11:00:00+03:00`), endsAt: new Date(`${botDay(new Date(), 3)}T11:45:00+03:00`), location: "Масловка", interviewers: { create: { userId: f.master.id } } } });
     const controls = () => (f.lastView()?.payload.reply_markup as { inline_keyboard: { text: string; callback_data: string }[][] }).inline_keyboard.flat();
     await f.text("!собес", "private", 12);
     expect(f.lastView()?.payload.text).toContain("Выберите удобный корпус");

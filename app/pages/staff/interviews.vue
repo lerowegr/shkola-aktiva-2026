@@ -42,9 +42,11 @@ async function createSlots() {
 }
 const editingSlot = ref<string | null>(null);
 const slotPerson = ref("");
+const slotStartsAt = ref("");
 const saveSlot = useAction("/api/staff/interviews/slot-interviewers");
-function editMaster(slot: ScheduleSlot) { editingSlot.value = editingSlot.value === slot.id ? null : slot.id; slotPerson.value = slot.interviewers[0]?.id ?? ""; }
-async function saveMaster(slotId: string) { const result = await saveSlot.submit({ slotId, interviewerIds: [slotPerson.value] }); if (result.ok) { editingSlot.value = null; await refresh(); } }
+function editMaster(slot: ScheduleSlot) { editingSlot.value = editingSlot.value === slot.id ? null : slot.id; slotPerson.value = slot.interviewers[0]?.id ?? ""; slotStartsAt.value = mskInputValue(new Date(slot.startsAt).toISOString()); }
+const targetBusy = computed(() => (data.value?.slots ?? []).filter(slot => slot.id !== editingSlot.value && !slot.archivedAt && slot.interviewers.some(person => person.id === slotPerson.value) && mskDayKey(slot.startsAt) === slotStartsAt.value.slice(0, 10)));
+async function saveMaster(slotId: string) { const startsAt = mskFromInput(slotStartsAt.value); if (!startsAt) return; const result = await saveSlot.submit({ slotId, interviewerIds: [slotPerson.value], startsAt }); if (result.ok) { editingSlot.value = null; await refresh(); } }
 const roomSlot = ref<string | null>(null);
 const room = ref("");
 const roomAction = useAction("/api/staff/interviews/room");
@@ -125,7 +127,7 @@ async function deleteSlot(slotId: string) { const result = await remove.submit({
           <UiButton v-if="canManage && slot.archivedAt" :pending="restore.pending.value" @click="restoreSlot(slot.id)">Восстановить слот</UiButton>
           <div v-if="!slot.archivedAt" class="flex flex-wrap gap-3">
             <button v-if="canManage || slot.mine" type="button" class="text-accent min-h-9 text-sm hover:underline" @click="editRoom(slot)">Указать аудиторию</button>
-            <button v-if="canManage" type="button" class="text-accent min-h-9 text-sm hover:underline" @click="editMaster(slot)">Изменить мастера</button>
+            <button v-if="canManage" type="button" class="text-accent min-h-9 text-sm hover:underline" @click="editMaster(slot)">Передать слот</button>
           </div>
           <form v-if="roomSlot === slot.id" class="bg-paper flex flex-col gap-3 rounded-2xl p-3" @submit.prevent="saveRoom(slot.id)">
             <label class="flex flex-col gap-1 text-sm">Аудитория<input v-model="room" maxlength="100" placeholder="Например, 602" class="border-line bg-card min-h-11 rounded-xl border px-3 text-base" ></label>
@@ -133,9 +135,11 @@ async function deleteSlot(slotId: string) { const result = await remove.submit({
             <UiButton type="submit" :pending="roomAction.pending.value">Сохранить аудиторию</UiButton>
           </form>
           <form v-if="editingSlot === slot.id" class="bg-paper flex flex-col gap-3 rounded-2xl p-3" @submit.prevent="saveMaster(slot.id)">
-            <label class="flex flex-col gap-1 text-sm">Мастер отбора<UiSelect v-model="slotPerson" aria-label="Мастер слота"><option value="" disabled>Выберите мастера</option><option v-for="person in pool?.people ?? []" :key="person.id" :value="person.id">{{ person.name }}</option></UiSelect></label>
-            <p class="text-ink-soft text-xs">Начатые оценки прежнего мастера сохранятся.</p>
-            <UiButton type="submit" :pending="saveSlot.pending.value" :disabled="!slotPerson">Сохранить мастера</UiButton>
+            <label class="flex flex-col gap-1 text-sm">Кому передать<UiSelect v-model="slotPerson" aria-label="Новый мастер слота"><option value="" disabled>Выберите мастера</option><option v-for="person in pool?.people ?? []" :key="person.id" :value="person.id">{{ person.name }}</option></UiSelect></label>
+            <UiDateTime v-model="slotStartsAt" label="Дата и начало после передачи, по Москве" size="md" />
+            <p v-if="targetBusy.length" class="text-ink-soft text-xs">У выбранного мастера в этот день занято: {{ targetBusy.map(busy => `${mskTime(busy.startsAt)}–${mskTime(busy.endsAt)}`).join(', ') }}. Между встречами нужно 5 минут.</p>
+            <p class="text-ink-soft text-xs">Длительность встречи сохранится. Если время изменится, участник получит уведомление. Начатые оценки прежнего мастера сохранятся.</p>
+            <UiButton type="submit" :pending="saveSlot.pending.value" :disabled="!slotPerson || !slotStartsAt">Передать слот</UiButton>
           </form>
         </li>
       </ul>

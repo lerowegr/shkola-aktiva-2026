@@ -140,9 +140,14 @@ export async function syncReviews(tx: Parameters<Parameters<typeof db.$transacti
 export async function setSlotInterviewers(
   slotId: string,
   interviewerIds: string[],
-): Promise<{ ok: true; added: string[]; removed: string[] } | { ok: false; message: string }> {
+  startsAt?: Date,
+): Promise<
+  | { ok: true; added: string[]; removed: string[]; timeChanged: boolean; oldStartsAt: Date; startsAt: Date; endsAt: Date; location: string; room: string | null; bookings: { applicationId: string; userId: string; name: string }[] }
+  | { ok: false; message: string }
+> {
   const wanted = [...new Set(interviewerIds)];
   if (wanted.length !== 1) return { ok: false, message: "На собеседовании должен быть ровно один мастер." };
+  if (startsAt && !Number.isFinite(startsAt.getTime())) return { ok: false, message: "Укажите корректные дату и время по Москве." };
 
   return db.$transaction(async (tx) => {
     // Тот же замок, что у записи: кандидат не запишется посреди смены состава.
@@ -150,29 +155,41 @@ export async function setSlotInterviewers(
     const slot = await tx.interviewSlot.findUnique({
       where: { id: slotId },
       select: {
-        id: true, startsAt: true, endsAt: true, archivedAt: true,
+        id: true, startsAt: true, endsAt: true, location: true, room: true, archivedAt: true,
         interviewers: { select: { userId: true } },
-        bookings: { where: { cancelledAt: null }, select: { applicationId: true } },
+        bookings: { where: { cancelledAt: null }, select: { id: true, applicationId: true, application: { select: { userId: true, lastName: true, firstName: true, middleName: true } } } },
       },
     });
     if (!slot || slot.archivedAt) return { ok: false as const, message: "Слот не найден или снят с записи — обновите страницу." };
 
     if (slot.bookings.length > 1) return { ok: false as const, message: "В старом слоте несколько кандидатов. Сначала перенесите их по отдельным собеседованиям." };
+    const nextStartsAt = startsAt ?? slot.startsAt;
+    const nextEndsAt = new Date(nextStartsAt.getTime() + slot.endsAt.getTime() - slot.startsAt.getTime());
+    if (startsAt && nextStartsAt <= new Date()) return { ok: false as const, message: "Новое время должно быть в будущем." };
     try {
       await validateInterviewer(tx, wanted[0]!);
-      await checkOverlap(tx, wanted[0]!, slot.startsAt, slot.endsAt, slotId);
+      await checkOverlap(tx, wanted[0]!, nextStartsAt, nextEndsAt, slotId);
     } catch (error) {
       if (error instanceof InterviewScheduleError) return { ok: false as const, message: error.message };
       throw error;
     }
-    await tx.interviewSlot.update({ where: { id: slotId }, data: { capacity: 1 } });
+    await tx.interviewSlot.update({ where: { id: slotId }, data: { capacity: 1, startsAt: nextStartsAt, endsAt: nextEndsAt } });
     const current = slot.interviewers.map((item) => item.userId);
     const added = wanted.filter((id) => !current.includes(id));
     const removed = current.filter((id) => !wanted.includes(id));
     await tx.slotInterviewer.deleteMany({ where: { slotId, userId: { in: removed } } });
     if (added.length) await tx.slotInterviewer.createMany({ data: added.map((userId) => ({ slotId, userId })), skipDuplicates: true });
-    for (const booking of slot.bookings) await syncReviews(tx, booking.applicationId, wanted);
-    return { ok: true as const, added, removed };
+    if (added.length || removed.length) for (const booking of slot.bookings) await syncReviews(tx, booking.applicationId, wanted);
+    if (+nextStartsAt !== +slot.startsAt && slot.bookings.length) {
+      // Старые напоминания привязаны к booking id: после смены времени они устаревают.
+      const now = new Date();
+      await tx.interviewBooking.updateMany({ where: { id: { in: slot.bookings.map(b => b.id) } }, data: { cancelledAt: now } });
+      await tx.interviewBooking.createMany({ data: slot.bookings.map(b => ({ applicationId: b.applicationId, slotId, createdAt: now })) });
+    }
+    return { ok: true as const, added, removed, timeChanged: +nextStartsAt !== +slot.startsAt,
+      oldStartsAt: slot.startsAt, startsAt: nextStartsAt, endsAt: nextEndsAt, location: slot.location, room: slot.room,
+      bookings: slot.bookings.map(b => ({ applicationId: b.applicationId, userId: b.application.userId, name: fullName(b.application) })),
+    };
   });
 }
 

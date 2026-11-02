@@ -118,6 +118,33 @@ describe("запись на собеседование", () => {
     expect(await setSlotInterviewers(s.id, [stranger.id])).toMatchObject({ ok: false });
   });
 
+  it("передаёт занятый слот со сдвигом времени, не создавая пересечения и не расходуя перезапись кандидата", async () => {
+    const role = await db.role.create({ data: { name: "Ведущий", slug: "lead", permissions: ["applications.review"] } });
+    const olya = await db.user.create({ data: { firstName: "Оля", roles: { create: { roleId: role.id } } } });
+    await db.userRole.create({ data: { userId: katya.id, roleId: role.id } });
+    const { user, application } = await candidate("Алина", true);
+    const startsAt = new Date(Date.now() + 3 * 24 * 60 * 60_000);
+    startsAt.setSeconds(0, 0);
+    const endsAt = new Date(+startsAt + 45 * 60_000);
+    const source = await db.interviewSlot.create({ data: { seasonId, startsAt, endsAt, location: "Корпус", interviewers: { create: { userId: katya.id } } } });
+    await db.interviewSlot.create({ data: { seasonId, startsAt, endsAt, location: "Корпус", interviewers: { create: { userId: olya.id } } } });
+    expect(await book(user.id, source.id, NOW)).toMatchObject({ ok: true });
+    const oldBooking = await db.interviewBooking.findFirstOrThrow({ where: { applicationId: application.id, cancelledAt: null } });
+
+    expect(await setSlotInterviewers(source.id, [olya.id], startsAt)).toMatchObject({ ok: false });
+    const later = new Date(+startsAt + 50 * 60_000);
+    expect(await setSlotInterviewers(source.id, [olya.id], later)).toMatchObject({ ok: true, added: [olya.id], timeChanged: true });
+
+    const active = await db.interviewBooking.findFirstOrThrow({ where: { applicationId: application.id, cancelledAt: null }, include: { slot: { include: { interviewers: true } } } });
+    expect(active.id).not.toBe(oldBooking.id);
+    expect(active.slotId).toBe(source.id);
+    expect(active.slot.startsAt).toEqual(later);
+    expect(active.slot.endsAt).toEqual(new Date(+later + 45 * 60_000));
+    expect(active.slot.interviewers.map(i => i.userId)).toEqual([olya.id]);
+    expect((await db.application.findUniqueOrThrow({ where: { id: application.id } })).interviewReschedulesUsed).toBe(0);
+    expect((await db.interviewBooking.findUniqueOrThrow({ where: { id: oldBooking.id } })).cancelledAt).not.toBeNull();
+  });
+
   it("занятый слот второму не даётся, даже одновременно", async () => {
     const a = await candidate("Алина", true);
     const b = await candidate("Борис", true);

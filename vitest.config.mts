@@ -25,7 +25,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["**/*.test.ts"],
-    exclude: ["node_modules/**", ".nuxt/**", ".output/**", ".claude/**", "lib/generated/**"],
+    exclude: ["node_modules/**", ".nuxt/**", ".output/**", ".claude/**", "test-results/**", "lib/generated/**"],
     // Тесты работают на отдельной базе: они её чистят, и рабочие данные
     // разработки не должны от этого страдать.
     env: {
