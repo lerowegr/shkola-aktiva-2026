@@ -56,7 +56,7 @@ export async function postMessage(params: {
   });
 
   if (params.author === "STAFF") await notifyCandidate(params.threadId, text);
-  if (params.author === "CANDIDATE") await notifyReviewers(params.threadId, text, now);
+  if (params.author === "CANDIDATE") await notifyStaffRecipients(params.threadId, text, now);
 
   return message;
 }
@@ -82,8 +82,8 @@ async function notifyCandidate(threadId: string, text: string) {
   ]);
 }
 
-/** Сообщение кандидата — его мастерам по анкете, если она уже назначена. */
-async function notifyReviewers(threadId: string, text: string, now = new Date()) {
+/** Уведомления о вопросе: мастер текущего собеседования и дежурная команда. */
+async function notifyStaffRecipients(threadId: string, text: string, now = new Date()) {
   const thread = await db.messageThread.findUnique({
     where: { id: threadId },
     select: {
@@ -94,24 +94,27 @@ async function notifyReviewers(threadId: string, text: string, now = new Date())
           lastName: true,
           telegramUsername: true,
           email: true,
-          applications: { select: { seasonId: true, reviews: { select: { reviewerId: true } }, bookings: { where: { cancelledAt: null, slot: { archivedAt: null } }, select: { slotId: true, slot: { select: { interviewers: { select: { userId: true } } } } } } } },
+          applications: { select: { seasonId: true, bookings: { where: { cancelledAt: null, slot: { archivedAt: null } }, select: { slotId: true, slot: { select: { interviewers: { select: { userId: true } } } } } } } },
         },
       },
     },
   });
   if (!thread) return;
 
-  const reviewers = new Set(
-    thread.candidate.applications
-      .filter((application) => application.seasonId === thread.seasonId)
-      .flatMap((application) => application.reviews.map((review) => review.reviewerId)),
-  );
-
   const interviewSlots = new Map(thread.candidate.applications.filter(a => a.seasonId === thread.seasonId).flatMap(a => a.bookings.flatMap(b => b.slot.interviewers.map(i => [i.userId, b.slotId] as const))));
-  for (const userId of interviewSlots.keys()) reviewers.add(userId);
+  const staff = await db.user.findMany({
+    where: { status: "ACTIVE", OR: [{ isOwner: true }, { roles: { some: { role: { permissions: { has: "messages.reply" } } } } }] },
+    select: { id: true, firstName: true, lastName: true, isOwner: true, roles: { select: { role: { select: { slug: true } } } } },
+  });
+  const namedRecipients = new Set(["мария новоселова", "катерина кизяева", "лера полякова"]);
+  const recipients = new Set(interviewSlots.keys());
+  for (const person of staff) {
+    const name = `${person.firstName ?? ""} ${person.lastName ?? ""}`.trim().toLocaleLowerCase("ru-RU").replaceAll("ё", "е");
+    if (person.isOwner || person.roles.some(({ role }) => role.slug === "admin") || namedRecipients.has(name)) recipients.add(person.id);
+  }
 
   await notify(
-    [...reviewers].map((userId) => ({
+    [...recipients].map((userId) => ({
       userId,
       category: "MESSAGES" as const,
       title: `${displayName(thread.candidate)} написал(а)`,
