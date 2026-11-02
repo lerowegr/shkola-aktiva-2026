@@ -27,6 +27,21 @@ async function setup() {
 }
 
 describe("перерывы и безопасный пересчёт", () => {
+  it("сохраняет начавшуюся встречу и проверяет перерыв перед будущей", async () => {
+    const f = await setup();
+    const started = await f.slot("2026-11-02T08:30:00+03:00");
+    const future = await f.slot("2026-11-02T09:15:00+03:00");
+    const booking = await db.interviewBooking.create({ data: { applicationId: f.app.id, slotId: started.id } });
+    const at = new Date("2026-11-02T09:00:00+03:00");
+    const params = { seasonId: f.season.id, actorId: f.master.id, rows: [{ ...f.row, from: "09:20", to: "10:05" }], preview: true };
+    expect(await reflowSchedule({ ...params, rows: [{ ...f.row, from: "09:19", to: "10:04" }] }, at)).toMatchObject({ ok: false });
+    const preview = await reflowSchedule(params, at);
+    expect(preview).toMatchObject({ ok: true, total: 1, archived: 1, moved: 0 });
+    expect(await reflowSchedule({ ...params, preview: false, version: "version" in preview ? preview.version : "" }, at)).toMatchObject({ ok: true });
+    expect((await db.interviewSlot.findUniqueOrThrow({ where: { id: started.id } })).archivedAt).toBeNull();
+    expect((await db.interviewBooking.findUniqueOrThrow({ where: { id: booking.id } })).cancelledAt).toBeNull();
+    expect((await db.interviewSlot.findUniqueOrThrow({ where: { id: future.id } })).archivedAt).not.toBeNull();
+  });
   it("08:30–13:20 вмещает пять встреч; соседние окна объединяются, обед сохраняется", () => {
     const row = { date: "2026-11-02", from: "08:30", to: "10:00", location: "К", interviewerId: "m" };
     const result = availabilitySlots([row, { ...row, from: "10:10", to: "11:40" }, { ...row, from: "11:50", to: "13:20" }, { ...row, from: "14:00", to: "15:30" }]);

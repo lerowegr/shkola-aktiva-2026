@@ -28,11 +28,11 @@ export async function reflowSchedule(params: { seasonId: string; actorId: string
       for (const master of masters) await validateInterviewer(tx, master);
       const scope = new Set(params.rows.map(r => `${r.interviewerId}:${r.date}`));
       const existing = (await tx.interviewSlot.findMany({
-        where: { seasonId: params.seasonId, archivedAt: null, interviewers: { some: { userId: { in: masters } } } },
+        where: { seasonId: params.seasonId, archivedAt: null, startsAt: { gt: now }, interviewers: { some: { userId: { in: masters } } } },
         orderBy: [{ startsAt: "asc" }, { id: "asc" }],
         include: { interviewers: true, bookings: { where: { cancelledAt: null }, orderBy: { id: "asc" }, include: { application: { select: { id: true, userId: true, firstName: true, lastName: true, middleName: true } } } } },
       })).filter(s => s.interviewers.some(i => scope.has(`${i.userId}:${dayKey(s.startsAt)}`)));
-      if (existing.some(s => s.startsAt <= now || s.capacity !== 1 || s.interviewers.length !== 1 || s.bookings.length > 1)) throw new InterviewScheduleError("В выбранные дни есть прошедшие слоты или слоты старого формата. Исправьте их отдельно.");
+      if (existing.some(s => s.capacity !== 1 || s.interviewers.length !== 1 || s.bookings.length > 1)) throw new InterviewScheduleError("В выбранные дни есть слоты старого формата. Исправьте их отдельно.");
       const version = createHash("sha256").update(JSON.stringify({ wanted, existing })).digest("hex");
       if (!params.preview && params.version !== version) throw new InterviewScheduleError("После предпросмотра появились записи или изменилось расписание. Проверьте таблицу ещё раз.");
       const used = new Set<string>();

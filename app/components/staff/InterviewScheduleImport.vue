@@ -34,7 +34,7 @@ async function submit(preview: boolean) {
       <label class="flex flex-col gap-2 text-sm font-medium">Строки расписания
         <textarea v-model="text" :disabled="action.pending.value" rows="6" class="border-line bg-paper min-h-32 w-full min-w-0 rounded-xl border p-3 text-sm" placeholder="Вставьте строки из таблицы" />
       </label>
-      <p class="text-ink-soft text-xs">{{ recalculate ? 'Будут пересчитаны все указанные дни мастеров. Участники останутся в своём корпусе, дне и у своего мастера. Перед сохранением покажем число переносов; участники и мастера получат уведомления. Лимит самостоятельной перезаписи не расходуется.' : 'Свободные слоты этих мастеров за указанные дни будут приведены к таблице. Конфликт с записью участника остановит сохранение целиком.' }}</p>
+      <p class="text-ink-soft text-xs">{{ recalculate ? 'Будут пересчитаны будущие слоты указанных дней мастеров. Уже начавшиеся встречи сохраняются. Участники останутся в своём корпусе, дне и у своего мастера. Перед сохранением покажем число переносов; участники и мастера получат уведомления. Лимит самостоятельной перезаписи не расходуется.' : 'Свободные слоты этих мастеров за указанные дни будут приведены к таблице. Конфликт с записью участника остановит сохранение целиком.' }}</p>
       <ul v-if="parsed.errors.length" class="text-danger flex flex-col gap-1 text-sm" role="alert"><li v-for="error in parsed.errors.slice(0, 10)" :key="error">{{ error }}</li><li v-if="parsed.errors.length > 10">Всего ошибок: {{ parsed.errors.length }}.</li></ul>
       <p v-if="parsed.rows.length" class="text-sm">Интервалов: {{ parsed.rows.length }}. Мастеров: {{ new Set(parsed.rows.map(r => r.interviewerId)).size }}.</p>
       <details v-if="parsed.rows.length" class="text-sm">
