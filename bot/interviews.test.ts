@@ -22,7 +22,7 @@ async function setup() {
       missingPanel = false;
       return { ok: false, error_code: 400, description: "Bad Request: message to edit not found" } as Awaited<ReturnType<typeof previous>>;
     }
-    return { ok: true, result: method === "answerCallbackQuery" || method === "deleteMessage" ? true : { message_id: 1000 + calls.length, date: 1, chat: { id: 11, type: "private" }, text: "" } } as Awaited<ReturnType<typeof previous>>;
+    return { ok: true, result: method === "answerCallbackQuery" ? true : { message_id: 1000 + calls.length, date: 1, chat: { id: 11, type: "private" }, text: "" } } as Awaited<ReturnType<typeof previous>>;
   });
   let serial = 0;
   async function text(text: string, chatType: "private" | "group" = "private", from = 11) {
@@ -71,7 +71,7 @@ describe("реальные обработчики команд бота без �
     await f.click(`iv:slot:${f.slot.id}`, 12);
     expect(f.lastView()?.payload.text).not.toContain("Тестовый");
   });
-  it("переходы и оценки обновляют одно сообщение, обработанный ввод удаляется", async () => {
+  it("переходы и оценки обновляют одно сообщение, введённые сообщения остаются", async () => {
     const f = await setup();
     await f.text("!помощь");
     await f.click(`iv:slot:${f.slot.id}`);
@@ -81,16 +81,16 @@ describe("реальные обработчики команд бота без �
     await f.click(`iv:slot:${f.slot.id}`);
     expect(f.calls.filter(c => c.method === "sendMessage")).toHaveLength(1);
     expect(f.calls.filter(c => c.method === "editMessageText")).toHaveLength(3);
-    expect(f.calls.filter(c => c.method === "deleteMessage")).toHaveLength(1);
+    expect(f.calls.filter(c => c.method === "deleteMessage")).toHaveLength(0);
     expect(await db.settings.count({ where: { id: `bot-interview-panel:${f.master.id}` } })).toBe(1);
   });
-  it("восстанавливает удалённую панель и удаляет старую", async () => {
+  it("восстанавливает недоступную панель без удаления сообщений", async () => {
     const f = await setup();
     await f.text("!помощь");
     f.removePanel();
     await f.click(`iv:slot:${f.slot.id}`);
     expect(f.calls.filter(c => c.method === "sendMessage")).toHaveLength(2);
-    expect(f.calls.filter(c => c.method === "deleteMessage")).toHaveLength(2);
+    expect(f.calls.filter(c => c.method === "deleteMessage")).toHaveLength(0);
     const saved = await db.settings.findUniqueOrThrow({ where: { id: `bot-interview-panel:${f.master.id}` } });
     expect(saved.data).toMatchObject({ chatId: 11, messageId: expect.any(Number) });
   });

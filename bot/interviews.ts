@@ -36,7 +36,6 @@ async function exportInterviews(ctx: Context) {
   const file = await interviewExportFile(season.id);
   const sent = await ctx.replyWithDocument(new InputFile(file.bytes, "sha-interviews.xlsx"), { caption: "Расписание собеседований: лист — день, строки — мастера, столбцы — время по Москве." });
   await writeAudit({ actorId: actor.id, action: "interview.export", entityType: "season", entityId: season.id, meta: { via: "TELEGRAM", days: file.days, slots: file.slots, messageId: sent.message_id } });
-  if (ctx.message?.message_id) await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id).catch(() => {});
 }
 async function showList(ctx: Context, day: string, page = 0) {
   const list = await listBotSlots(String(ctx.from!.id), day, page);

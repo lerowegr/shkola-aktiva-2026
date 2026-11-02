@@ -24,10 +24,7 @@ export async function renderBotPanel(ctx: Context, key: string, text: string, op
     const message = await ctx.reply(text, options);
     const data = { chatId: ctx.chat.id, messageId: message.message_id };
     await db.settings.upsert({ where: { id: key }, create: { id: key, data }, update: { data } });
-    if (old) await ctx.api.deleteMessage(old.chatId, old.messageId).catch(() => {});
   }
-  // Только ввод текущего обработанного действия мастера, после сохранения панели.
-  if (ctx.message?.message_id) await ctx.api.deleteMessage(ctx.chat.id, ctx.message.message_id).catch(() => {});
 }
 
 export async function interviewPanel(ctx: Context, text: string, options: { reply_markup?: InlineKeyboard } = {}) {
