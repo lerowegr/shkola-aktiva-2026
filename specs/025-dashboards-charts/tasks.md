@@ -1,0 +1,6 @@
+- [ ] T001 Агрегаты lib (milestones, faculty, buildings, master)
+- [ ] T002 Эндпоинт + типы payload
+- [ ] T003 GroupedColumns, DivergingBars
+- [ ] T004 Страница: фильтры и разделы
+- [ ] T005 CSV flow/faculties
+- [ ] T006 Тесты, check, проверка
