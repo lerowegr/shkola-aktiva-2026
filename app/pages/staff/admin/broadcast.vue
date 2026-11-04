@@ -10,7 +10,12 @@ import { SEGMENTS, type Segment } from "~~/lib/admin/segments";
 definePageMeta({ layout: "staff" });
 useHead({ title: "Рассылки" });
 
-const segment = ref<Segment>("drafts");
+// Сегмент можно задать ссылкой, например из дашборда «Не записавшиеся»:
+// /staff/admin/broadcast?segment=not_booked
+const route = useRoute();
+const rawSegment = Array.isArray(route.query.segment) ? route.query.segment[0] : route.query.segment;
+const initialSegment = rawSegment && rawSegment in SEGMENTS ? (rawSegment as Segment) : "drafts";
+const segment = ref<Segment>(initialSegment);
 const title = ref("");
 const body = ref("");
 const url = ref("/cabinet");
