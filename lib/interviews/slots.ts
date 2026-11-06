@@ -67,10 +67,16 @@ export interface ScheduleSlot {
   bookings: { applicationId: string; name: string; telegramUsername: string | null; faculty: string | null; hasTelegram: boolean; reschedulesUsed: number; scoreSummary: { label: string; percent: number | null }[] }[];
 }
 
-/** Расписание организаторов: все слоты сезона по времени. */
+/** Расписание организаторов: слоты сезона по времени. Мастер без права «все анкеты» видит только слоты, где он собеседующий. */
 export async function schedule(seasonId: string, viewerId: string, archived = false): Promise<ScheduleSlot[]> {
+  const viewer = await loadUser(viewerId);
+  const seeAll = viewer !== null && can(viewer, "applications.view_all");
   const slots = await db.interviewSlot.findMany({
-    where: { seasonId, archivedAt: archived ? { not: null } : null },
+    where: {
+      seasonId,
+      archivedAt: archived ? { not: null } : null,
+      ...(seeAll ? {} : { interviewers: { some: { userId: viewerId } } }),
+    },
     orderBy: { startsAt: "asc" },
     select: {
       id: true,
@@ -102,7 +108,7 @@ export async function schedule(seasonId: string, viewerId: string, archived = fa
     },
   });
 
-  const [viewer, criteria] = await Promise.all([loadUser(viewerId), db.criterion.findMany({ where: { seasonId }, select: { id: true, stageKind: true, maxScore: true } })]);
+  const criteria = await db.criterion.findMany({ where: { seasonId }, select: { id: true, stageKind: true, maxScore: true } });
   const stages = [{ kind: "APPLICATION", label: "Анкета" }, { kind: "HOMEWORK", label: "ДЗ" }, { kind: "ASSESSMENT", label: "ЦО" }] as const;
   return slots.map((slot) => ({
     id: slot.id,

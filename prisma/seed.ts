@@ -37,8 +37,9 @@ const ROLES = [
     description: "Проверяет назначенные анкеты и отвечает кандидатам.",
     color: "#6152ff",
     priority: 10,
-    // Все анкеты мастер видит только для чтения — чтобы сверяться с другими.
-    permissions: ["applications.review", "applications.view_all", "messages.reply"],
+    // Мастер видит только назначенные ему анкеты, свои подгруппы ЦО и свои
+    // слоты собеседований; всё целиком — распределяющие и тех.админ.
+    permissions: ["applications.review", "messages.reply"],
   },
   {
     slug: "lead",

@@ -8,7 +8,7 @@ import { changeDeadline } from "./rules";
 import { manageBooking, updateRoom } from "./manage";
 import { book, cancel, loadInterview, setSlotInterviewers } from "./booking";
 import { dueReminders, materializeReminders, interviewReminderIsCurrent } from "./reminders";
-import { createSlots, cutSlots } from "./slots";
+import { createSlots, cutSlots, schedule } from "./slots";
 
 const msk = (iso: string) => new Date(`${iso}+03:00`);
 const NOW = msk("2026-10-15T12:00:00");
@@ -392,4 +392,53 @@ describe("запись на собеседование", () => {
     expect(await book(b.user.id, next.id, NOW)).toMatchObject({ ok: false });
   });
 
+});
+
+describe("расписание собеседований: видимость слотов", () => {
+  let seasonId: string;
+  let katya: { id: string };
+  let ilya: { id: string };
+
+  beforeEach(async () => {
+    await resetDatabase();
+    seasonId = (await db.season.create({ data: { slug: "s", title: "S", year: 2026, isCurrent: true } })).id;
+    const role = await db.role.create({ data: { name: "Мастер", slug: "schedule-master", permissions: ["applications.review"] } });
+    katya = await db.user.create({ data: { firstName: "Катя", roles: { create: { roleId: role.id } } } });
+    ilya = await db.user.create({ data: { firstName: "Илья", roles: { create: { roleId: role.id } } } });
+  });
+
+  async function slot(startIso: string, interviewers: string[]) {
+    const created = await createSlots({
+      seasonId,
+      slots: [{ startsAt: msk(startIso), endsAt: new Date(msk(startIso).getTime() + 20 * 60_000) }],
+      location: "Ауд. 301",
+      capacity: 1,
+      interviewerIds: interviewers,
+      createdById: null,
+    });
+    return created[0]!;
+  }
+
+  it("мастер без «всех анкет» видит только свои слоты, зритель с правом — все", async () => {
+    await slot("2026-10-20T10:00:00", [katya.id]);
+    await slot("2026-10-20T11:00:00", [ilya.id]);
+
+    const own = await schedule(seasonId, katya.id);
+    expect(own).toHaveLength(1);
+    expect(own[0]!.mine).toBe(true);
+    expect(own[0]!.interviewers.map((person) => person.id)).toEqual([katya.id]);
+
+    const allRole = await db.role.create({ data: { name: "Ведущий", slug: "schedule-viewer", permissions: ["applications.view_all"] } });
+    const boss = await db.user.create({ data: { firstName: "Босс", roles: { create: { roleId: allRole.id } } } });
+    expect((await schedule(seasonId, boss.id))).toHaveLength(2);
+  });
+
+  it("снятые слоты мастеру показываются тоже только свои", async () => {
+    const own = await slot("2026-10-20T10:00:00", [katya.id]);
+    const other = await slot("2026-10-20T11:00:00", [ilya.id]);
+    await db.interviewSlot.updateMany({ where: { id: { in: [own.id, other.id] } }, data: { archivedAt: msk("2026-10-21T10:00:00") } });
+
+    const archived = await schedule(seasonId, katya.id, true);
+    expect(archived.map((slotItem) => slotItem.id)).toEqual([own.id]);
+  });
 });
