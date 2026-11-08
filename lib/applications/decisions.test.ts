@@ -93,8 +93,8 @@ describe("решения по этапу", () => {
     expect(await promoteReserve(application.id, seasonId, lead.id)).toMatchObject({ ok: false });
 
     expect(await publishDecisions(seasonId, "INTERVIEW")).toEqual({ passed: 0, reserve: 1, rejected: 0 });
-    expect(await candidateDecision(user.id, seasonId, "INTERVIEW")).toBe("RESERVE");
-    expect(await db.notification.findFirst({ where: { userId: user.id }, select: { title: true } })).toMatchObject({ title: "Вы в резерве Школы Актива" });
+    expect(await candidateDecision(user.id, seasonId, "INTERVIEW")).toBeNull();
+    expect(await db.notification.count({ where: { userId: user.id } })).toBe(0);
     expect(await setDecision(application.id, "INTERVIEW", "REJECTED", lead.id)).toMatchObject({ ok: false });
 
     expect(await promoteReserve(application.id, seasonId, lead.id)).toMatchObject({ ok: true, userId: user.id });

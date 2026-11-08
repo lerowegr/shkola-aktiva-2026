@@ -219,8 +219,8 @@ export async function setDecision(
   return { ok: true };
 }
 
-/** Что сказать кандидату о решении этапа. */
-const MESSAGES: Record<EvaluatedStage, Record<DecisionOutcome, { title: string; body: string }>> = {
+/** Что сказать кандидату об опубликованном решении; резерв остаётся внутренним. */
+const MESSAGES: Record<EvaluatedStage, Record<Exclude<DecisionOutcome, "RESERVE">, { title: string; body: string }>> = {
   APPLICATION: {
     PASSED: {
       title: "Анкета и домашнее задание приняты!",
@@ -230,7 +230,6 @@ const MESSAGES: Record<EvaluatedStage, Record<DecisionOutcome, { title: string; 
       title: "Результаты анкеты",
       body: "В этот раз дальше пройти не получилось. Спасибо, что подали анкету, — приходите на следующий набор!",
     },
-    RESERVE: { title: "Результаты анкеты", body: "Вы в резерве отбора. О дальнейших шагах сообщим отдельно." },
   },
   HOMEWORK: {
     PASSED: {
@@ -241,7 +240,6 @@ const MESSAGES: Record<EvaluatedStage, Record<DecisionOutcome, { title: string; 
       title: "Результаты домашнего задания",
       body: "В этот раз дальше пройти не получилось. Спасибо за работу — приходите на следующий набор!",
     },
-    RESERVE: { title: "Результаты домашнего задания", body: "Вы в резерве отбора. О дальнейших шагах сообщим отдельно." },
   },
   INTERVIEW: {
     PASSED: {
@@ -251,10 +249,6 @@ const MESSAGES: Record<EvaluatedStage, Record<DecisionOutcome, { title: string; 
     REJECTED: {
       title: "Итоги отбора",
       body: "Спасибо, что прошли весь отбор — анкету, центр оценки и собеседование 💛 В этот раз места в Школе Актива не хватило, и нам правда жаль 😔 Это не про то, что вы чего-то не умеете: мест мало, а сильных ребят много. Будем очень рады видеть вас в следующем наборе!",
-    },
-    RESERVE: {
-      title: "Вы в резерве Школы Актива",
-      body: "Вы успешно прошли отбор и вошли в резерв. Пока место не освободилось, участие не подтверждено. Если появится возможность пригласить вас, мы сообщим отдельно в личном кабинете и уведомлением.",
     },
   },
 };
@@ -285,8 +279,9 @@ export async function publishDecisions(
   });
   if (count === 0) return { passed: 0, reserve: 0, rejected: 0 };
 
+  const visible = pending.filter((decision): decision is typeof decision & { outcome: "PASSED" | "REJECTED" } => decision.outcome !== "RESERVE");
   await notify(
-    pending.map((decision) => ({
+    visible.map((decision) => ({
       userId: decision.application.userId,
       category: "SELECTION" as const,
       ...MESSAGES[stage][decision.outcome],
@@ -326,10 +321,10 @@ export async function candidateDecision(
   userId: string,
   seasonId: string,
   stage: EvaluatedStage,
-): Promise<DecisionOutcome | null> {
+): Promise<Exclude<DecisionOutcome, "RESERVE"> | null> {
   const decision = await db.stageDecision.findFirst({
-    where: { stageKind: stage, publishedAt: { not: null }, application: { seasonId, userId } },
+    where: { stageKind: stage, outcome: { not: "RESERVE" }, publishedAt: { not: null }, application: { seasonId, userId } },
     select: { outcome: true },
   });
-  return decision?.outcome ?? null;
+  return decision?.outcome === "PASSED" || decision?.outcome === "REJECTED" ? decision.outcome : null;
 }

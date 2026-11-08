@@ -81,8 +81,8 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
       <h1 class="font-display text-3xl">Итоги отбора</h1>
       <p class="text-ink-soft max-w-2xl text-sm">
         Отсева между этапами нет: все, кто отправил анкету, проходят ДЗ, центр оценки и собеседование. Здесь — одно
-        решение в конце. Итог — сумма средних баллов этапов. Отметки — черновик: кандидаты увидят результат, только когда
-        вы нажмёте «Опубликовать». Из опубликованного резерва можно пригласить человека, когда освободится место.
+        решение в конце. Итог — сумма средних баллов этапов. Отметки — черновик: кандидаты увидят решения «Проходит» и
+        «Нет» после публикации. Резерв виден только организаторам; из него можно пригласить человека, когда освободится место.
       </p>
     </div>
 
@@ -93,7 +93,7 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
         <div
           v-for="tile in [
             { label: 'Проходят', value: counts.passed, tone: 'text-ok' },
-            { label: 'Резерв', value: counts.reserve, tone: 'text-amber-700' },
+            { label: 'Резерв (только для нас)', value: counts.reserve, tone: 'text-amber-700' },
             { label: 'Не проходят', value: counts.rejected, tone: 'text-danger' },
             { label: 'Без решения', value: counts.none, tone: '' },
             { label: 'Опубликовано', value: counts.published, tone: '' },
@@ -125,7 +125,7 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
         </form>
 
         <template v-if="confirming">
-          <p class="text-sm">Опубликовать {{ unpublishedTotal }} решений по всем факультетам? Кандидаты сразу получат уведомления.</p>
+          <p class="text-sm">Опубликовать {{ unpublishedTotal }} решений по всем факультетам? Кандидаты с решением «Проходит» или «Нет» получат уведомления. Резерв останется внутренним.</p>
           <div class="flex gap-2">
             <UiButton variant="ghost" class="min-h-11 text-sm" @click="confirming = false">Отмена</UiButton>
             <UiButton class="min-h-11 text-sm" :pending="publish.pending.value" @click="doPublish">Опубликовать</UiButton>

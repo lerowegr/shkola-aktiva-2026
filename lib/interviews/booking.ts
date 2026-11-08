@@ -50,7 +50,7 @@ export interface CandidateInterview {
   /** Для записи нужны отправленная анкета и отметка явки на ЦО. */
   allowed: boolean;
   eligibilityMessage: string | null;
-  final: "PASSED" | "RESERVE" | "REJECTED" | null;
+  final: "PASSED" | "REJECTED" | null;
   booking: { slotId: string; startsAt: Date; endsAt: Date; location: string; room: string | null; canChange: boolean; changeDeadline: Date } | null;
   reschedulesUsed: number;
   bookingCancelled: boolean;
