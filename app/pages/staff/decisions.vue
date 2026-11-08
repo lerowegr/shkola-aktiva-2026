@@ -2,6 +2,7 @@
 import { Check, Lock, Megaphone, X } from "lucide-vue-next";
 
 import type { FinalPart, RankRow } from "~~/lib/applications/decisions";
+import { facultyMatches } from "~~/lib/profile/faculty";
 
 /**
  * «Итоги отбора»: кто проходит в Школу. Отсева между этапами нет — решение
@@ -13,18 +14,25 @@ definePageMeta({ layout: "staff" });
 useHead({ title: "Итоги отбора" });
 
 const PART_LABEL: Record<FinalPart, string> = { APPLICATION: "Анкета", HOMEWORK: "ДЗ", ASSESSMENT: "ЦО", INTERVIEW: "Собес" };
-const PART_STAGE: Record<FinalPart, string> = { APPLICATION: "", HOMEWORK: "&stage=HOMEWORK", ASSESSMENT: "", INTERVIEW: "&stage=INTERVIEW" };
 
 const { data, refresh } = await useFetch<{ rows: RankRow[] }>("/api/staff/decisions");
 const rows = computed(() => data.value?.rows ?? []);
+const faculty = useFacultyFilter();
+const visibleRows = computed(() => rows.value.filter((row) => facultyMatches(row.faculty, faculty.value)));
+function cardUrl(id: string, stage?: FinalPart) {
+  const query = new URLSearchParams({ from: "all", return: "decisions" });
+  if (faculty.value) query.set("faculty", faculty.value);
+  if (stage === "HOMEWORK" || stage === "INTERVIEW") query.set("stage", stage);
+  return `/staff/applications/${id}?${query}#previous-reviews`;
+}
 
 const counts = computed(() => ({
-  passed: rows.value.filter((row) => row.decision === "PASSED").length,
-  rejected: rows.value.filter((row) => row.decision === "REJECTED").length,
-  none: rows.value.filter((row) => !row.decision).length,
-  unpublished: rows.value.filter((row) => row.decision && !row.published).length,
-  published: rows.value.filter((row) => row.published).length,
+  passed: visibleRows.value.filter((row) => row.decision === "PASSED").length,
+  rejected: visibleRows.value.filter((row) => row.decision === "REJECTED").length,
+  none: visibleRows.value.filter((row) => !row.decision).length,
+  published: visibleRows.value.filter((row) => row.published).length,
 }));
+const unpublishedTotal = computed(() => rows.value.filter((row) => row.decision && !row.published).length);
 
 const setOne = useAction("/api/staff/decisions/set");
 async function decide(row: RankRow, outcome: "PASSED" | "REJECTED") {
@@ -103,20 +111,26 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
         </form>
 
         <template v-if="confirming">
-          <p class="text-sm">Опубликовать {{ counts.unpublished }} решений? Кандидаты сразу получат уведомления.</p>
+          <p class="text-sm">Опубликовать {{ unpublishedTotal }} решений по всем факультетам? Кандидаты сразу получат уведомления.</p>
           <div class="flex gap-2">
             <UiButton variant="ghost" class="min-h-11 text-sm" @click="confirming = false">Отмена</UiButton>
             <UiButton class="min-h-11 text-sm" :pending="publish.pending.value" @click="doPublish">Опубликовать</UiButton>
           </div>
         </template>
-        <UiButton v-else class="min-h-11 text-sm" :disabled="counts.unpublished === 0" @click="confirming = true">
-          <Megaphone class="size-4" aria-hidden="true" /> Опубликовать результаты ({{ counts.unpublished }})
+        <UiButton v-else class="min-h-11 text-sm" :disabled="unpublishedTotal === 0" @click="confirming = true">
+          <Megaphone class="size-4" aria-hidden="true" /> Опубликовать результаты ({{ unpublishedTotal }})
         </UiButton>
       </div>
     </section>
 
     <UiNotice v-if="bulk.result.value" :ok="bulk.result.value.ok" :message="bulk.result.value.message" />
     <UiNotice v-if="publish.result.value" :ok="publish.result.value.ok" :message="publish.result.value.message" />
+
+    <div class="flex flex-wrap items-center gap-3">
+      <StaffFacultyFilter v-model="faculty" />
+      <span class="text-ink-soft text-sm">Показано {{ visibleRows.length }} из {{ rows.length }}</span>
+      <span class="text-ink-soft text-xs">Порог и публикация применяются ко всем факультетам.</span>
+    </div>
 
     <!-- Рейтинг -->
     <section class="bg-card border-line overflow-hidden rounded-3xl border">
@@ -130,19 +144,21 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
       </div>
       <ol>
         <li
-          v-for="(row, index) in rows"
+          v-for="(row, index) in visibleRows"
           :key="row.id"
           class="border-line rank-row grid grid-cols-[32px_1fr] items-center gap-x-3 gap-y-2 border-t px-4 py-3 first:border-t-0 md:gap-4"
           :style="{ '--cols': `40px 2fr repeat(${parts.length}, minmax(0, 0.7fr)) 1fr 220px` }"
         >
           <span class="text-ink-soft text-sm">{{ index + 1 }}</span>
           <NuxtLink
-            :to="`/staff/applications/${row.id}?from=all`"
+            :to="cardUrl(row.id)"
             class="flex min-w-0 items-center gap-3 hover:underline"
           >
             <StaffAvatar :seed="row.id" :text="row.initials" />
             <span class="min-w-0">
               <span class="block truncate text-sm font-semibold">{{ row.name }}</span>
+              <span class="text-ink-soft block truncate text-xs">{{ row.faculty || "Факультет не указан" }}</span>
+              <span class="block text-xs" :class="row.assessmentPassed ? 'text-ok' : 'text-danger'">{{ row.assessmentPassed ? "ЦО пройден" : "ЦО не пройден" }}</span>
               <span v-if="row.telegramUsername" class="text-ink-soft block truncate text-xs">@{{ row.telegramUsername }}</span>
             </span>
           </NuxtLink>
@@ -151,7 +167,7 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
             <NuxtLink
               v-for="part in row.parts ?? []"
               :key="part.stage"
-              :to="`/staff/applications/${row.id}?from=all${PART_STAGE[part.stage]}`"
+              :to="cardUrl(row.id, part.stage)"
               class="bg-paper rounded-lg px-2 py-1 text-center text-xs hover:underline md:bg-transparent md:px-0 md:text-sm"
               :title="`${PART_LABEL[part.stage]}: ${part.average ?? 'нет оценки'} из ${part.max}`"
             >
@@ -200,7 +216,7 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
           </div>
         </li>
       </ol>
-      <p v-if="rows.length === 0" class="text-ink-soft p-8 text-center text-sm">Пока никто не отправил анкету.</p>
+      <p v-if="visibleRows.length === 0" class="text-ink-soft p-8 text-center text-sm">{{ rows.length ? 'По выбранному факультету кандидатов нет.' : 'Пока никто не отправил анкету.' }}</p>
     </section>
   </main>
 </template>

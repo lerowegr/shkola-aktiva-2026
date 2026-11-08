@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "~~/lib/db";
 import { resetDatabase } from "~~/lib/test/db";
 
-import { candidateDecision, publishDecisions, rankForStage, setDecision } from "./decisions";
+import { candidateDecision, publishDecisions, rankFinal, rankForStage, setDecision } from "./decisions";
 import { saveScore } from "./review-store";
 
 let seasonId: string;
@@ -32,6 +32,16 @@ async function candidate(name: string, score: number | null) {
 }
 
 describe("решения по этапу", () => {
+  it("в итогах показывает факультет и фактическую явку на ЦО", async () => {
+    const present = await candidate("Был", 4);
+    const absent = await candidate("НеБыл", 2);
+    await db.user.update({ where: { id: present.user.id }, data: { faculty: "ЮФ" } });
+    const session = await db.assessmentSession.create({ data: { seasonId, title: "ЦО", startsAt: new Date("2026-10-30T10:00:00+03:00") } });
+    await db.assessmentInvite.create({ data: { applicationId: present.application.id, sessionId: session.id, attended: true } });
+    const rows = await rankFinal(seasonId);
+    expect(rows.find(row => row.id === present.application.id)).toMatchObject({ faculty: "ЮФ", assessmentPassed: true });
+    expect(rows.find(row => row.id === absent.application.id)).toMatchObject({ faculty: null, assessmentPassed: false });
+  });
   it("рейтинг — по среднему итогу, лучшие сверху, непроверенные внизу", async () => {
     await candidate("Средний", 2);
     await candidate("Лучший", 4);

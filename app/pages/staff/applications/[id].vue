@@ -35,6 +35,7 @@ const review = computed(() => {
 });
 
 const back = computed(() => {
+  if (route.query.return === "decisions") return { to: `/staff/decisions${typeof route.query.faculty === "string" ? `?faculty=${encodeURIComponent(route.query.faculty)}` : ""}`, label: "Итоги отбора" };
   if (stage.value === "HOMEWORK") return { to: "/staff/homework", label: "Оценка ДЗ" };
   if (stage.value === "INTERVIEW") return { to: "/staff/interviews", label: "Собеседования" };
   return data.value?.scope === "all" ? { to: "/staff/all", label: "Все анкеты" } : { to: "/staff", label: "Мои анкеты" };
@@ -182,7 +183,7 @@ async function pass() {
       @saved="refresh"
     />
 
-    <StaffReviewHistory v-if="card.stage === 'INTERVIEW'" :key="id" :application-id="id" />
+    <StaffReviewHistory :key="id" :application-id="id" />
 
     <!-- Анкета — две колонки: ответы и оценка рядом. ДЗ и собеседование — одной
          колонкой: работа, сценарий собеса, а критерии в самом низу. -->

@@ -9,10 +9,10 @@ export interface ReviewHistory {
 }
 export async function loadReviewHistory(applicationId: string, seasonId: string, actor: CurrentUser): Promise<ReviewHistory | null | false> {
   if (actor.status !== "ACTIVE") return false;
-  const app = await db.application.findFirst({ where: { id: applicationId, seasonId, status: "SUBMITTED" }, select: { reviews: { where: { reviewerId: actor.id, stageKind: "INTERVIEW", releasedAt: null }, select: { id: true } } } });
+  const app = await db.application.findFirst({ where: { id: applicationId, seasonId, status: "SUBMITTED" }, select: { reviews: { where: { reviewerId: actor.id, releasedAt: null }, select: { id: true } } } });
   if (!app) return null;
   if (!can(actor, "applications.view_all") && !(can(actor, "applications.review") && app.reviews.length)) return false;
-  const stages = [{ kind: "APPLICATION", label: "Анкета" }, { kind: "HOMEWORK", label: "Домашнее задание" }, { kind: "ASSESSMENT", label: "Центр оценки" }] as const;
+  const stages = [{ kind: "APPLICATION", label: "Анкета" }, { kind: "HOMEWORK", label: "Домашнее задание" }, { kind: "ASSESSMENT", label: "Центр оценки" }, { kind: "INTERVIEW", label: "Собеседование" }] as const;
   const [criteria, reviews] = await Promise.all([
     db.criterion.findMany({ where: { seasonId, stageKind: { in: stages.map(s => s.kind) } }, orderBy: { order: "asc" }, select: { id: true, title: true, stageKind: true, maxScore: true } }),
     db.review.findMany({ where: { applicationId, stageKind: { in: stages.map(s => s.kind) } }, orderBy: { assignedAt: "asc" }, select: { stageKind: true, comment: true, reviewer: { select: { firstName: true, lastName: true, telegramUsername: true, email: true } }, scores: { select: { criterionId: true, score: true, comment: true } }, markers: { where: { note: { not: "" } }, select: { note: true, marker: { select: { title: true } } } } } }),

@@ -41,6 +41,8 @@ export interface RankRow {
   name: string;
   initials: string;
   telegramUsername: string | null;
+  faculty?: string | null;
+  assessmentPassed?: boolean;
   /** Средний итог по мастерам, поставившим хоть один балл. */
   average: number | null;
   max: number;
@@ -130,7 +132,8 @@ export async function rankFinal(seasonId: string): Promise<RankRow[]> {
         lastName: true,
         firstName: true,
         middleName: true,
-        user: { select: { telegramUsername: true } },
+        user: { select: { telegramUsername: true, faculty: true } },
+        assessmentInvite: { select: { attended: true } },
         reviews: {
           where: { stageKind: { in: [...FINAL_PARTS] } },
           select: {
@@ -167,6 +170,8 @@ export async function rankFinal(seasonId: string): Promise<RankRow[]> {
       name: fullName(application),
       initials: initials(application),
       telegramUsername: application.user.telegramUsername,
+      faculty: application.user.faculty,
+      assessmentPassed: application.assessmentInvite?.attended === true,
       average: scored.length ? round(scored.reduce((sum, part) => sum + part.average!, 0)) : null,
       max: parts.reduce((sum, part) => sum + part.max, 0),
       reviewed,

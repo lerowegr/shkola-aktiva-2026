@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import type { ReviewHistory } from "~~/lib/applications/history";
-const route = useRoute();
-const details = ref<HTMLDetailsElement | null>(null);
-onMounted(() => { if (route.hash === "#previous-reviews" && details.value) details.value.open = true; });
 const props = defineProps<{ applicationId: string }>();
-const { data, refresh, status, error } = await useFetch<ReviewHistory>(() => `/api/staff/applications/${props.applicationId}/history`, { immediate: false });
-async function toggle(event: Event) { if ((event.target as HTMLDetailsElement).open && !data.value) await refresh(); }
+const { data, status, error } = useFetch<ReviewHistory>(() => `/api/staff/applications/${props.applicationId}/history`);
 </script>
 <template>
-  <details id="previous-reviews" ref="details" class="bg-card border-line rounded-3xl border p-4 sm:p-5" @toggle="toggle">
-    <summary class="cursor-pointer font-semibold">Предыдущие оценки и комментарии</summary>
+  <details id="previous-reviews" open class="bg-card border-line rounded-3xl border p-4 sm:p-5">
+    <summary class="cursor-pointer font-semibold">Оценки и комментарии по этапам</summary>
     <p v-if="status === 'pending'" class="text-ink-soft mt-3 text-sm">Загружаем оценки…</p>
     <p v-if="error" class="text-danger mt-3 text-sm">Не удалось открыть предыдущие оценки.</p>
     <div v-if="data" class="mt-4 flex flex-col gap-5">
