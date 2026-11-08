@@ -18,9 +18,8 @@ import { fullName, initials, type EvaluatedStage } from "./staff";
  * уведомление. Так результаты не утекают по одному, пока организаторы
  * ещё спорят о пороге.
  *
- * Опубликованное решение не меняется: человек уже прочитал «вы прошли» —
- * забрать это обратно молча нельзя. Если ошиблись, разговор с кандидатом
- * ведут люди, а не кнопка.
+ * Опубликованное решение не меняется, кроме явного повышения из резерва
+ * в прошедшие. Такое повышение записывается в журнал и уведомляет кандидата.
  */
 
 /** Этап, решение которого — итог отбора. Других решений кандидат не получает. */
@@ -194,6 +193,9 @@ export async function setDecision(
   outcome: DecisionOutcome | null,
   actorId: string,
 ): Promise<DecisionResult> {
+  if (outcome === "RESERVE" && stage !== FINAL_STAGE) {
+    return { ok: false, message: "Резерв доступен только для итогов отбора." };
+  }
   const existing = await db.stageDecision.findUnique({
     where: { applicationId_stageKind: { applicationId, stageKind: stage } },
     select: { publishedAt: true },
@@ -228,6 +230,7 @@ const MESSAGES: Record<EvaluatedStage, Record<DecisionOutcome, { title: string; 
       title: "Результаты анкеты",
       body: "В этот раз дальше пройти не получилось. Спасибо, что подали анкету, — приходите на следующий набор!",
     },
+    RESERVE: { title: "Результаты анкеты", body: "Вы в резерве отбора. О дальнейших шагах сообщим отдельно." },
   },
   HOMEWORK: {
     PASSED: {
@@ -238,6 +241,7 @@ const MESSAGES: Record<EvaluatedStage, Record<DecisionOutcome, { title: string; 
       title: "Результаты домашнего задания",
       body: "В этот раз дальше пройти не получилось. Спасибо за работу — приходите на следующий набор!",
     },
+    RESERVE: { title: "Результаты домашнего задания", body: "Вы в резерве отбора. О дальнейших шагах сообщим отдельно." },
   },
   INTERVIEW: {
     PASSED: {
@@ -247,6 +251,10 @@ const MESSAGES: Record<EvaluatedStage, Record<DecisionOutcome, { title: string; 
     REJECTED: {
       title: "Итоги отбора",
       body: "Спасибо, что прошли весь отбор — анкету, центр оценки и собеседование 💛 В этот раз места в Школе Актива не хватило, и нам правда жаль 😔 Это не про то, что вы чего-то не умеете: мест мало, а сильных ребят много. Будем очень рады видеть вас в следующем наборе!",
+    },
+    RESERVE: {
+      title: "Вы в резерве Школы Актива",
+      body: "Вы успешно прошли отбор и вошли в резерв. Пока место не освободилось, участие не подтверждено. Если появится возможность пригласить вас, мы сообщим отдельно в личном кабинете и уведомлением.",
     },
   },
 };
@@ -259,7 +267,7 @@ const MESSAGES: Record<EvaluatedStage, Record<DecisionOutcome, { title: string; 
 export async function publishDecisions(
   seasonId: string,
   stage: EvaluatedStage,
-): Promise<{ passed: number; rejected: number }> {
+): Promise<{ passed: number; reserve: number; rejected: number }> {
   const now = new Date();
 
   const pending = await db.stageDecision.findMany({
@@ -267,7 +275,7 @@ export async function publishDecisions(
     select: { id: true, outcome: true, application: { select: { userId: true } } },
   });
 
-  if (pending.length === 0) return { passed: 0, rejected: 0 };
+  if (pending.length === 0) return { passed: 0, reserve: 0, rejected: 0 };
 
   // Условие publishedAt: null — вторая одновременная публикация не
   // захватит те же решения и не пришлёт уведомление дважды.
@@ -275,7 +283,7 @@ export async function publishDecisions(
     where: { id: { in: pending.map((item) => item.id) }, publishedAt: null },
     data: { publishedAt: now },
   });
-  if (count === 0) return { passed: 0, rejected: 0 };
+  if (count === 0) return { passed: 0, reserve: 0, rejected: 0 };
 
   await notify(
     pending.map((decision) => ({
@@ -289,8 +297,28 @@ export async function publishDecisions(
 
   return {
     passed: pending.filter((item) => item.outcome === "PASSED").length,
+    reserve: pending.filter((item) => item.outcome === "RESERVE").length,
     rejected: pending.filter((item) => item.outcome === "REJECTED").length,
   };
+}
+
+/** Единственное допустимое изменение опубликованного итога: резерв → принят. */
+export async function promoteReserve(applicationId: string, seasonId: string, actorId: string): Promise<DecisionResult & { userId?: string; decisionId?: string }> {
+  const decision = await db.stageDecision.findUnique({
+    where: { applicationId_stageKind: { applicationId, stageKind: FINAL_STAGE } },
+    select: { id: true, outcome: true, publishedAt: true, application: { select: { userId: true, seasonId: true } } },
+  });
+  if (!decision || decision.application.seasonId !== seasonId || decision.outcome !== "RESERVE" || !decision.publishedAt) {
+    return { ok: false, message: "Перевести можно только кандидата с опубликованным решением «Резерв»." };
+  }
+  // Условие в UPDATE не позволяет двум организаторам одновременно пригласить
+  // одного и того же человека и дважды сообщить ему о переводе.
+  const { count } = await db.stageDecision.updateMany({
+    where: { id: decision.id, outcome: "RESERVE", publishedAt: { not: null } },
+    data: { outcome: "PASSED", decidedById: actorId, decidedAt: new Date() },
+  });
+  if (!count) return { ok: false, message: "Кандидата уже перевели из резерва. Обновите список." };
+  return { ok: true, userId: decision.application.userId, decisionId: decision.id };
 }
 
 /** Решение этапа глазами кандидата: только опубликованное. */

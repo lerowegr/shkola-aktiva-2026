@@ -5,7 +5,7 @@ import { requirePermission } from "~~/server/utils/session";
 
 const schema = z.object({
   applicationId: z.string().min(1),
-  outcome: z.enum(["PASSED", "REJECTED"]).nullable(),
+  outcome: z.enum(["PASSED", "RESERVE", "REJECTED"]).nullable(),
 });
 
 /** Итог отбора кандидата: проходит в Школу или нет. До публикации — черновик. */

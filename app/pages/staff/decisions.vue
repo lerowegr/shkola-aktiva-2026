@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Lock, Megaphone, X } from "lucide-vue-next";
+import { Check, Clock3, Lock, Megaphone, X } from "lucide-vue-next";
 
 import type { FinalPart, RankRow } from "~~/lib/applications/decisions";
 import { facultyMatches } from "~~/lib/profile/faculty";
@@ -8,7 +8,7 @@ import { facultyMatches } from "~~/lib/profile/faculty";
  * «Итоги отбора»: кто проходит в Школу. Отсева между этапами нет — решение
  * одно, в конце. Рейтинг — сумма средних баллов анкеты, ДЗ, ЦО и
  * собеседования. Отметки — черновик; кандидаты увидят результат только после
- * «Опубликовать», и опубликованное уже не меняется.
+ * «Опубликовать». Из опубликованного резерва можно пригласить на освободившееся место.
  */
 definePageMeta({ layout: "staff" });
 useHead({ title: "Итоги отбора" });
@@ -28,6 +28,7 @@ function cardUrl(id: string, stage?: FinalPart) {
 
 const counts = computed(() => ({
   passed: visibleRows.value.filter((row) => row.decision === "PASSED").length,
+  reserve: visibleRows.value.filter((row) => row.decision === "RESERVE").length,
   rejected: visibleRows.value.filter((row) => row.decision === "REJECTED").length,
   none: visibleRows.value.filter((row) => !row.decision).length,
   published: visibleRows.value.filter((row) => row.published).length,
@@ -35,12 +36,24 @@ const counts = computed(() => ({
 const unpublishedTotal = computed(() => rows.value.filter((row) => row.decision && !row.published).length);
 
 const setOne = useAction("/api/staff/decisions/set");
-async function decide(row: RankRow, outcome: "PASSED" | "REJECTED") {
+async function decide(row: RankRow, outcome: "PASSED" | "RESERVE" | "REJECTED") {
   if (row.published) return;
   const next = row.decision === outcome ? null : outcome;
   row.decision = next;
   const result = await setOne.submit({ applicationId: row.id, outcome: next });
   if (!result.ok) await refresh();
+}
+
+const promote = useAction("/api/staff/decisions/promote");
+const promotingId = ref<string | null>(null);
+const confirmPromoteId = ref<string | null>(null);
+async function promoteOne(row: RankRow) {
+  if (!row.published || row.decision !== "RESERVE") return;
+  promotingId.value = row.id;
+  const result = await promote.submit({ applicationId: row.id });
+  promotingId.value = null;
+  confirmPromoteId.value = null;
+  if (result.ok) await refresh();
 }
 
 const threshold = ref<number | null>(null);
@@ -69,17 +82,18 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
       <p class="text-ink-soft max-w-2xl text-sm">
         Отсева между этапами нет: все, кто отправил анкету, проходят ДЗ, центр оценки и собеседование. Здесь — одно
         решение в конце. Итог — сумма средних баллов этапов. Отметки — черновик: кандидаты увидят результат, только когда
-        вы нажмёте «Опубликовать». Опубликованное изменить нельзя.
+        вы нажмёте «Опубликовать». Из опубликованного резерва можно пригласить человека, когда освободится место.
       </p>
     </div>
 
     <!-- Сводка и действия -->
     <section class="bg-card border-line grid items-center gap-4 rounded-3xl border p-4 sm:p-5 lg:grid-cols-[1fr_auto]">
       <!-- Счётчики — плитками, число и подпись по центру плитки. -->
-      <dl class="grid grid-cols-2 content-center gap-2 sm:grid-cols-4">
+      <dl class="grid grid-cols-2 content-center gap-2 sm:grid-cols-5">
         <div
           v-for="tile in [
             { label: 'Проходят', value: counts.passed, tone: 'text-ok' },
+            { label: 'Резерв', value: counts.reserve, tone: 'text-amber-700' },
             { label: 'Не проходят', value: counts.rejected, tone: 'text-danger' },
             { label: 'Без решения', value: counts.none, tone: '' },
             { label: 'Опубликовано', value: counts.published, tone: '' },
@@ -122,6 +136,7 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
         </UiButton>
       </div>
     </section>
+    <UiNotice v-if="promote.result.value" :ok="promote.result.value.ok" :message="promote.result.value.message" />
 
     <UiNotice v-if="bulk.result.value" :ok="bulk.result.value.ok" :message="bulk.result.value.message" />
     <UiNotice v-if="publish.result.value" :ok="publish.result.value.ok" :message="publish.result.value.message" />
@@ -136,7 +151,7 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
     <section class="bg-card border-line overflow-hidden rounded-3xl border">
       <div
         class="text-ink-soft border-line hidden gap-4 border-b px-4 py-2 text-xs font-semibold uppercase md:grid"
-        :style="{ gridTemplateColumns: `40px 2fr repeat(${parts.length}, minmax(0, 0.7fr)) 1fr 220px` }"
+        :style="{ gridTemplateColumns: `40px 2fr repeat(${parts.length}, minmax(0, 0.7fr)) 1fr 300px` }"
       >
         <span>#</span><span>Кандидат</span>
         <span v-for="part in parts" :key="part" class="text-center">{{ PART_LABEL[part] }}</span>
@@ -147,7 +162,7 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
           v-for="(row, index) in visibleRows"
           :key="row.id"
           class="border-line rank-row grid grid-cols-[32px_1fr] items-center gap-x-3 gap-y-2 border-t px-4 py-3 first:border-t-0 md:gap-4"
-          :style="{ '--cols': `40px 2fr repeat(${parts.length}, minmax(0, 0.7fr)) 1fr 220px` }"
+          :style="{ '--cols': `40px 2fr repeat(${parts.length}, minmax(0, 0.7fr)) 1fr 300px` }"
         >
           <span class="text-ink-soft text-sm">{{ index + 1 }}</span>
           <NuxtLink
@@ -183,17 +198,34 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
               <span v-for="marker in row.markers" :key="marker" class="bg-brand-purple-soft/60 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-[#6a1a91]">{{ marker }}</span>
             </span>
           </span>
-          <div class="col-start-2 flex items-center gap-1.5 md:col-start-auto">
+          <div class="col-start-2 flex flex-wrap items-center gap-1.5 md:col-start-auto">
             <template v-if="row.published">
               <span
                 class="flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold"
-                :class="row.decision === 'PASSED' ? 'bg-brand-green-soft text-ok' : 'bg-brand-red-soft text-danger'"
+                :class="row.decision === 'PASSED' ? 'bg-brand-green-soft text-ok' : row.decision === 'RESERVE' ? 'bg-amber-100 text-amber-800' : 'bg-brand-red-soft text-danger'"
               >
                 <Lock class="size-3.5" aria-hidden="true" />
-                {{ row.decision === "PASSED" ? "Проходит" : "Не проходит" }}
+                {{ row.decision === "PASSED" ? "Проходит" : row.decision === "RESERVE" ? "Резерв" : "Не проходит" }}
               </span>
+              <template v-if="row.decision === 'RESERVE'">
+                <template v-if="confirmPromoteId === row.id">
+                  <span class="basis-full text-xs">Пригласить {{ row.name }} на освободившееся место? Ему придёт уведомление.</span>
+                  <button type="button" class="min-h-10 rounded-xl bg-ok px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" :disabled="promote.pending.value" @click="promoteOne(row)">{{ promotingId === row.id ? "Переводим…" : "Подтвердить" }}</button>
+                  <button type="button" class="min-h-10 rounded-xl border border-line px-3 py-2 text-sm" @click="confirmPromoteId = null">Отмена</button>
+                </template>
+                <button v-else type="button" class="min-h-10 rounded-xl border border-ok px-3 py-2 text-sm font-medium text-ok hover:bg-brand-green-soft" :aria-label="`Пригласить из резерва: ${row.name}`" @click="confirmPromoteId = row.id">Пригласить</button>
+              </template>
             </template>
             <template v-else>
+              <button
+                type="button"
+                :aria-pressed="row.decision === 'RESERVE'"
+                class="flex min-h-10 flex-1 items-center justify-center gap-1 rounded-xl border text-sm font-medium transition"
+                :class="row.decision === 'RESERVE' ? 'border-amber-700 bg-amber-100 text-amber-800' : 'border-line hover:border-amber-700/50'"
+                @click="decide(row, 'RESERVE')"
+              >
+                <Clock3 class="size-4" aria-hidden="true" /> Резерв
+              </button>
               <button
                 type="button"
                 :aria-pressed="row.decision === 'PASSED'"

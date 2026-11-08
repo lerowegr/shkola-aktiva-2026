@@ -21,6 +21,13 @@ const past = computed(() => Boolean(props.iv.booking && new Date(props.iv.bookin
       <span class="block text-sm">Поздравляем — вы прошли отбор.</span>
     </span>
   </NuxtLink>
+  <NuxtLink v-else-if="iv.final === 'RESERVE'" to="/cabinet/interview" class="bg-card border-line flex items-start gap-4 rounded-3xl border p-5">
+    <span class="bg-paper grid size-12 shrink-0 place-items-center rounded-2xl text-2xl" aria-hidden="true">⏳</span>
+    <span class="flex-1">
+      <span class="block font-semibold">Вы в резерве Школы Актива</span>
+      <span class="text-ink-soft block text-sm">Если освободится место, мы сообщим вам отдельно.</span>
+    </span>
+  </NuxtLink>
   <NuxtLink v-else-if="iv.final === 'REJECTED'" to="/cabinet/interview" class="bg-card border-line flex items-start gap-4 rounded-3xl border p-5">
     <span class="bg-paper grid size-12 shrink-0 place-items-center rounded-2xl text-2xl" aria-hidden="true">😔</span>
     <span class="flex-1">

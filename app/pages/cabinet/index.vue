@@ -137,7 +137,7 @@ const personal = computed(() => {
 
   if (iv.value?.final)
     result.RESULTS = {
-      label: iv.value.final === "PASSED" ? "Вы в Школе! 🎉" : "Итоги объявлены",
+      label: iv.value.final === "PASSED" ? "Вы в Школе! 🎉" : iv.value.final === "RESERVE" ? "Вы в резерве" : "Итоги объявлены",
       tone: "done",
       to: "/cabinet/interview",
     };

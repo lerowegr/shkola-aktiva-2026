@@ -19,7 +19,7 @@ export default defineAction(schema, async ({ body, event }) => {
   let passed = 0;
   let rejected = 0;
   for (const row of rows) {
-    if (row.published || row.average === null) continue;
+    if (row.published || row.decision === "RESERVE" || row.average === null) continue;
     const outcome = row.average >= body.threshold ? "PASSED" : "REJECTED";
     const result = await setDecision(row.id, FINAL_STAGE, outcome, actor.id);
     if (result.ok) {

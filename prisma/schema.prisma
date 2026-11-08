@@ -86,6 +86,7 @@ enum MessageVia {
 
 enum DecisionOutcome {
   PASSED // проходит на следующий этап
+  RESERVE // резерв итогового отбора
   REJECTED // не проходит
 }
 

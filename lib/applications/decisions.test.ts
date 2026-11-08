@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { db } from "~~/lib/db";
 import { resetDatabase } from "~~/lib/test/db";
 
-import { candidateDecision, publishDecisions, rankFinal, rankForStage, setDecision } from "./decisions";
+import { candidateDecision, promoteReserve, publishDecisions, rankFinal, rankForStage, setDecision } from "./decisions";
 import { saveScore } from "./review-store";
 
 let seasonId: string;
@@ -66,13 +66,13 @@ describe("решения по этапу", () => {
     await setDecision(a.application.id, "APPLICATION", "PASSED", lead.id);
     await setDecision(b.application.id, "APPLICATION", "REJECTED", lead.id);
 
-    expect(await publishDecisions(seasonId, "APPLICATION")).toEqual({ passed: 1, rejected: 1 });
+    expect(await publishDecisions(seasonId, "APPLICATION")).toEqual({ passed: 1, reserve: 0, rejected: 1 });
     expect(await candidateDecision(a.user.id, seasonId, "APPLICATION")).toBe("PASSED");
     expect(await candidateDecision(b.user.id, seasonId, "APPLICATION")).toBe("REJECTED");
     expect(await db.notification.count()).toBe(2);
 
     // Повторная публикация без новых решений никого не трогает.
-    expect(await publishDecisions(seasonId, "APPLICATION")).toEqual({ passed: 0, rejected: 0 });
+    expect(await publishDecisions(seasonId, "APPLICATION")).toEqual({ passed: 0, reserve: 0, rejected: 0 });
     expect(await db.notification.count()).toBe(2);
   });
 
@@ -83,6 +83,23 @@ describe("решения по этапу", () => {
 
     const result = await setDecision(application.id, "APPLICATION", "REJECTED", lead.id);
     expect(result.ok).toBe(false);
+  });
+
+  it("публикует резерв отдельно, затем допускает только однократное повышение", async () => {
+    const { user, application } = await candidate("Алина", 4);
+    expect(await setDecision(application.id, "APPLICATION", "RESERVE", lead.id)).toMatchObject({ ok: false });
+    expect(await setDecision(application.id, "INTERVIEW", "RESERVE", lead.id)).toEqual({ ok: true });
+    expect(await candidateDecision(user.id, seasonId, "INTERVIEW")).toBeNull();
+    expect(await promoteReserve(application.id, seasonId, lead.id)).toMatchObject({ ok: false });
+
+    expect(await publishDecisions(seasonId, "INTERVIEW")).toEqual({ passed: 0, reserve: 1, rejected: 0 });
+    expect(await candidateDecision(user.id, seasonId, "INTERVIEW")).toBe("RESERVE");
+    expect(await db.notification.findFirst({ where: { userId: user.id }, select: { title: true } })).toMatchObject({ title: "Вы в резерве Школы Актива" });
+    expect(await setDecision(application.id, "INTERVIEW", "REJECTED", lead.id)).toMatchObject({ ok: false });
+
+    expect(await promoteReserve(application.id, seasonId, lead.id)).toMatchObject({ ok: true, userId: user.id });
+    expect(await candidateDecision(user.id, seasonId, "INTERVIEW")).toBe("PASSED");
+    expect(await promoteReserve(application.id, seasonId, lead.id)).toMatchObject({ ok: false });
   });
 
   it("снять неопубликованное решение можно", async () => {

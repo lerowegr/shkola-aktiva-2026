@@ -1,0 +1,1 @@
+ALTER TYPE "DecisionOutcome" ADD VALUE 'RESERVE';
