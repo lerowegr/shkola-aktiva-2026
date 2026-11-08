@@ -23,6 +23,7 @@ export const AUDIT_LABELS: Record<string, string> = {
   "decision.bulk": "Решения по порогу",
   "decision.publish": "Публикация результатов",
   "decision.reserve_promoted": "Кандидат приглашён из резерва",
+  "decision.comment_add": "Комментарий к итоговому решению",
   "stage.update": "Даты и режим этапа",
   "interview.invites_send": "Приглашение на собеседования",
   "interview.room_update": "Изменение аудитории собеседования",

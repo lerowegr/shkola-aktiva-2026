@@ -184,6 +184,7 @@ model User {
   interviewNotes    InterviewNote[]
   assessmentTaskNotes  AssessmentTaskNote[]
   assessmentGroupNotes AssessmentGroupNote[]
+  finalDecisionComments FinalDecisionComment[] @relation("FinalCommentAuthor")
 
   @@index([status])
   @@map("users")
@@ -465,6 +466,7 @@ model Application {
   assessment     AssessmentMember?
   assessmentInvite AssessmentInvite?
   assessmentTaskNotes AssessmentTaskNote[]
+  finalDecisionComments FinalDecisionComment[]
 
   @@unique([seasonId, userId])
   @@index([seasonId, status])
@@ -607,6 +609,21 @@ model StageDecision {
   @@unique([applicationId, stageKind])
   @@index([stageKind, publishedAt])
   @@map("stage_decisions")
+}
+
+/// Внутренние комментарии организаторов к итоговому решению. Кандидат их не видит.
+model FinalDecisionComment {
+  id            String   @id @default(cuid())
+  applicationId String
+  authorId      String?
+  body          String   @db.VarChar(1200)
+  createdAt     DateTime @default(now())
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  author      User?       @relation("FinalCommentAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([applicationId, createdAt])
+  @@map("final_decision_comments")
 }
 
 /// Загруженный файл. Лежит в UPLOADS_DIR под случайным ключом и отдаётся

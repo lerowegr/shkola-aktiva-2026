@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Clock3, Lock, X } from "lucide-vue-next";
+import { Check, Clock3, Lock, MessageSquareText, X } from "lucide-vue-next";
 
 import type { FinalPart, RankRow } from "~~/lib/applications/decisions";
 import { facultyMatches } from "~~/lib/profile/faculty";
@@ -43,6 +43,48 @@ const counts = computed(() => ({
   none: visibleRows.value.filter((row) => !row.decision).length,
   published: visibleRows.value.filter((row) => row.published).length,
 }));
+
+interface FinalComment { id: string; body: string; author: string; createdAt: string }
+const openCommentsId = ref<string | null>(null);
+const comments = ref<FinalComment[]>([]);
+const loadingComments = ref(false);
+const commentsError = ref("");
+const commentDraft = ref("");
+const commentAction = useAction("/api/staff/decisions/comment");
+
+async function loadComments(applicationId: string) {
+  loadingComments.value = true;
+  commentsError.value = "";
+  try {
+    const result = await $fetch<{ comments: FinalComment[] }>("/api/staff/decisions/comments", { query: { applicationId } });
+    if (openCommentsId.value === applicationId) comments.value = result.comments;
+  } catch {
+    commentsError.value = "Не удалось загрузить комментарии. Попробуйте открыть их ещё раз.";
+  } finally {
+    loadingComments.value = false;
+  }
+}
+
+async function toggleComments(row: RankRow) {
+  if (openCommentsId.value === row.id) {
+    openCommentsId.value = null;
+    return;
+  }
+  openCommentsId.value = row.id;
+  comments.value = [];
+  commentDraft.value = "";
+  commentAction.result.value = null;
+  await loadComments(row.id);
+}
+
+async function addComment(row: RankRow) {
+  const body = commentDraft.value.trim();
+  if (!body || body.length > 1200) return;
+  const result = await commentAction.submit({ applicationId: row.id, body });
+  if (!result.ok) return;
+  commentDraft.value = "";
+  await Promise.all([loadComments(row.id), refresh()]);
+}
 
 const setOne = useAction("/api/staff/decisions/set");
 async function decide(row: RankRow, outcome: "PASSED" | "RESERVE" | "REJECTED") {
@@ -172,6 +214,7 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
               <span class="text-ink-soft block truncate text-xs">{{ row.faculty || "Факультет не указан" }}</span>
               <span class="block text-xs" :class="row.assessmentPassed ? 'text-ok' : 'text-danger'">{{ row.assessmentPassed ? "ЦО пройден" : "ЦО не пройден" }}</span>
               <span v-if="row.telegramUsername" class="text-ink-soft block truncate text-xs">@{{ row.telegramUsername }}</span>
+              <span v-if="row.latestComment" class="text-ink-soft mt-1 block truncate text-xs" :title="row.latestComment">💬 {{ row.latestComment }}</span>
             </span>
           </NuxtLink>
           <!-- Баллы этапов: на телефоне — строкой чипов, на компьютере — колонками. -->
@@ -242,7 +285,35 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
                 <X class="size-4" aria-hidden="true" /> Нет
               </button>
             </template>
+            <button
+              type="button"
+              class="border-line hover:border-accent flex min-h-10 items-center gap-1.5 rounded-xl border px-3 py-2 text-sm"
+              :aria-expanded="openCommentsId === row.id"
+              :aria-controls="`comments-${row.id}`"
+              @click="toggleComments(row)"
+            >
+              <MessageSquareText class="size-4" aria-hidden="true" />
+              {{ row.commentCount ? `Комментарии · ${row.commentCount}` : "Комментарий" }}
+            </button>
           </div>
+          <section v-if="openCommentsId === row.id" :id="`comments-${row.id}`" class="bg-paper col-span-full rounded-2xl p-4">
+            <h3 class="font-semibold">Комментарии: {{ row.name }}</h3>
+            <p class="text-ink-soft mt-1 text-xs">Видны только организаторам. Кандидату не отправляются.</p>
+            <p v-if="loadingComments" class="text-ink-soft mt-3 text-sm">Загружаем комментарии…</p>
+            <p v-if="commentsError" role="alert" class="text-danger mt-3 text-sm">{{ commentsError }}</p>
+            <div v-else-if="!loadingComments" class="mt-3 flex flex-col gap-2">
+              <p v-if="!comments.length" class="text-ink-soft text-sm">Комментариев пока нет.</p>
+              <article v-for="comment in comments" :key="comment.id" class="border-line bg-card rounded-xl border p-3">
+                <p class="text-ink-soft text-xs">{{ comment.author }} · {{ mskFormat(comment.createdAt, 'd MMM, HH:mm') }}</p>
+                <p class="mt-1 whitespace-pre-wrap break-words text-sm">{{ comment.body }}</p>
+              </article>
+            </div>
+            <form class="mt-4 flex flex-col gap-2" @submit.prevent="addComment(row)">
+              <UiTextarea v-model="commentDraft" label="Новый комментарий" :rows="3" :max="1200" hint="Кратко о кандидате или причине решения" />
+              <UiNotice v-if="commentAction.result.value" :ok="commentAction.result.value.ok" :message="commentAction.result.value.message" />
+              <UiButton type="submit" class="self-start sm:w-auto" :pending="commentAction.pending.value" :disabled="!commentDraft.trim() || commentDraft.trim().length > 1200">Добавить комментарий</UiButton>
+            </form>
+          </section>
         </li>
       </ol>
       <p v-if="visibleRows.length === 0" class="text-ink-soft p-8 text-center text-sm">{{ rows.length ? 'По выбранному факультету кандидатов нет.' : 'Пока никто не отправил анкету.' }}</p>

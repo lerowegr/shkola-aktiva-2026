@@ -51,6 +51,9 @@ export interface RankRow {
   markers: string[];
   decision: DecisionOutcome | null;
   published: boolean;
+  /** Внутренние комментарии организаторов в итогах. */
+  commentCount?: number;
+  latestComment?: string | null;
   /** Итоги отбора: средний балл каждого этапа. */
   parts?: RankPart[];
 }
@@ -133,6 +136,8 @@ export async function rankFinal(seasonId: string): Promise<RankRow[]> {
         middleName: true,
         user: { select: { telegramUsername: true, faculty: true } },
         assessmentInvite: { select: { attended: true } },
+        finalDecisionComments: { orderBy: { createdAt: "desc" }, take: 1, select: { body: true } },
+        _count: { select: { finalDecisionComments: true } },
         reviews: {
           where: { stageKind: { in: [...FINAL_PARTS] } },
           select: {
@@ -178,6 +183,8 @@ export async function rankFinal(seasonId: string): Promise<RankRow[]> {
       markers: [...new Set(application.reviews.flatMap((review) => review.markers.map((item) => item.marker.title)))],
       decision: decision?.outcome ?? null,
       published: decision?.publishedAt != null,
+      commentCount: application._count.finalDecisionComments,
+      latestComment: application.finalDecisionComments[0]?.body ?? null,
       parts,
     };
   });

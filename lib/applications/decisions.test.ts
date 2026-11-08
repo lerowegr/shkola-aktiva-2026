@@ -42,6 +42,19 @@ describe("решения по этапу", () => {
     expect(rows.find(row => row.id === present.application.id)).toMatchObject({ faculty: "ЮФ", assessmentPassed: true });
     expect(rows.find(row => row.id === absent.application.id)).toMatchObject({ faculty: null, assessmentPassed: false });
   });
+  it("показывает последний внутренний комментарий в итогах независимо от решения", async () => {
+    const { application, user } = await candidate("Алина", 4);
+    await db.finalDecisionComment.createMany({ data: [
+      { applicationId: application.id, authorId: lead.id, body: "Сильная анкета", createdAt: new Date("2026-11-09T09:00:00+03:00") },
+      { applicationId: application.id, authorId: lead.id, body: "Обсудить на итоговой встрече", createdAt: new Date("2026-11-09T10:00:00+03:00") },
+    ] });
+    await setDecision(application.id, "INTERVIEW", "RESERVE", lead.id);
+
+    expect((await rankFinal(seasonId))[0]).toMatchObject({ commentCount: 2, latestComment: "Обсудить на итоговой встрече" });
+    expect(await candidateDecision(user.id, seasonId, "INTERVIEW")).toBeNull();
+    await setDecision(application.id, "INTERVIEW", "PASSED", lead.id);
+    expect((await rankFinal(seasonId))[0]).toMatchObject({ commentCount: 2, latestComment: "Обсудить на итоговой встрече" });
+  });
   it("рейтинг — по среднему итогу, лучшие сверху, непроверенные внизу", async () => {
     await candidate("Средний", 2);
     await candidate("Лучший", 4);
