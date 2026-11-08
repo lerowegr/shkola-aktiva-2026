@@ -18,7 +18,17 @@ const PART_LABEL: Record<FinalPart, string> = { APPLICATION: "Анкета", HOM
 const { data, refresh } = await useFetch<{ rows: RankRow[] }>("/api/staff/decisions");
 const rows = computed(() => data.value?.rows ?? []);
 const faculty = useFacultyFilter();
-const visibleRows = computed(() => rows.value.filter((row) => facultyMatches(row.faculty, faculty.value)));
+const sortMode = ref<"decision" | "score">("decision");
+const decisionOrder: Record<NonNullable<RankRow["decision"]>, number> = { PASSED: 0, RESERVE: 1, REJECTED: 2 };
+const visibleRows = computed(() => {
+  const filtered = rows.value.filter((row) => facultyMatches(row.faculty, faculty.value));
+  // Рейтинг с сервера уже отсортирован по баллам; в смешанном режиме
+  // меняем только порядок групп, сохраняя баллы внутри каждой из них.
+  if (sortMode.value === "decision") {
+    filtered.sort((a, b) => (a.decision === null ? 3 : decisionOrder[a.decision]) - (b.decision === null ? 3 : decisionOrder[b.decision]));
+  }
+  return filtered;
+});
 function cardUrl(id: string, stage?: FinalPart) {
   const query = new URLSearchParams({ from: "all", return: "decisions" });
   if (faculty.value) query.set("faculty", faculty.value);
@@ -123,6 +133,13 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
 
     <div class="flex flex-wrap items-center gap-3">
       <StaffFacultyFilter v-model="faculty" />
+      <label class="flex flex-col gap-1 text-sm font-medium">
+        Сортировка
+        <UiSelect v-model="sortMode" size="md" aria-label="Сортировка итогов">
+          <option value="decision">Берём → резерв → не берём · по баллам</option>
+          <option value="score">Только по баллам</option>
+        </UiSelect>
+      </label>
       <span class="text-ink-soft text-sm">Показано {{ visibleRows.length }} из {{ rows.length }}</span>
       <span class="text-ink-soft text-xs">Порог применяется ко всем факультетам.</span>
     </div>
