@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Clock3, Lock, Megaphone, X } from "lucide-vue-next";
+import { Check, Clock3, Lock, X } from "lucide-vue-next";
 
 import type { FinalPart, RankRow } from "~~/lib/applications/decisions";
 import { facultyMatches } from "~~/lib/profile/faculty";
@@ -7,8 +7,8 @@ import { facultyMatches } from "~~/lib/profile/faculty";
 /**
  * «Итоги отбора»: кто проходит в Школу. Отсева между этапами нет — решение
  * одно, в конце. Рейтинг — сумма средних баллов анкеты, ДЗ, ЦО и
- * собеседования. Отметки — черновик; кандидаты увидят результат только после
- * «Опубликовать». Из опубликованного резерва можно пригласить на освободившееся место.
+ * собеседования. Публикация временно отключена; отметки остаются черновиками.
+ * Из ранее опубликованного резерва можно пригласить на освободившееся место.
  */
 definePageMeta({ layout: "staff" });
 useHead({ title: "Итоги отбора" });
@@ -33,7 +33,6 @@ const counts = computed(() => ({
   none: visibleRows.value.filter((row) => !row.decision).length,
   published: visibleRows.value.filter((row) => row.published).length,
 }));
-const unpublishedTotal = computed(() => rows.value.filter((row) => row.decision && !row.published).length);
 
 const setOne = useAction("/api/staff/decisions/set");
 async function decide(row: RankRow, outcome: "PASSED" | "RESERVE" | "REJECTED") {
@@ -64,14 +63,6 @@ async function applyThreshold() {
   if (result.ok) await refresh();
 }
 
-const confirming = ref(false);
-const publish = useAction("/api/staff/decisions/publish");
-async function doPublish() {
-  const result = await publish.submit({});
-  confirming.value = false;
-  if (result.ok) await refresh();
-}
-
 const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? []);
 </script>
 
@@ -81,8 +72,8 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
       <h1 class="font-display text-3xl">Итоги отбора</h1>
       <p class="text-ink-soft max-w-2xl text-sm">
         Отсева между этапами нет: все, кто отправил анкету, проходят ДЗ, центр оценки и собеседование. Здесь — одно
-        решение в конце. Итог — сумма средних баллов этапов. Отметки — черновик: кандидаты увидят решения «Проходит» и
-        «Нет» после публикации. Резерв виден только организаторам; из него можно пригласить человека, когда освободится место.
+        решение в конце. Итог — сумма средних баллов этапов. Отметки пока остаются черновиками: публикация результатов
+        временно отключена. Резерв виден только организаторам.
       </p>
     </div>
 
@@ -124,27 +115,16 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
           </UiButton>
         </form>
 
-        <template v-if="confirming">
-          <p class="text-sm">Опубликовать {{ unpublishedTotal }} решений по всем факультетам? Кандидаты с решением «Проходит» или «Нет» получат уведомления. Резерв останется внутренним.</p>
-          <div class="flex gap-2">
-            <UiButton variant="ghost" class="min-h-11 text-sm" @click="confirming = false">Отмена</UiButton>
-            <UiButton class="min-h-11 text-sm" :pending="publish.pending.value" @click="doPublish">Опубликовать</UiButton>
-          </div>
-        </template>
-        <UiButton v-else class="min-h-11 text-sm" :disabled="unpublishedTotal === 0" @click="confirming = true">
-          <Megaphone class="size-4" aria-hidden="true" /> Опубликовать результаты ({{ unpublishedTotal }})
-        </UiButton>
       </div>
     </section>
     <UiNotice v-if="promote.result.value" :ok="promote.result.value.ok" :message="promote.result.value.message" />
 
     <UiNotice v-if="bulk.result.value" :ok="bulk.result.value.ok" :message="bulk.result.value.message" />
-    <UiNotice v-if="publish.result.value" :ok="publish.result.value.ok" :message="publish.result.value.message" />
 
     <div class="flex flex-wrap items-center gap-3">
       <StaffFacultyFilter v-model="faculty" />
       <span class="text-ink-soft text-sm">Показано {{ visibleRows.length }} из {{ rows.length }}</span>
-      <span class="text-ink-soft text-xs">Порог и публикация применяются ко всем факультетам.</span>
+      <span class="text-ink-soft text-xs">Порог применяется ко всем факультетам.</span>
     </div>
 
     <!-- Рейтинг -->
