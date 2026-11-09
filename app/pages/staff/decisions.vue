@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Clock3, Lock, MessageSquareText, X } from "lucide-vue-next";
+import { Check, Clock3, FileSpreadsheet, Lock, MessageSquareText, X } from "lucide-vue-next";
 
 import type { FinalPart, RankRow } from "~~/lib/applications/decisions";
 import { facultyMatches } from "~~/lib/profile/faculty";
@@ -166,6 +166,13 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
             Применить
           </UiButton>
         </form>
+
+        <div class="flex flex-col gap-1">
+          <a href="/api/staff/decisions/export" download="sha-final-lists.xlsx" class="border-line bg-card hover:border-accent inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold">
+            <FileSpreadsheet class="size-4" aria-hidden="true" /> Скачать Excel: берём и резерв
+          </a>
+          <span class="text-ink-soft text-xs">Все факультеты, включая черновики.</span>
+        </div>
 
       </div>
     </section>
