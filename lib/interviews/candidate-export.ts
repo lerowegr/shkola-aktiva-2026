@@ -31,9 +31,12 @@ function sheet(book: ExcelJS.Workbook, name: string, headings: string[], rows: C
 }
 
 /** Операционная копия данных текущего сезона для работы без сайта. */
-export async function candidateExportFile(seasonId: string) {
+export async function candidateExportFile(
+  seasonId: string,
+  options: { applicationIds?: readonly string[]; workbook?: ExcelJS.Workbook } = {},
+) {
   const apps = await db.application.findMany({
-    where: { seasonId }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
+    where: { seasonId, ...(options.applicationIds ? { id: { in: [...options.applicationIds] } } : {}) }, orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { id: "asc" }],
     include: {
       user: { select: { email: true, login: true, telegramId: true, telegramUsername: true, phone: true, course: true, faculty: true, studentId: true, status: true } },
       answers: { include: { question: { select: { stageKind: true, section: true, order: true, label: true } } } },
@@ -55,9 +58,10 @@ export async function candidateExportFile(seasonId: string) {
         },
       },
       interviewNotes: { include: { question: { select: { block: true, text: true } }, author: { select: { firstName: true, lastName: true, telegramUsername: true, email: true } } } },
+      finalDecisionComments: { include: { author: { select: { firstName: true, lastName: true, telegramUsername: true, email: true } } }, orderBy: { createdAt: "asc" } },
     },
   });
-  const book = new ExcelJS.Workbook();
+  const book = options.workbook ?? new ExcelJS.Workbook();
   book.creator = "Школа Актива";
   sheet(book, "Кандидаты", ["ID анкеты", "ФИО", "Статус анкеты", "Отправлена", "Факультет", "Курс", "Студбилет", "Телефон", "Telegram", "Telegram ID", "Почта", "Логин", "Статус аккаунта", "Явка ЦО", "Ответ на ЦО", "Собес: дата и время", "Корпус собеса", "Перезаписей"], apps.map(a => {
     const active = a.bookings.find(b => !b.cancelledAt);
@@ -72,5 +76,6 @@ export async function candidateExportFile(seasonId: string) {
   sheet(book, "Собеседования", ["ID анкеты", "ФИО", "Дата и время", "Конец", "Корпус", "Аудитория", "Мастер", "Записан", "Отменён"], apps.flatMap(a => a.bookings.flatMap(b => (b.slot.interviewers.length ? b.slot.interviewers : [null]).map(i => [a.id, fullName(a), when(b.slot.startsAt), when(b.slot.endsAt), b.slot.location, b.slot.room, i ? displayName(i.user) : "", when(b.createdAt), when(b.cancelledAt)]))));
   sheet(book, "Комментарии собесов", ["ID анкеты", "ФИО", "Блок", "Вопрос", "Мастер", "Комментарий"], apps.flatMap(a => a.interviewNotes.map(n => [a.id, fullName(a), n.question.block, n.question.text, displayName(n.author), n.note])));
   sheet(book, "Решения", ["ID анкеты", "ФИО", "Этап", "Решение", "Кто принял", "Принято", "Опубликовано"], apps.flatMap(a => a.decisions.map(d => [a.id, fullName(a), d.stageKind, d.outcome, d.decidedBy ? displayName(d.decidedBy) : "", when(d.decidedAt), when(d.publishedAt)])));
+  sheet(book, "Комментарии итогов", ["ID анкеты", "ФИО", "Организатор", "Комментарий", "Добавлен"], apps.flatMap(a => a.finalDecisionComments.map(c => [a.id, fullName(a), c.author ? displayName(c.author) : "Организатор", c.body, when(c.createdAt)])));
   return { bytes: Buffer.from(await book.xlsx.writeBuffer()), candidates: apps.length };
 }
