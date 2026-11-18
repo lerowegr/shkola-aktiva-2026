@@ -85,7 +85,7 @@ watch(segment, (value) => {
 
       <details v-if="registration" open class="border-line rounded-2xl border p-4">
         <summary class="cursor-pointer font-semibold">Вопросы анкеты участника</summary>
-        <p class="text-ink-soft mt-2 text-sm">Изменения применятся к новым приглашениям. Ответ «Нет» на вопрос о трёх днях сразу завершит анкету.</p>
+        <p class="text-ink-soft mt-2 text-sm">В Telegram к приглашению будет приложено заявление для несовершеннолетних. Изменения вопросов применятся к новым приглашениям.</p>
         <div class="mt-4 grid gap-3">
           <label v-for="(key, index) in questionKeys" :key="key" class="flex flex-col gap-1 text-sm">
             <span>{{ index + 1 }}. Формулировка вопроса</span>

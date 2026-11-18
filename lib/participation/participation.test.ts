@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { db } from "~~/lib/db";
 import { resetDatabase } from "~~/lib/test/db";
@@ -47,6 +47,11 @@ describe("Подтверждение участия в ША", () => {
     expect(await loadParticipation(seasonId, reserve.userId)).toBeNull();
     expect(await db.notification.findFirst({ where: { title: "Приглашение" }, include: { deliveries: true } }))
       .toMatchObject({ userId: accepted.userId, deliveries: [{ channel: "TELEGRAM" }] });
+    const telegram = vi.fn(async () => {});
+    await processDeliveries({ senders: { telegram, push: null }, now: new Date(Date.now() + 120_000), gapMs: 0 });
+    expect(telegram).toHaveBeenCalledWith(accepted.telegramId, expect.objectContaining({
+      title: "Приглашение", attachment: "parentConsent",
+    }));
   });
 
   it("отправляет отказ сразу после согласия и отменяет созревшие напоминания после отправки", async () => {

@@ -20,6 +20,7 @@ export interface OutgoingMessage {
   body: string | null;
   /** Путь на сайте или полный адрес. */
   url: string | null;
+  attachment?: "parentConsent";
 }
 
 export interface PushTarget {
@@ -131,6 +132,7 @@ export async function processDeliveries(params: {
           await skip("Telegram не привязан");
           continue;
         }
+        if (participation?.[2] === "invite") message.attachment = "parentConsent";
         await params.senders.telegram(delivery.user.telegramId, message);
         await sleep(params.gapMs ?? TELEGRAM_GAP_MS);
       } else {

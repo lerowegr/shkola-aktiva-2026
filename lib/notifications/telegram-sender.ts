@@ -1,5 +1,7 @@
 import { Api, InlineKeyboard } from "grammy";
 
+import { PARENT_CONSENT_CAPTION, parentConsentFile } from "../participation/parent-consent";
+
 import type { OutgoingMessage, Senders } from "./worker";
 
 /**
@@ -41,7 +43,8 @@ export function telegramButton(message: OutgoingMessage, base: string): InlineKe
   if (slot) return new InlineKeyboard().text("Открыть собеседование / ответить", `iv:slot:${slot}`);
   if (message.url === "/cabinet/interview") return new InlineKeyboard().text("Собеседование в боте", "ivc:menu");
   if (!message.url || !base.startsWith("https://")) return undefined;
-  return new InlineKeyboard().webApp("Открыть", miniAppLink(message.url, base));
+  const label = message.attachment === "parentConsent" ? "Открыть анкету" : "Открыть";
+  return new InlineKeyboard().webApp(label, miniAppLink(message.url, base));
 }
 
 export function createTelegramSender(): Senders["telegram"] {
@@ -52,10 +55,24 @@ export function createTelegramSender(): Senders["telegram"] {
   const base = appUrl();
 
   return async (chatId, message) => {
-    await api.sendMessage(chatId, telegramText(message, base), {
+    const text = telegramText(message, base);
+    const replyMarkup = telegramButton(message, base);
+    if (message.attachment === "parentConsent") {
+      const document = await parentConsentFile();
+      const caption = `${text}\n\n${PARENT_CONSENT_CAPTION}`;
+      // В подписи к документу Telegram принимает до 1024 символов.
+      if (caption.length <= 1024) {
+        await api.sendDocument(chatId, document, { caption, parse_mode: "HTML", reply_markup: replyMarkup });
+      } else {
+        await api.sendMessage(chatId, text, { parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: replyMarkup });
+        await api.sendDocument(chatId, document, { caption: PARENT_CONSENT_CAPTION });
+      }
+      return;
+    }
+    await api.sendMessage(chatId, text, {
       parse_mode: "HTML",
       link_preview_options: { is_disabled: true },
-      reply_markup: telegramButton(message, base),
+      reply_markup: replyMarkup,
     });
   };
 }

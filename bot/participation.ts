@@ -1,5 +1,6 @@
 import type { Context } from "grammy";
 import { canReceiveScan, maxScanBytes, saveConsentScan } from "../lib/participation/scan";
+import { parentConsentFile } from "../lib/participation/parent-consent";
 import { PARTICIPATION_PATH } from "../lib/participation/form";
 
 export async function explainConsentScan(ctx: Context, appUrl: string) {
@@ -8,7 +9,9 @@ export async function explainConsentScan(ctx: Context, appUrl: string) {
     await ctx.reply("Прислать заявление можно после приглашения и до отправки анкеты участника.");
     return;
   }
-  await ctx.reply(`Пришли подписанное заявление фото или файлом PDF, JPG или PNG до 8 МБ. К фото или файлу добавь подпись «заявление». Затем вернись в анкету: ${appUrl}${PARTICIPATION_PATH}`);
+  await ctx.replyWithDocument(await parentConsentFile(), {
+    caption: `Пришли подписанное заявление фото или файлом PDF, JPG или PNG до 8 МБ. К фото или файлу добавь подпись «заявление». Затем вернись в анкету: ${appUrl}${PARTICIPATION_PATH}`,
+  });
 }
 
 export async function receiveConsentScan(ctx: Context, token: string): Promise<boolean> {
