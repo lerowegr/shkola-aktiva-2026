@@ -24,8 +24,10 @@ const props = withDefaults(
     disabled?: boolean;
     mode?: "datetime" | "date";
     size?: "lg" | "md";
+    maxDate?: string;
+    numericDate?: boolean;
   }>(),
-  { label: undefined, disabled: false, mode: "datetime", size: "lg" },
+  { label: undefined, disabled: false, mode: "datetime", size: "lg", maxDate: undefined, numericDate: false },
 );
 
 const model = defineModel<string>({ default: "" });
@@ -56,6 +58,37 @@ const hoursBox = ref<HTMLElement | null>(null);
 const minutesBox = ref<HTMLElement | null>(null);
 
 const grid = computed(() => monthGrid(view.value.year, view.value.month));
+const maxDay = computed(() => parseDate(props.maxDate ?? ""));
+const viewMonthLimit = computed(() => {
+  const cutoff = maxDay.value;
+  return cutoff && view.value.year === cutoff.year ? cutoff.month : 11;
+});
+const previousMonth = computed(() => shiftMonth(view.value.year, view.value.month, -1));
+const nextMonth = computed(() => shiftMonth(view.value.year, view.value.month, 1));
+const nextMonthDisabled = computed(() => Boolean(props.maxDate && formatDate({ ...nextMonth.value, day: 1 }) > props.maxDate));
+const monthOptions = computed(() => Array.from({ length: viewMonthLimit.value + 1 }, (_, month) => ({
+  value: String(month),
+  label: new Intl.DateTimeFormat("ru-RU", { month: "long" }).format(new Date(2026, month, 1)),
+})));
+const yearOptions = computed(() => {
+  const latest = maxDay.value?.year ?? moscowToday().year;
+  const oldest = Math.min(1900, view.value.year);
+  return Array.from({ length: latest - oldest + 1 }, (_, index) => {
+    const year = String(latest - index);
+    return { value: year, label: year };
+  });
+});
+
+function chooseYear(value: string) {
+  const year = Number(value);
+  const cutoff = maxDay.value;
+  const month = cutoff && year === cutoff.year ? Math.min(view.value.month, cutoff.month) : view.value.month;
+  view.value = { year, month };
+}
+
+function dateLabel(date: { year: number; month: number; day: number }) {
+  return `${pad(date.day)}.${pad(date.month + 1)}.${date.year}`;
+}
 
 /** Выбранный день и выбранное время — отдельно, чтобы типы сходились. */
 const pickedDay = computed(() => {
@@ -79,7 +112,7 @@ function shortMonth(month: number): string {
 const text = computed(() => {
   const day = pickedDay.value;
   if (!day) return "";
-  const date = `${day.day} ${shortMonth(day.month)} ${day.year}`;
+  const date = props.numericDate ? dateLabel(day) : `${day.day} ${shortMonth(day.month)} ${day.year}`;
   const time = pickedTime.value;
   if (props.mode === "date" || !time) return date;
   return `${date}, ${pad(time.hour)}:${pad(time.minute)}`;
@@ -87,7 +120,7 @@ const text = computed(() => {
 
 function syncView() {
   const day = pickedDay.value;
-  const today = moscowToday();
+  const today = maxDay.value ?? moscowToday();
   view.value = day ? { year: day.year, month: day.month } : { year: today.year, month: today.month };
 }
 
@@ -181,6 +214,8 @@ const pad = (value: number) => String(value).padStart(2, "0");
           size === 'lg' ? 'min-h-12 rounded-2xl px-4 text-base' : 'min-h-11 rounded-xl px-3 text-base',
           text ? 'pr-11' : '',
         ]"
+        :aria-expanded="open"
+        aria-haspopup="dialog"
         @click="toggle()"
       >
         <CalendarDays class="text-ink-soft size-5 shrink-0" aria-hidden="true" />
@@ -204,12 +239,30 @@ const pad = (value: number) => String(value).padStart(2, "0");
         role="dialog"
         aria-label="Выбор даты"
       >
-        <div class="mb-2 flex items-center justify-between">
-          <button type="button" class="hover:bg-paper grid size-9 place-items-center rounded-xl" aria-label="Прошлый месяц" @click="view = shiftMonth(view.year, view.month, -1)">
+        <div class="mb-2 flex items-center justify-between gap-1">
+          <button type="button" class="hover:bg-paper grid size-9 shrink-0 place-items-center rounded-xl" aria-label="Прошлый месяц" @click="view = previousMonth">
             <ChevronLeft class="size-5" aria-hidden="true" />
           </button>
-          <p class="text-sm font-semibold first-letter:uppercase">{{ monthName(view.year, view.month) }}</p>
-          <button type="button" class="hover:bg-paper grid size-9 place-items-center rounded-xl" aria-label="Следующий месяц" @click="view = shiftMonth(view.year, view.month, 1)">
+          <div v-if="maxDay" class="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_4.5rem] gap-1">
+            <UiSelect
+              :model-value="String(view.month)"
+              :options="monthOptions"
+              aria-label="Месяц"
+              size="xs"
+              class="calendar-select capitalize"
+              @update:model-value="view.month = Number($event)"
+            />
+            <UiSelect
+              :model-value="String(view.year)"
+              :options="yearOptions"
+              aria-label="Год"
+              size="xs"
+              class="calendar-select calendar-year"
+              @update:model-value="chooseYear"
+            />
+          </div>
+          <p v-else class="text-sm font-semibold first-letter:uppercase">{{ monthName(view.year, view.month) }}</p>
+          <button type="button" class="hover:bg-paper grid size-9 shrink-0 place-items-center rounded-xl disabled:opacity-30" aria-label="Следующий месяц" :disabled="nextMonthDisabled" @click="view = nextMonth">
             <ChevronRight class="size-5" aria-hidden="true" />
           </button>
         </div>
@@ -219,13 +272,15 @@ const pad = (value: number) => String(value).padStart(2, "0");
             v-for="cell in grid"
             :key="`${cell.year}-${cell.month}-${cell.day}`"
             type="button"
-            class="grid size-9 place-items-center rounded-full text-sm tabular-nums transition"
+            class="grid h-9 min-w-0 place-items-center rounded-full text-sm tabular-nums transition disabled:opacity-30 disabled:hover:bg-transparent"
             :class="[
               pickedDay && cell.year === pickedDay.year && cell.month === pickedDay.month && cell.day === pickedDay.day
                 ? 'bg-accent font-semibold text-white'
                 : 'hover:bg-paper',
               cell.current ? '' : 'opacity-40',
             ]"
+            :disabled="!!maxDate && formatDate(cell) > maxDate"
+            :aria-label="numericDate ? dateLabel(cell) : undefined"
             @click="pickDay(cell)"
           >
             {{ cell.day }}
@@ -267,3 +322,15 @@ const pad = (value: number) => String(value).padStart(2, "0");
     </div>
   </div>
 </template>
+
+<style scoped>
+.calendar-select :deep([role="listbox"]) {
+  min-width: 100%;
+  width: max-content;
+}
+
+.calendar-year :deep([role="listbox"]) {
+  right: 0;
+  left: auto;
+}
+</style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { PARENT_CONSENT, PARTICIPATION_SUCCESS, type Questions } from "~~/lib/participation/form";
+import { mskDayKey } from "~/utils/moscow";
 
 useHead({ title: "Анкета участника" });
 const { public: config } = useRuntimeConfig();
@@ -10,7 +11,10 @@ const done = ref(false);
 const step = ref<"attendance" | "details">("attendance");
 const consent = ref(false);
 const minor = ref("");
-const dietKind = ref("");
+const dietKind = ref<"Да" | "Нет" | "Другое">();
+const dietDetails = ref("");
+const dietOptions = ["Да", "Нет", "Другое"] as const;
+const today = mskDayKey(new Date());
 const fields = reactive({
   passportName: form.value?.name ?? "",
   passportNumber: "",
@@ -18,7 +22,6 @@ const fields = reactive({
   passportIssuer: "",
   citizenship: "",
   studentId: form.value?.studentId ?? "",
-  diet: "",
   conditions: "",
   medication: "",
   healthNotes: "",
@@ -27,17 +30,32 @@ const fields = reactive({
 const passportFields = ["passportName", "passportNumber", "passportDate", "passportIssuer", "citizenship", "studentId"] satisfies (keyof Questions)[];
 const healthFields = ["conditions", "medication", "healthNotes"] satisfies (keyof Questions)[];
 const botLink = !config.demo && config.telegramBotUsername ? `https://t.me/${config.telegramBotUsername}?start=parent_consent` : "";
-const detailsReady = computed(() => minor.value !== "" && dietKind.value !== "" &&
-  (dietKind.value !== "other" || !!fields.diet.trim()) && (minor.value !== "yes" || form.value?.scanReceived));
+const detailsReady = computed(() => Boolean(fields.passportDate && minor.value && dietKind.value &&
+  (dietKind.value !== "Другое" || dietDetails.value.trim()) && (minor.value !== "yes" || form.value?.scanReceived)));
+
+function formatPassportInput(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const beforeCaret = input.value.slice(0, input.selectionStart ?? input.value.length).replace(/\D/g, "").length;
+  const digits = input.value.replace(/\D/g, "").slice(0, 10);
+  const formatted = digits.length > 4 ? `${digits.slice(0, 4)} ${digits.slice(4)}` : digits;
+  if (input.value !== formatted) {
+    input.value = formatted;
+    const position = Math.min(beforeCaret, digits.length);
+    const caret = position > 4 ? position + 1 : position;
+    input.setSelectionRange(caret, caret);
+  }
+  fields.passportNumber = formatted;
+}
 
 async function send(attending: boolean) {
-  if (!consent.value || submit.pending.value) return;
+  if (!consent.value || submit.pending.value || (attending && !detailsReady.value)) return;
   const result = await submit.submit(attending ? {
     ...fields,
     consent: true,
     attending: true,
     minor: minor.value === "yes",
-    diet: dietKind.value === "none" ? "Нет" : fields.diet,
+    passportDate: fields.passportDate.split("-").reverse().join("."),
+    diet: dietKind.value === "Другое" ? dietDetails.value.trim() : dietKind.value,
   } : { consent: true, attending: false });
   if (result.ok) done.value = true;
 }
@@ -74,19 +92,48 @@ async function send(attending: boolean) {
         <form v-else class="border-line bg-card grid min-w-0 gap-5 rounded-2xl border p-5" @submit.prevent="send(true)">
           <button type="button" class="text-accent w-fit text-sm font-semibold" @click="step = 'attendance'">← К вопросу об участии</button>
           <p class="text-ink-soft text-sm">Паспортные данные нужны для расселения по номерам.</p>
-          <label v-for="key in passportFields" :key="key" class="grid gap-1 text-sm font-medium">
-            {{ form.questions[key] }}
-            <input v-model="fields[key]" type="text" required maxlength="500" class="border-line bg-paper min-h-12 rounded-xl border px-3 text-base" :autocomplete="key === 'passportName' ? 'name' : 'off'">
+          <template v-for="key in passportFields" :key="key">
+            <UiDateTime
+              v-if="key === 'passportDate'"
+              v-model="fields.passportDate"
+              :label="form.questions[key]"
+              :max-date="today"
+              mode="date"
+              numeric-date
+            />
+            <label v-else class="grid gap-1 text-sm font-medium">
+              {{ form.questions[key] }}
+              <input
+                v-if="key === 'passportNumber'"
+                :value="fields.passportNumber"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="4522 123456"
+                pattern="[0-9]{4} [0-9]{6}"
+                title="Введите четыре цифры серии и шесть цифр номера"
+                required
+                class="border-line bg-paper focus:border-accent focus:ring-accent/20 min-h-12 rounded-xl border px-3 text-base tabular-nums outline-none focus:ring-4"
+                @input="formatPassportInput"
+              >
+              <input v-else v-model="fields[key]" type="text" required maxlength="500" class="border-line bg-paper min-h-12 rounded-xl border px-3 text-base" :autocomplete="key === 'passportName' ? 'name' : 'off'">
+            </label>
+          </template>
+          <fieldset class="min-w-0">
+            <legend class="mb-2 text-sm font-medium">{{ form.questions.diet }}</legend>
+            <div class="grid grid-cols-3 gap-2">
+              <label v-for="option in dietOptions" :key="option" class="cursor-pointer">
+                <input v-model="dietKind" type="radio" name="participation-diet" :value="option" required class="peer sr-only">
+                <span class="border-line bg-card hover:border-ink-soft peer-checked:border-accent peer-checked:bg-accent peer-checked:text-accent-ink peer-focus-visible:ring-accent/30 grid min-h-12 place-items-center rounded-2xl border px-2 text-sm font-semibold peer-focus-visible:ring-4">
+                  {{ option }}
+                </span>
+              </label>
+            </div>
+          </fieldset>
+          <label v-if="dietKind === 'Другое'" class="grid gap-1 text-sm font-medium">
+            Укажи особенности питания
+            <input v-model="dietDetails" type="text" maxlength="500" required class="border-line bg-paper focus:border-accent focus:ring-accent/20 min-h-12 rounded-xl border px-3 text-base outline-none focus:ring-4">
           </label>
-          <label class="grid gap-1 text-sm font-medium">
-            {{ form.questions.diet }}
-            <select v-model="dietKind" required class="border-line bg-paper min-h-12 rounded-xl border px-3 text-base">
-              <option disabled value="">Выбери ответ</option>
-              <option value="none">Нет</option>
-              <option value="other">Другое</option>
-            </select>
-          </label>
-          <UiInput v-if="dietKind === 'other'" v-model="fields.diet" label="Укажи особенности питания" />
           <label v-for="key in healthFields" :key="key" class="grid gap-1 text-sm font-medium">
             {{ form.questions[key] }}
             <textarea v-model="fields[key]" rows="3" maxlength="2000" class="border-line bg-paper rounded-xl border p-3 text-base" />
