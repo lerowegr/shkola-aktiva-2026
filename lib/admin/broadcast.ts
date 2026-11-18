@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 
 import { db } from "~~/lib/db";
+import { participationAudience, shaAccepted } from "~~/lib/participation/store";
 import { notify } from "~~/lib/notifications/notify";
 
 /**
@@ -79,6 +80,8 @@ export async function segmentUserIds(
       bookings: { none: { cancelledAt: null } },
     },
     booked: { bookings: { some: { cancelledAt: null } } },
+    sha_test: shaAccepted,
+    sha_participation: participationAudience(seasonId),
     accepted: published("PASSED"),
     rejected: published("REJECTED"),
   }[segment];
@@ -107,7 +110,7 @@ export async function sendBroadcast(params: {
       category: "SYSTEM" as const,
       title: params.title,
       body: params.body,
-      url: params.url,
+      url: params.segment === "sha_test" ? "/test" : params.url,
       key,
     })),
   );

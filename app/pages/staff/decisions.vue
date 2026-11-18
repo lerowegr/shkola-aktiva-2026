@@ -2,6 +2,7 @@
 import { Check, Clock3, FileSpreadsheet, Lock, MessageSquareText, X } from "lucide-vue-next";
 
 import type { FinalPart, RankRow } from "~~/lib/applications/decisions";
+import { can } from "~~/lib/permissions";
 import { facultyMatches } from "~~/lib/profile/faculty";
 
 /**
@@ -16,6 +17,15 @@ useHead({ title: "Итоги отбора" });
 const PART_LABEL: Record<FinalPart, string> = { APPLICATION: "Анкета", HOMEWORK: "ДЗ", ASSESSMENT: "ЦО", INTERVIEW: "Собес" };
 
 const { data, refresh } = await useFetch<{ rows: RankRow[] }>("/api/staff/decisions");
+const session = await useSession();
+const openThread = useAction("/api/staff/messages/open");
+const participationLabel = { pending: "Ждём анкету", confirmed: "Участие подтверждено", declined: "Не сможет приехать" };
+
+async function writeToCandidate(applicationId: string) {
+  const result = await openThread.submit({ applicationId });
+  if (result.ok && typeof result.threadId === "string") await navigateTo(`/staff/messages?thread=${result.threadId}`);
+}
+
 const rows = computed(() => data.value?.rows ?? []);
 const faculty = useFacultyFilter();
 const sortMode = ref<"decision" | "score">("decision");
@@ -115,6 +125,19 @@ async function applyThreshold() {
   if (result.ok) await refresh();
 }
 
+const participationFilter = ref<"" | "pending" | "confirmed" | "declined">("");
+const participationCounts = computed(() => {
+  const list = rows.value.filter((row) => facultyMatches(row.faculty, faculty.value));
+  return {
+    invited: list.filter((row) => row.participation).length,
+    confirmed: list.filter((row) => row.participation?.state === "confirmed").length,
+    declined: list.filter((row) => row.participation?.state === "declined").length,
+    pending: list.filter((row) => row.participation?.state === "pending").length,
+  };
+});
+const displayedRows = computed(() => visibleRows.value.filter(
+  (row) => !participationFilter.value || row.participation?.state === participationFilter.value,
+));
 const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? []);
 </script>
 
@@ -178,10 +201,26 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
     </section>
     <UiNotice v-if="promote.result.value" :ok="promote.result.value.ok" :message="promote.result.value.message" />
 
+    <UiNotice v-if="openThread.result.value" :ok="openThread.result.value.ok" :message="openThread.result.value.message" />
     <UiNotice v-if="bulk.result.value" :ok="bulk.result.value.ok" :message="bulk.result.value.message" />
 
+    <section class="border-line bg-card grid gap-3 rounded-2xl border p-4">
+      <h2 class="font-semibold">Анкета участника</h2>
+      <p class="text-ink-soft text-sm">
+        Приглашены {{ participationCounts.invited }} · Подтвердили {{ participationCounts.confirmed }} · Отказались {{ participationCounts.declined }} · Ждём ответа {{ participationCounts.pending }}
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <UiButton variant="ghost" href="/api/staff/decisions/selection.csv?kind=completed" class="w-auto text-sm">CSV · были на ЦО и собеседовании</UiButton>
+        <UiButton variant="ghost" href="/api/staff/decisions/selection.csv?kind=participation" class="w-auto text-sm">CSV · анкеты участников</UiButton>
+      </div>
+      <span class="text-ink-soft text-xs">Выгрузки включают все факультеты.</span>
+    </section>
     <div class="flex flex-wrap items-center gap-3">
       <StaffFacultyFilter v-model="faculty" />
+      <UiSelect v-model="participationFilter" label="Анкета участника">
+        <option value="">Все анкеты</option>
+        <option v-for="(label, state) in participationLabel" :key="state" :value="state">{{ label }}</option>
+      </UiSelect>
       <label class="flex flex-col gap-1 text-sm font-medium">
         Сортировка
         <UiSelect v-model="sortMode" size="md" aria-label="Сортировка итогов">
@@ -189,7 +228,7 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
           <option value="score">Только по баллам</option>
         </UiSelect>
       </label>
-      <span class="text-ink-soft text-sm">Показано {{ visibleRows.length }} из {{ rows.length }}</span>
+      <span class="text-ink-soft text-sm">Показано {{ displayedRows.length }} из {{ rows.length }}</span>
       <span class="text-ink-soft text-xs">Порог применяется ко всем факультетам.</span>
     </div>
 
@@ -205,7 +244,7 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
       </div>
       <ol>
         <li
-          v-for="(row, index) in visibleRows"
+          v-for="(row, index) in displayedRows"
           :key="row.id"
           class="border-line rank-row grid grid-cols-[32px_1fr] items-center gap-x-3 gap-y-2 border-t px-4 py-3 first:border-t-0 md:gap-4"
           :style="{ '--cols': `40px 2fr repeat(${parts.length}, minmax(0, 0.7fr)) 1fr 300px` }"
@@ -220,6 +259,8 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
               <span class="block truncate text-sm font-semibold">{{ row.name }}</span>
               <span class="text-ink-soft block truncate text-xs">{{ row.faculty || "Факультет не указан" }}</span>
               <span class="block text-xs" :class="row.assessmentPassed ? 'text-ok' : 'text-danger'">{{ row.assessmentPassed ? "ЦО пройден" : "ЦО не пройден" }}</span>
+              <span v-if="row.participation" class="text-ink-soft block text-xs">{{ participationLabel[row.participation.state] }}</span>
+              <span v-else-if="row.decision === 'PASSED'" class="text-ink-soft block text-xs">Анкета ещё не отправлена кандидату</span>
               <span v-if="row.telegramUsername" class="text-ink-soft block truncate text-xs">@{{ row.telegramUsername }}</span>
               <span v-if="row.latestComment" class="text-ink-soft mt-1 block truncate text-xs" :title="row.latestComment">💬 {{ row.latestComment }}</span>
             </span>
@@ -303,6 +344,10 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
               {{ row.commentCount ? `Комментарии · ${row.commentCount}` : "Комментарий" }}
             </button>
           </div>
+          <div v-if="row.participation" class="col-span-full flex flex-wrap gap-3">
+            <button v-if="session && can(session, 'messages.reply')" type="button" class="text-accent text-sm font-semibold hover:underline" :disabled="openThread.pending.value" @click="writeToCandidate(row.id)">Написать кандидату</button>
+            <a v-if="row.participation.hasScan" :href="`/api/staff/decisions/participation-scan?applicationId=${row.id}`" class="text-accent text-sm font-semibold hover:underline">Скачать заявление</a>
+          </div>
           <section v-if="openCommentsId === row.id" :id="`comments-${row.id}`" class="bg-paper col-span-full rounded-2xl p-4">
             <h3 class="font-semibold">Комментарии: {{ row.name }}</h3>
             <p class="text-ink-soft mt-1 text-xs">Видны только организаторам. Кандидату не отправляются.</p>
@@ -323,7 +368,7 @@ const parts = computed(() => rows.value[0]?.parts?.map((part) => part.stage) ?? 
           </section>
         </li>
       </ol>
-      <p v-if="visibleRows.length === 0" class="text-ink-soft p-8 text-center text-sm">{{ rows.length ? 'По выбранному факультету кандидатов нет.' : 'Пока никто не отправил анкету.' }}</p>
+      <p v-if="displayedRows.length === 0" class="text-ink-soft p-8 text-center text-sm">{{ rows.length ? 'По выбранным фильтрам кандидатов нет.' : 'Пока никто не отправил анкету.' }}</p>
     </section>
   </main>
 </template>

@@ -467,6 +467,7 @@ model Application {
   assessmentInvite AssessmentInvite?
   assessmentTaskNotes AssessmentTaskNote[]
   finalDecisionComments FinalDecisionComment[]
+  participation Participation?
 
   @@unique([seasonId, userId])
   @@index([seasonId, status])
@@ -1242,3 +1243,20 @@ model AssessmentGroupNote {
   @@map("assessment_group_notes")
 }
 
+
+/// Снимок вопросов и состояния анкеты участия для адресата рассылки.
+model Participation {
+  applicationId String   @id
+  invitedAt     DateTime @default(now())
+  questions     Json
+  submittedAt   DateTime?
+  attending     Boolean?
+  answers       Json?
+  consentScan   Bytes?
+  scanMime      String?
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([submittedAt])
+  @@map("participation")
+}

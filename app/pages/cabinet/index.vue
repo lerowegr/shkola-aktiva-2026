@@ -21,6 +21,7 @@ const [
   { data: assessment, refresh: refreshAssessment },
   { data: interview },
   { data: daily },
+  { data: participation },
 ] = await Promise.all([
   useFetch("/api/season"),
   useFetch("/api/cabinet/application"),
@@ -29,6 +30,7 @@ const [
   ),
   useFetch<{ interview: CandidateInterview | null }>("/api/cabinet/interview"),
   useFetch<DailyStatus>("/api/cabinet/daily"),
+  useFetch("/api/cabinet/participation"),
 ]);
 const app = computed(
   () => application.value?.data as CandidateApplication | null | undefined,
@@ -170,6 +172,11 @@ const personal = computed(() => {
           собеседование открываются здесь по очереди — каждый шаг в свой срок.
         </p>
       </div>
+
+      <NuxtLink v-if="participation?.form" to="/cabinet/participation" class="border-line bg-card hover:border-accent flex items-center justify-between gap-3 rounded-2xl border p-4">
+        <span class="font-semibold">{{ participation.form.submitted ? "Анкета участника отправлена" : "Заполнить анкету участника" }}</span>
+        <ChevronRight class="size-5 shrink-0" aria-hidden="true" />
+      </NuxtLink>
 
       <AppInterviewCard
         v-if="

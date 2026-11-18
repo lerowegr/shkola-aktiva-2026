@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Megaphone } from "lucide-vue-next";
 
+import { QUESTIONS, questionKeys, type Questions } from "~~/lib/participation/form";
 import { SEGMENTS, type Segment } from "~~/lib/admin/segments";
 
 /**
@@ -20,12 +21,24 @@ const title = ref("");
 const body = ref("");
 const url = ref("/cabinet");
 const confirming = ref(false);
+const questions = reactive<Questions>({ ...QUESTIONS });
+const registration = computed(() => segment.value === "sha_participation");
+const test = computed(() => segment.value === "sha_test");
+const ready = computed(() => !!title.value.trim() && !!preview.value?.count
+  && (!registration.value || questionKeys.every((key) => questions[key].trim())));
 
 const { data: preview } = await useFetch<{ count: number }>("/api/admin/broadcast/preview", { query: { segment } });
 
 const send = useAction("/api/admin/broadcast/send");
 async function submit() {
-  const result = await send.submit({ segment: segment.value, title: title.value, body: body.value || null, url: url.value || null });
+  if (!ready.value) return;
+  const result = await send.submit({
+    segment: segment.value,
+    title: title.value,
+    body: body.value || null,
+    url: registration.value || test.value ? null : url.value || null,
+    ...(registration.value ? { questions } : {}),
+  });
   confirming.value = false;
   if (result.ok) {
     title.value = "";
@@ -33,7 +46,17 @@ async function submit() {
   }
 }
 
-watch(segment, () => (confirming.value = false));
+watch(segment, (value) => {
+  confirming.value = false;
+  if (value === "sha_participation") {
+    title.value = "Ты прошёл отбор в Школу Актива!";
+    body.value = "Поздравляем! Заполни анкету участника и сообщи, сможешь ли ты быть с нами все три дня, 27–29 ноября.";
+  }
+  if (value === "sha_test") {
+    title.value = "Тест Школы Актива";
+    body.value = "Привет! Открой тест Школы Актива по кнопке ниже.";
+  }
+}, { immediate: true });
 </script>
 
 <template>
@@ -46,7 +69,7 @@ watch(segment, () => (confirming.value = false));
       </p>
     </div>
 
-    <form class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-5" @submit.prevent="confirming = true">
+    <form class="bg-card border-line flex flex-col gap-4 rounded-3xl border p-5" @submit.prevent="ready && (confirming = true)">
       <div class="flex min-w-0 flex-col gap-1.5">
         <UiSelect v-model="segment" label="Кому">
           <option v-for="(label, key) in SEGMENTS" :key="key" :value="key">{{ label }}</option>
@@ -58,8 +81,19 @@ watch(segment, () => (confirming.value = false));
         Текст — необязательно
         <textarea v-model="body" rows="4" maxlength="1500" class="border-line bg-paper rounded-2xl border px-4 py-3 text-base font-normal" />
       </label>
-      <UiInput v-model="url" label="Куда ведёт нажатие" placeholder="/cabinet" hint="Путь на сайте. В Telegram это кнопка «Открыть»." />
+      <UiInput v-if="!registration && !test" v-model="url" label="Куда ведёт нажатие" placeholder="/cabinet" hint="Путь на сайте. В Telegram это кнопка «Открыть»." />
 
+      <details v-if="registration" open class="border-line rounded-2xl border p-4">
+        <summary class="cursor-pointer font-semibold">Вопросы анкеты участника</summary>
+        <p class="text-ink-soft mt-2 text-sm">Изменения применятся к новым приглашениям. Ответ «Нет» на вопрос о трёх днях сразу завершит анкету.</p>
+        <div class="mt-4 grid gap-3">
+          <label v-for="(key, index) in questionKeys" :key="key" class="flex flex-col gap-1 text-sm">
+            <span>{{ index + 1 }}. Формулировка вопроса</span>
+            <textarea v-model="questions[key]" :disabled="confirming || send.pending.value" :rows="key === 'consent' ? 5 : 2" maxlength="1500" class="border-line bg-paper rounded-xl border p-3 text-base" />
+          </label>
+        </div>
+      </details>
+      <p v-if="test" class="text-ink-soft text-sm">В сообщении будет кнопка «Открыть», ведущая на тест Школы Актива.</p>
       <UiNotice :ok="send.result.value?.ok" :message="send.result.value?.message" />
 
       <div v-if="confirming" class="bg-brand-yellow-soft flex flex-col gap-3 rounded-2xl p-4">
@@ -72,7 +106,7 @@ watch(segment, () => (confirming.value = false));
           <UiButton :pending="send.pending.value" @click="submit">Отправить</UiButton>
         </div>
       </div>
-      <UiButton v-else type="submit" :disabled="!title.trim() || !preview?.count">
+      <UiButton v-else type="submit" :disabled="!ready">
         <Megaphone class="size-5" aria-hidden="true" /> Разослать
       </UiButton>
     </form>

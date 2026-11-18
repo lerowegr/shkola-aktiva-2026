@@ -1,3 +1,4 @@
+import { participationNotification, participationNotificationIsCurrent } from "~~/lib/participation/store";
 import { interviewInviteIsCurrent } from "~~/lib/interviews/invitations";
 import { interviewReminderIsCurrent } from "~~/lib/interviews/reminders";
 import { db } from "~~/lib/db";
@@ -89,7 +90,8 @@ export async function processDeliveries(params: {
       result.skipped++;
     };
 
-    if (delivery.notification.readAt) {
+    const participation = participationNotification(delivery.notification.key);
+    if (delivery.notification.readAt && !participation) {
       await skip("Прочитано на сайте раньше");
       continue;
     }
@@ -105,6 +107,11 @@ export async function processDeliveries(params: {
 
     if (!await interviewInviteIsCurrent(delivery.notification.key, delivery.userId, now)) {
       await skip("Приглашение на собеседование больше не актуально");
+      continue;
+    }
+
+    if (participation && !await participationNotificationIsCurrent(participation, delivery.userId, now)) {
+      await skip("Приглашение или напоминание об анкете участия больше не актуально");
       continue;
     }
 

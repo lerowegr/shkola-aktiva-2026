@@ -18,6 +18,7 @@ import { issueTempPassword } from "../lib/auth/temp-password";
 import { confirmLoginCode, linkTelegram } from "../lib/auth/telegram-users";
 import { receiveFromTelegram } from "../lib/messages/bot-inbox";
 
+import { explainConsentScan, receiveConsentScan } from "./participation";
 import { entryGreeting, entryKeyboard } from "./entry";
 import { registerInterviewBot } from "./interviews";
 import { registerCandidateInterviewBot } from "./candidate-interviews";
@@ -77,6 +78,11 @@ export function createBot(token: string): Bot {
 
   bot.command("start", async (ctx) => {
     const payload = ctx.match?.trim() ?? "";
+
+    if (payload === "parent_consent") {
+      await explainConsentScan(ctx, APP_URL);
+      return;
+    }
 
     if (payload.startsWith("login_")) {
       const code = payload.slice("login_".length);
@@ -161,7 +167,11 @@ export function createBot(token: string): Bot {
     if (result.reply) await ctx.reply(result.reply);
   });
 
-  // Файлы бот не принимает: домашнее задание — ссылки в анкете на сайте.
+  bot.on(["message:document", "message:photo"], async (ctx, next) => {
+    if (!await receiveConsentScan(ctx, token)) await next();
+  });
+
+  // Домашнее задание остаётся ссылкой в анкете на сайте.
   bot.on("message:document", async (ctx) => {
     if (ctx.chat.type !== "private") return;
     await ctx.reply(

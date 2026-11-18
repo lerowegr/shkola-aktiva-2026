@@ -42,6 +42,10 @@ export interface RankRow {
   telegramUsername: string | null;
   faculty?: string | null;
   assessmentPassed?: boolean;
+  participation?: {
+    state: "pending" | "confirmed" | "declined";
+    hasScan: boolean;
+  } | null;
   /** Средний итог по мастерам, поставившим хоть один балл. */
   average: number | null;
   max: number;
@@ -136,6 +140,7 @@ export async function rankFinal(seasonId: string): Promise<RankRow[]> {
         middleName: true,
         user: { select: { telegramUsername: true, faculty: true } },
         assessmentInvite: { select: { attended: true } },
+        participation: { select: { submittedAt: true, attending: true, scanMime: true } },
         finalDecisionComments: { orderBy: { createdAt: "desc" }, take: 1, select: { body: true } },
         _count: { select: { finalDecisionComments: true } },
         reviews: {
@@ -176,6 +181,10 @@ export async function rankFinal(seasonId: string): Promise<RankRow[]> {
       telegramUsername: application.user.telegramUsername,
       faculty: application.user.faculty,
       assessmentPassed: application.assessmentInvite?.attended === true,
+      participation: application.participation ? {
+        state: !application.participation.submittedAt ? "pending" : application.participation.attending ? "confirmed" : "declined",
+        hasScan: !!application.participation.submittedAt && !!application.participation.scanMime,
+      } : null,
       average: scored.length ? round(scored.reduce((sum, part) => sum + part.average!, 0)) : null,
       max: parts.reduce((sum, part) => sum + part.max, 0),
       reviewed,

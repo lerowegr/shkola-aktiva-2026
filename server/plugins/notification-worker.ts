@@ -1,3 +1,4 @@
+import { materializeParticipationReminders } from "~~/lib/participation/store";
 import { materializeReminders } from "~~/lib/interviews/reminders";
 import { materializeReserveInvitations } from "~~/lib/interviews/reserve-invitations";
 import { materializeApplicationDeadline, materializeAssessmentReminders } from "~~/lib/notifications/selection-reminders";
@@ -34,6 +35,7 @@ export default defineNitroPlugin((nitroApp) => {
       // а не каждые 5 секунд.
       if (Date.now() - lastReminders >= 60_000) {
         lastReminders = Date.now();
+        await materializeParticipationReminders();
         await materializeReminders();
         await materializeStageOpen();
         await materializeApplicationDeadline();
