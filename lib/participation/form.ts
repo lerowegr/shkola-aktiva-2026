@@ -3,7 +3,9 @@ import { z } from "zod";
 export const PARTICIPATION_PATH = "/cabinet/participation";
 export const PARTICIPATION_INVITATION = {
   title: "Ты прошёл отбор в Школу Актива!",
-  body: "Поздравляем! Заполни анкету участника и сообщи, сможешь ли ты быть с нами все три дня, 27–29 ноября.",
+  body: "Поздравляем! Заполни анкету участника и сообщи, сможешь ли ты быть с нами все три дня, 27–29 ноября.\n\n" +
+    "Пожалуйста, отправь заполненную анкету до 07:59 МСК 19 ноября 2026 года. " +
+    "Если мы не получим ответ к этому сроку, твоё участие в Школе Актива может быть отменено.",
 };
 export const PARENT_CONSENT = {
   path: "/participation/parent-consent.docx",

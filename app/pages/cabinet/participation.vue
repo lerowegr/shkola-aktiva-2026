@@ -11,9 +11,9 @@ const done = ref(false);
 const step = ref<"attendance" | "details">("attendance");
 const consent = ref(false);
 const minor = ref("");
-const dietKind = ref<"Да" | "Нет" | "Другое">();
+const dietKind = ref<"Да" | "Нет">();
 const dietDetails = ref("");
-const dietOptions = ["Да", "Нет", "Другое"] as const;
+const dietOptions = ["Да", "Нет"] as const;
 const today = mskDayKey(new Date());
 const fields = reactive({
   passportName: form.value?.name ?? "",
@@ -31,7 +31,7 @@ const passportFields = ["passportName", "passportNumber", "passportDate", "passp
 const healthFields = ["conditions", "medication", "healthNotes"] satisfies (keyof Questions)[];
 const botLink = !config.demo && config.telegramBotUsername ? `https://t.me/${config.telegramBotUsername}?start=parent_consent` : "";
 const detailsReady = computed(() => Boolean(fields.passportDate && minor.value && dietKind.value &&
-  (dietKind.value !== "Другое" || dietDetails.value.trim()) && (minor.value !== "yes" || form.value?.scanReceived)));
+  (dietKind.value !== "Да" || dietDetails.value.trim()) && (minor.value !== "yes" || form.value?.scanReceived)));
 
 function formatPassportInput(event: Event) {
   const input = event.target as HTMLInputElement;
@@ -55,7 +55,7 @@ async function send(attending: boolean) {
     attending: true,
     minor: minor.value === "yes",
     passportDate: fields.passportDate.split("-").reverse().join("."),
-    diet: dietKind.value === "Другое" ? dietDetails.value.trim() : dietKind.value,
+    diet: dietKind.value === "Да" ? dietDetails.value.trim() : "Нет",
   } : { consent: true, attending: false });
   if (result.ok) done.value = true;
 }
@@ -121,7 +121,7 @@ async function send(attending: boolean) {
           </template>
           <fieldset class="min-w-0">
             <legend class="mb-2 text-sm font-medium">{{ form.questions.diet }}</legend>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-2 gap-2">
               <label v-for="option in dietOptions" :key="option" class="cursor-pointer">
                 <input v-model="dietKind" type="radio" name="participation-diet" :value="option" required class="peer sr-only">
                 <span class="border-line bg-card hover:border-ink-soft peer-checked:border-accent peer-checked:bg-accent peer-checked:text-accent-ink peer-focus-visible:ring-accent/30 grid min-h-12 place-items-center rounded-2xl border px-2 text-sm font-semibold peer-focus-visible:ring-4">
@@ -130,7 +130,7 @@ async function send(attending: boolean) {
               </label>
             </div>
           </fieldset>
-          <label v-if="dietKind === 'Другое'" class="grid gap-1 text-sm font-medium">
+          <label v-if="dietKind === 'Да'" class="grid gap-1 text-sm font-medium">
             Укажи особенности питания
             <input v-model="dietDetails" type="text" maxlength="500" required class="border-line bg-paper focus:border-accent focus:ring-accent/20 min-h-12 rounded-xl border px-3 text-base outline-none focus:ring-4">
           </label>

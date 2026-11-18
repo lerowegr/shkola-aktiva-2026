@@ -9,7 +9,7 @@ import { PARENT_CONSENT, PARTICIPATION_INVITATION, PARTICIPATION_PATH } from "~~
     <h2 class="text-ink-soft text-sm font-semibold">Пример приглашения в Telegram</h2>
     <div class="bg-paper grid gap-3 rounded-xl p-4">
       <p class="font-semibold">{{ PARTICIPATION_INVITATION.title }}</p>
-      <p class="text-sm">{{ PARTICIPATION_INVITATION.body }}</p>
+      <p class="text-sm whitespace-pre-line">{{ PARTICIPATION_INVITATION.body }}</p>
       <a :href="PARENT_CONSENT.path" :download="PARENT_CONSENT.filename" class="text-accent flex items-start gap-2 text-sm font-medium hover:underline">
         <FileText class="size-5 shrink-0" aria-hidden="true" />
         <span>{{ PARENT_CONSENT.filename }}</span>
