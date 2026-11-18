@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PARTICIPATION_SUCCESS, type Questions } from "~~/lib/participation/form";
+import { PARENT_CONSENT, PARTICIPATION_SUCCESS, type Questions } from "~~/lib/participation/form";
 
 useHead({ title: "Анкета участника" });
 const { public: config } = useRuntimeConfig();
@@ -26,7 +26,7 @@ const fields = reactive({
 
 const passportFields = ["passportName", "passportNumber", "passportDate", "passportIssuer", "citizenship", "studentId"] satisfies (keyof Questions)[];
 const healthFields = ["conditions", "medication", "healthNotes"] satisfies (keyof Questions)[];
-const botLink = config.telegramBotUsername ? `https://t.me/${config.telegramBotUsername}?start=parent_consent` : "";
+const botLink = !config.demo && config.telegramBotUsername ? `https://t.me/${config.telegramBotUsername}?start=parent_consent` : "";
 const detailsReady = computed(() => minor.value !== "" && dietKind.value !== "" &&
   (dietKind.value !== "other" || !!fields.diet.trim()) && (minor.value !== "yes" || form.value?.scanReceived));
 
@@ -49,6 +49,7 @@ async function send(attending: boolean) {
     <main class="mx-auto flex max-w-2xl flex-col gap-5 px-4 py-8">
       <NuxtLink to="/cabinet" class="text-accent text-sm font-semibold">← В личный кабинет</NuxtLink>
       <h1 class="font-display text-3xl">Анкета участника</h1>
+      <p v-if="config.demo" class="text-ink-soft text-sm">Демо-анкета. Для проверки используй вымышленные данные.</p>
       <p v-if="done || form?.submitted" role="status" class="bg-brand-green-soft text-ok rounded-2xl p-4 font-semibold">{{ PARTICIPATION_SUCCESS }}</p>
       <p v-else-if="status === 'error'" class="text-danger" role="alert">Не удалось открыть анкету. Обнови страницу и попробуй снова.</p>
       <p v-else-if="!form" class="text-ink-soft">Анкета откроется после приглашения организаторов.</p>
@@ -100,11 +101,12 @@ async function send(attending: boolean) {
           </label>
           <div v-if="minor === 'yes'" class="bg-paper grid gap-3 rounded-xl p-4">
             <p class="text-sm">{{ form.questions.scan }}</p>
-            <a href="/participation/parent-consent.docx" download="Заявление для несовершеннолетних.docx" class="text-accent text-sm font-semibold hover:underline">Скачать заявление</a>
+            <a :href="PARENT_CONSENT.path" :download="PARENT_CONSENT.filename" class="text-accent text-sm font-semibold hover:underline">Скачать заявление</a>
             <a v-if="botLink" :href="botLink" target="_blank" rel="noopener" class="text-accent text-sm font-semibold hover:underline">Открыть бота в Telegram</a>
-            <p class="text-ink-soft text-sm">При отправке файла добавь подпись «заявление».</p>
+            <p v-if="config.demo" class="text-ink-soft text-sm">На демо можно скачать шаблон. Приём подписанного файла доступен через бота основной версии.</p>
+            <p v-else class="text-ink-soft text-sm">При отправке файла добавь подпись «заявление».</p>
             <p v-if="form.scanReceived" role="status" class="text-ok text-sm font-semibold">Заявление получено</p>
-            <UiButton v-else variant="ghost" :pending="status === 'pending'" @click="refresh()">Проверить, получен ли файл</UiButton>
+            <UiButton v-else-if="!config.demo" variant="ghost" :pending="status === 'pending'" @click="refresh()">Проверить, получен ли файл</UiButton>
           </div>
           <UiButton type="submit" :disabled="!detailsReady" :pending="submit.pending.value">Отправить анкету</UiButton>
         </form>

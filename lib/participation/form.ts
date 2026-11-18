@@ -1,6 +1,16 @@
 import { z } from "zod";
 
 export const PARTICIPATION_PATH = "/cabinet/participation";
+export const PARTICIPATION_INVITATION = {
+  title: "Ты прошёл отбор в Школу Актива!",
+  body: "Поздравляем! Заполни анкету участника и сообщи, сможешь ли ты быть с нами все три дня, 27–29 ноября.",
+};
+export const PARENT_CONSENT = {
+  path: "/participation/parent-consent.docx",
+  filename: "Заявление для несовершеннолетних.docx",
+  caption: "Заявление для несовершеннолетних. Его нужно подписать у родителя или законного представителя.",
+};
+
 export const PARTICIPATION_SUCCESS = "Ваши данные успешно отправлены организаторам";
 
 export const QUESTIONS = {

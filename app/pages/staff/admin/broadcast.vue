@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Megaphone } from "lucide-vue-next";
 
-import { QUESTIONS, questionKeys, type Questions } from "~~/lib/participation/form";
+import { PARTICIPATION_INVITATION, QUESTIONS, questionKeys, type Questions } from "~~/lib/participation/form";
 import { SEGMENTS, type Segment } from "~~/lib/admin/segments";
 
 /**
@@ -49,8 +49,8 @@ async function submit() {
 watch(segment, (value) => {
   confirming.value = false;
   if (value === "sha_participation") {
-    title.value = "Ты прошёл отбор в Школу Актива!";
-    body.value = "Поздравляем! Заполни анкету участника и сообщи, сможешь ли ты быть с нами все три дня, 27–29 ноября.";
+    title.value = PARTICIPATION_INVITATION.title;
+    body.value = PARTICIPATION_INVITATION.body;
   }
   if (value === "sha_test") {
     title.value = "Тест Школы Актива";

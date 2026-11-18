@@ -1,6 +1,7 @@
 import { Api, InlineKeyboard } from "grammy";
 
-import { PARENT_CONSENT_CAPTION, parentConsentFile } from "../participation/parent-consent";
+import { PARENT_CONSENT } from "../participation/form";
+import { parentConsentFile } from "../participation/parent-consent";
 
 import type { OutgoingMessage, Senders } from "./worker";
 
@@ -59,13 +60,13 @@ export function createTelegramSender(): Senders["telegram"] {
     const replyMarkup = telegramButton(message, base);
     if (message.attachment === "parentConsent") {
       const document = await parentConsentFile();
-      const caption = `${text}\n\n${PARENT_CONSENT_CAPTION}`;
+      const caption = `${text}\n\n${PARENT_CONSENT.caption}`;
       // В подписи к документу Telegram принимает до 1024 символов.
       if (caption.length <= 1024) {
         await api.sendDocument(chatId, document, { caption, parse_mode: "HTML", reply_markup: replyMarkup });
       } else {
         await api.sendMessage(chatId, text, { parse_mode: "HTML", link_preview_options: { is_disabled: true }, reply_markup: replyMarkup });
-        await api.sendDocument(chatId, document, { caption: PARENT_CONSENT_CAPTION });
+        await api.sendDocument(chatId, document, { caption: PARENT_CONSENT.caption });
       }
       return;
     }

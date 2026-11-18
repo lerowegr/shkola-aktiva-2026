@@ -5,6 +5,8 @@ import { placeMember, saveGroup, setExperts } from "~~/lib/assessment/groups";
 import { inviteSession, saveSession } from "~~/lib/assessment/sessions";
 import { db } from "~~/lib/db";
 import { createSlots } from "~~/lib/interviews/slots";
+import { PARTICIPATION_INVITATION, QUESTIONS } from "~~/lib/participation/form";
+import { inviteToParticipation } from "~~/lib/participation/store";
 
 /**
  * Демо-отбор для показа сайта: выдуманные организаторы и кандидаты на
@@ -45,7 +47,7 @@ export const DEMO_CANDIDATES: DemoPerson[] = [
   { key: "egor", firstName: "Егор", lastName: "Соколов", about: "Прошёл ЦО, эксперты его оценили" },
   { key: "zhenya", firstName: "Женя", lastName: "Попова", about: "Записана на собеседование" },
   { key: "igor", firstName: "Игорь", lastName: "Кузнецов", about: "Собеседование прошло, итог не объявлен" },
-  { key: "kira", firstName: "Кира", lastName: "Павлова", about: "Итоги: прошла в участники" },
+  { key: "kira", firstName: "Кира", lastName: "Павлова", about: "Прошла в ША и получила приглашение с заявлением для несовершеннолетних" },
   { key: "lyova", firstName: "Лёва", lastName: "Семёнов", about: "Итоги: не прошёл" },
 ];
 
@@ -333,6 +335,7 @@ export async function resetDemo(now = new Date()): Promise<{ staff: number; cand
   await setDecision(app("kira"), "INTERVIEW", "PASSED", staff.lead!);
   await setDecision(app("lyova"), "INTERVIEW", "REJECTED", staff.lead!);
   await publishDecisions(seasonId, "INTERVIEW");
+  await inviteToParticipation({ seasonId, ...PARTICIPATION_INVITATION, questions: QUESTIONS });
 
   // Немного «жизни» в журнале — кто что делал.
   await db.auditLog.create({ data: { actorId: staff.admin, action: "demo.reset", meta: { at: now.toISOString() } } });

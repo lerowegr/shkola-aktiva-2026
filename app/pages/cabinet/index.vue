@@ -15,6 +15,7 @@ import type { CandidateInterview } from "~~/lib/interviews/booking";
 useHead({ title: "Кабинет" });
 
 const user = await useSession();
+const demo = useRuntimeConfig().public.demo === true;
 const [
   { data },
   { data: application },
@@ -173,7 +174,8 @@ const personal = computed(() => {
         </p>
       </div>
 
-      <NuxtLink v-if="participation?.form" to="/cabinet/participation" class="border-line bg-card hover:border-accent flex items-center justify-between gap-3 rounded-2xl border p-4">
+      <AppDemoParticipationInvite v-if="demo && participation?.form && !participation.form.submitted" />
+      <NuxtLink v-else-if="participation?.form" to="/cabinet/participation" class="border-line bg-card hover:border-accent flex items-center justify-between gap-3 rounded-2xl border p-4">
         <span class="font-semibold">{{ participation.form.submitted ? "Анкета участника отправлена" : "Заполнить анкету участника" }}</span>
         <ChevronRight class="size-5 shrink-0" aria-hidden="true" />
       </NuxtLink>

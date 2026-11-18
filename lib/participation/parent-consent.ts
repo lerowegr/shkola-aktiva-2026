@@ -2,9 +2,9 @@ import { readFile } from "node:fs/promises";
 
 import { InputFile } from "grammy";
 
-const template = "public/participation/parent-consent.docx";
+import { PARENT_CONSENT } from "./form";
 
-export const PARENT_CONSENT_CAPTION = "Заявление для несовершеннолетних. Его нужно подписать у родителя или законного представителя.";
+const template = `public${PARENT_CONSENT.path}`;
 
 export async function parentConsentFile(): Promise<InputFile> {
   // В образе сайта Nuxt кладёт публичные файлы в .output/public.
@@ -12,5 +12,5 @@ export async function parentConsentFile(): Promise<InputFile> {
     if (error.code !== "ENOENT") throw error;
     return readFile(`.output/${template}`);
   });
-  return new InputFile(bytes, "Заявление для несовершеннолетних.docx");
+  return new InputFile(bytes, PARENT_CONSENT.filename);
 }
