@@ -46,8 +46,15 @@ async function submit() {
   }
 }
 
-watch(segment, (value) => {
+watch(segment, (value, previous) => {
   confirming.value = false;
+  if (value === "sha_message") {
+    url.value = "";
+    if (previous === "sha_participation" || previous === "sha_test") {
+      title.value = "";
+      body.value = "";
+    }
+  }
   if (value === "sha_participation") {
     title.value = PARTICIPATION_INVITATION.title;
     body.value = PARTICIPATION_INVITATION.body;
@@ -81,7 +88,7 @@ watch(segment, (value) => {
         Текст — необязательно
         <textarea v-model="body" rows="4" maxlength="1500" class="border-line bg-paper rounded-2xl border px-4 py-3 text-base font-normal" />
       </label>
-      <UiInput v-if="!registration && !test" v-model="url" label="Куда ведёт нажатие" placeholder="/cabinet" hint="Путь на сайте. В Telegram это кнопка «Открыть»." />
+      <UiInput v-if="!registration && !test" v-model="url" label="Ссылка (необязательно)" placeholder="/cabinet" hint="Путь на сайте. В Telegram это кнопка «Открыть»." />
 
       <details v-if="registration" open class="border-line rounded-2xl border p-4">
         <summary class="cursor-pointer font-semibold">Вопросы анкеты участника</summary>

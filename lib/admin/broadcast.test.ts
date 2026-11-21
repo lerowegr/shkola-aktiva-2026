@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { db } from "~~/lib/db";
+import { QUESTIONS } from "~~/lib/participation/form";
 import { resetDatabase } from "~~/lib/test/db";
 
 import { segmentUserIds, sendBroadcast } from "./broadcast";
@@ -71,5 +72,36 @@ describe("сегменты рассылки", () => {
     expect(await segmentUserIds(seasonId, "candidates")).toEqual([user.id]);
     expect(await sendBroadcast({ seasonId, segment: "candidates", title: "Дедлайн завтра", body: null, url: "/cabinet" })).toBe(1);
     expect(await db.notification.findFirstOrThrow()).toMatchObject({ category: "SYSTEM", title: "Дедлайн завтра" });
+  });
+
+  it("обычное сообщение получают принятые участники независимо от публикации итога и заполнения анкеты", async () => {
+    const accepted = await candidate("SUBMITTED");
+    const confirmed = await candidate("SUBMITTED");
+    const reserve = await candidate("SUBMITTED");
+    const rejected = await candidate("SUBMITTED");
+    const blocked = await candidate("SUBMITTED", { blocked: true });
+    await db.stageDecision.createMany({
+      data: [
+        { applicationId: accepted.application.id, stageKind: "INTERVIEW", outcome: "PASSED" },
+        { applicationId: confirmed.application.id, stageKind: "INTERVIEW", outcome: "PASSED", publishedAt: new Date() },
+        { applicationId: reserve.application.id, stageKind: "INTERVIEW", outcome: "RESERVE" },
+        { applicationId: rejected.application.id, stageKind: "INTERVIEW", outcome: "REJECTED" },
+        { applicationId: blocked.application.id, stageKind: "INTERVIEW", outcome: "PASSED" },
+      ],
+    });
+    await db.participation.create({
+      data: { applicationId: confirmed.application.id, questions: QUESTIONS, attending: true, submittedAt: new Date() },
+    });
+
+    const recipients = [accepted.user.id, confirmed.user.id].sort();
+    expect((await segmentUserIds(seasonId, "sha_message")).sort()).toEqual(recipients);
+    expect(await sendBroadcast({
+      seasonId, segment: "sha_message", title: "Информация о встрече", body: "Собираемся в холле.", url: null,
+    })).toBe(2);
+    const notifications = await db.notification.findMany({ orderBy: { userId: "asc" } });
+    expect(notifications.map(({ userId, body, url }) => ({ userId, body, url }))).toEqual(
+      recipients.map((userId) => ({ userId, body: "Собираемся в холле.", url: null })),
+    );
+    expect(await db.participation.count()).toBe(1);
   });
 });

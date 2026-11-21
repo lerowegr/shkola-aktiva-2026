@@ -80,6 +80,7 @@ export async function segmentUserIds(
       bookings: { none: { cancelledAt: null } },
     },
     booked: { bookings: { some: { cancelledAt: null } } },
+    sha_message: shaAccepted,
     sha_test: shaAccepted,
     sha_participation: participationAudience(seasonId),
     accepted: published("PASSED"),
